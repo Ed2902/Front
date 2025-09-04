@@ -31,8 +31,8 @@ import {
 } from '../Tabladeoperacion/inventario'
 
 // 👇 Formularios de gestión de inventario
-import FormIngreso from '../../GestionBodega/Inventario/Formingreso'
-import FormSalida from '../../GestionBodega/Inventario/Formsalida'
+import FormIngreso from '../../GestionBodega/Inventario/FormIngreso'
+import FormSalida from '../../GestionBodega/Inventario/FormSalida'
 import FormTransformacion from '../../GestionBodega/Inventario/FormTransformacion'
 
 Modal.setAppElement('#root')
