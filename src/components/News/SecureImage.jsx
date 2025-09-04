@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 
-const API_ORIGIN = import.meta.env.VITE_API_URL.replace(
-  '/api',
-  '/backendfastway'
-)
+const API_BASE = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '')
+  : `${window.location.origin}`
 
 export default function SecureImage({ src, alt = '', ...imgProps }) {
   const [blobUrl, setBlobUrl] = useState('')
@@ -21,19 +20,21 @@ export default function SecureImage({ src, alt = '', ...imgProps }) {
       if (!src) return
 
       const token = localStorage.getItem('token')
-      const absoluteUrl = src.startsWith('http') ? src : `${API_ORIGIN}${src}`
+
+      const isAbs = /^https?:\/\//i.test(src)
+      const normalizedSrc = src.startsWith('/') ? src : `/${src}`
+      const absoluteUrl = isAbs ? src : `${API_BASE}${normalizedSrc}`
 
       try {
         const res = await axios.get(absoluteUrl, {
           responseType: 'blob',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         })
         if (cancelled) return
         const url = URL.createObjectURL(res.data)
         revokedUrl = url
         setBlobUrl(url)
-        // eslint-disable-next-line no-unused-vars
-      } catch (e) {
+      } catch {
         if (cancelled) return
         setError('No se pudo cargar la imagen.')
       }
