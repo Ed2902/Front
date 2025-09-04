@@ -1,4 +1,4 @@
-import './SeccionDinamicaTickets.css'
+import './SeccionDinamicatickets.css'
 import TicketsList from '../Usuario/TicketsList'
 import TicketsSoporte from '../Soporte/TicketsSoporte'
 
