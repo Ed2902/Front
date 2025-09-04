@@ -4,7 +4,7 @@ import TablaResumenOperacion from './TablaResumenOperacion'
 import { getIdTipo, TIPOS_SECUNDARIOS } from './inventario'
 
 import FormIngreso from '../../GestionBodega/Inventario/Formingreso'
-import FormSalida from '../../GestionBodega/Inventario/Formsalida'
+import FormSalida from '../../GestionBodega/Inventario/FormSalida'
 import FormTransformacion from '../../GestionBodega/Inventario/FormTransformacion'
 
 const renderFormForTipo = (op, onDone) => {
