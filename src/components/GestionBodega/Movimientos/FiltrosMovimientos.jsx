@@ -1,6 +1,6 @@
 import React from 'react'
 import { FaFileExcel } from 'react-icons/fa' // Importamos el ícono de Excel
-import './filtrosMovimientos.css'
+import './FiltrosMovimientos.css'
 
 const FiltrosMovimientos = ({
   globalFilter,
