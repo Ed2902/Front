@@ -1,0 +1,87 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  background-color: #f8f8f8;
+}
+
+.layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #f8f8f8;
+  overflow: visible; /* 🔥 permite que modales se muestren correctamente */
+  transition: all 0.3s ease;
+  position: relative; /* 👈 importante para que modales fijos se ubiquen bien */
+}
+
+.sidebar {
+  width: 250px;
+  height: 100vh;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.main-content {
+  flex-grow: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.gestion-bodega-seccion {
+  flex-grow: 1;
+  width: 100%;
+  background-color: #ffffff;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow-y: auto;
+}
+
+.gestion-bodega-seccion > * {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .sidebar.collapsed {
+    width: 100%;
+  }
+
+  .main-content {
+    width: 100%;
+  }
+
+  .gestion-bodega-seccion {
+    padding: 20px;
+  }
+}

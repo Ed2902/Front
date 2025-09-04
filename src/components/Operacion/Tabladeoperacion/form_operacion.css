@@ -1,0 +1,18 @@
+.btn-agregar {
+  background-color: #00ba59;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  color: #ffffff;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.3s ease;
+}
+
+.btn-agregar:hover {
+  background-color: #009a4a;
+}

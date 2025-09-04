@@ -1,0 +1,21 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background-color: #f9f9f9;
+  overflow: hidden; /* importante */
+}
+
+.main-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 10px; /* opcional para evitar que el scrollbar empuje */
+}

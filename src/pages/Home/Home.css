@@ -1,0 +1,20 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+.layout .body {
+  flex: 1;
+  padding: 16px 12px 24px;
+  overflow-x: hidden;
+}
+@media (min-width: 992px) {
+  .layout .body {
+    padding: 24px;
+  }
+}
+
+/* Nada de max-width: ambos (lista y form) ocupan 100% */
+.layout .body > * {
+  width: 100%;
+}

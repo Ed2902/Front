@@ -1,0 +1,374 @@
+/* ================= Header ================= */
+.ticket-chat .chat-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+.ticket-chat .chat-sub > span {
+  margin-left: 8px;
+}
+
+/* ================= Lista de mensajes ================= */
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 62vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+/* ================= Fila de mensaje ================= */
+.msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.msg-row.mine {
+  justify-content: flex-end;
+}
+.msg-row.theirs {
+  justify-content: flex-start;
+}
+
+.msg-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ================= Avatar ================= */
+.msg-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+  color: #fff;
+  user-select: none;
+}
+.msg-avatar.me {
+  background: #0d6efd;
+}
+.msg-avatar.other {
+  background: #6c757d;
+}
+
+/* ================= Burbuja ================= */
+.msg-bubble {
+  max-width: 72%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  line-height: 1.25rem;
+  word-break: break-word;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+.msg-bubble.me {
+  background: #e7f3ff;
+  border-top-right-radius: 4px;
+}
+.msg-bubble.other {
+  background: #f5f6f8;
+  border-top-left-radius: 4px;
+}
+
+/* ================= Meta arriba/abajo ================= */
+.msg-meta-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.msg-author {
+  font-weight: 600;
+  font-size: 12px;
+}
+.msg-date {
+  margin-left: auto;
+  color: #6c757d;
+  font-size: 12px;
+}
+
+.msg-meta-bottom {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.seen {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.seen.ok {
+  color: #198754;
+  background: rgba(25, 135, 84, 0.12);
+}
+.seen.no {
+  color: #6c757d;
+  background: rgba(108, 117, 125, 0.12);
+}
+
+/* ================= Texto ================= */
+.msg-text {
+  white-space: pre-wrap;
+}
+
+/* ================= Fila de adjuntos (fuera de la burbuja) ================= */
+.msg-attachments-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.msg-attachments-row.left {
+  justify-content: flex-start;
+  padding-left: 34px;
+}
+.msg-attachments-row.right {
+  justify-content: flex-end;
+  padding-right: 34px;
+}
+
+/* ================= CHIP compacto (adjuntos mostrados en mensajes) ================= */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  border: 1px solid #e9ecef;
+  background: #fff;
+  padding: 6px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+.chip:hover {
+  background: #f8f9fa;
+}
+.chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.chip-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+.chip-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-pdf {
+  background: #dc3545;
+}
+.chip-doc {
+  background: #0d6efd;
+}
+.chip-xls {
+  background: #198754;
+}
+.chip-ppt {
+  background: #fd7e14;
+}
+.chip-zip {
+  background: #6c757d;
+}
+.chip-txt {
+  background: #495057;
+}
+.chip-audio {
+  background: #0dcaf0;
+}
+.chip-video {
+  background: #20c997;
+}
+.chip-file {
+  background: #343a40;
+}
+.chip-image {
+  background: #6f42c1;
+}
+.chip-name {
+  font-size: 12px;
+  color: #495057;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-err {
+  font-size: 11px;
+  color: #dc3545;
+  margin-left: 6px;
+}
+
+/* ================= Composer (área de escribir + acciones) ================= */
+/* Bloque pegado a la derecha con ancho controlado */
+/* Reemplaza el grid por flex para pegar todo a la derecha */
+.composer {
+  display: flex !important;
+  justify-content: flex-end; /* todo a la derecha */
+  align-items: center;
+  gap: 8px; /* espacio entre input y botones */
+  margin-left: auto; /* pega el bloque completo a la derecha */
+  max-width: 900px;
+  width: 100%;
+}
+
+/* Botones (clip + enviar) sin márgenes raros */
+.composer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+/* Input más cerca y con ancho razonable (no se va a la izquierda) */
+.composer-input {
+  height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 14px;
+  width: clamp(280px, 45vw, 10px); /* ajusta aquí si quieres más/menos ancho */
+  flex: 0 0 auto; /* evita que “empuje” a los botones */
+  margin: 0;
+}
+
+/* Mantén los chips y progreso a la derecha también */
+.composer-files {
+  justify-content: flex-end;
+}
+
+@media (max-width: 576px) {
+  .composer {
+    max-width: 100%;
+  }
+  .composer-input {
+    width: clamp(220px, 60vw, 100%);
+  }
+}
+
+/* Icono de clip grande */
+.btn-icon.btn-icon--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0; /* sin espacio extra */
+  cursor: pointer;
+}
+.btn-icon.btn-icon--lg:hover {
+  background: #f0f4ff;
+}
+
+/* Input alineado y pegado a los botones */
+
+/* ================= Chips del archivo seleccionado + progreso ================= */
+.composer-files {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end; /* acompaña el composer a la derecha */
+  flex-wrap: wrap;
+}
+.attach-chip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #e9ecef;
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 999px;
+  max-width: 60%;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+.attach-name {
+  font-size: 12px;
+  color: #495057;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.attach-size {
+  font-size: 11px;
+  color: #6c757d;
+}
+.attach-remove {
+  border: none;
+  background: transparent;
+  color: #dc3545;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.attach-remove:hover {
+  color: #b02a37;
+}
+
+/* Barra de progreso */
+.upload-progress {
+  width: 180px;
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.upload-bar {
+  height: 100%;
+  background: #0d6efd;
+  transition: width 0.2s ease;
+}
+
+/* ================= Panel de adjuntos (subida) ================= */
+.attachments-panel .attachments-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pending-files .pending-file {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.pending-files .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ================= Responsive ================= */
+@media (max-width: 576px) {
+  .msg-bubble {
+    max-width: 86%;
+  }
+  .composer {
+    grid-template-columns: auto 1fr;
+    max-width: 100%;
+  }
+  .attach-name {
+    max-width: 140px;
+  }
+}

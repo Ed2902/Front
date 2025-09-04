@@ -1,0 +1,160 @@
+.ocupacion-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center; /* 👈 Centra horizontalmente */
+  padding: 20px;
+}
+
+.h3,
+h3 {
+  margin-top: 2% !important;
+}
+
+.tarjeta-bodega {
+  width: 300px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  margin-top: 2%;
+}
+
+.tarjeta-bodega {
+  width: 380px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.tarjeta-bodega:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.bodega-titulo {
+  color: #f74c1b;
+  margin-bottom: 10px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.bodega-gauge {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.bodega-info {
+  margin-top: 10px;
+  font-size: 0.95rem;
+}
+
+.ocupacion-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+}
+
+.tarjeta-test-secuencial {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: escaneoEntrada 0.6s ease-out forwards;
+}
+
+@keyframes escaneoEntrada {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bodega-header {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.error {
+  color: red;
+  font-weight: bold;
+}
+
+.btn-agregar {
+  background-color: #00ba59;
+  color: white;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-agregar:hover {
+  background-color: #009a4a;
+}
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.alert-error {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.btn-agregarform {
+  background-color: #59a1f7;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Activar animación en hover */
+.btn-agregarform:hover {
+  animation: bounce 0.6s ease;
+  background-color: #009a4a;
+}
+
+/* Animación tipo rebote */
+@keyframes bounce {
+  0% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  70% {
+    transform: translateY(-5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}

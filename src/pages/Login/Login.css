@@ -1,0 +1,244 @@
+:root {
+  --genika-green: #2ce6a9;
+  --genika-blue: #59a1f7;
+  --genika-purple: #8c52ff;
+}
+
+html {
+  height: 100%;
+}
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  background-size: cover;
+}
+
+/* Logo base */
+.logo {
+  display: block;
+  margin: 0 auto 20px;
+  width: 120px;
+  max-width: 60%; /* evita desbordes en pantallas pequeñas */
+  height: auto;
+  object-fit: contain; /* mantiene proporción */
+  /* 🔥 Sombra y resalte */
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.878));
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .login-box {
+    width: 80%;
+    padding: 20px;
+  }
+  .logo {
+    width: 80px;
+  } /* <- mover fuera y apuntar a .logo */
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .login-box {
+    width: 60%;
+    padding: 30px;
+  }
+}
+
+.login-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 500px;
+  height: 550px;
+  padding: 40px;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, #2ce6a9, #59a1f7, #8c52ff); /* Tornasol */
+  background-size: 300% 300%;
+  animation: gradientShift 4s ease infinite; /* Animación suave */
+  box-sizing: border-box;
+  box-shadow: 1px 1px 15px 2px #59a1f7;
+  border-radius: 10px;
+}
+
+/* Animación para que se mueva el tornasol */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+.login-box h2 {
+  margin: 0 0 30px;
+  padding: 0;
+  color: #fff;
+  text-align: center;
+}
+
+.login-box .user-box {
+  position: relative;
+}
+
+.login-box .user-box input {
+  width: 100%;
+  padding: 10px 0;
+  font-size: 16px;
+  color: #fff;
+  margin-bottom: 30px;
+  border: none;
+  border-bottom: 1px solid #fff;
+  outline: none;
+  background: transparent;
+}
+.login-box .user-box label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 10px 0;
+  font-size: 16px;
+  color: #fff;
+  pointer-events: none;
+  transition: 0.5s;
+}
+
+.login-box .user-box input:focus ~ label,
+.login-box .user-box input:valid ~ label {
+  top: -20px;
+  left: 0;
+  color: #030002;
+  font-size: 12px;
+}
+
+.login-box form a {
+  position: relative;
+  display: inline-block;
+  padding: 8px 18px;
+  color: #000000;
+  font-size: 16px;
+  text-decoration: none;
+  overflow: hidden;
+  transition: 0.5s;
+  margin-top: 40px;
+  letter-spacing: 4px; /* Agregar punto y coma aquí */
+  font-family: 'LEMON MILK', sans-serif;
+}
+
+.login-box a:hover {
+  background: #f57504;
+  color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 0 5px #59a1f7, 0 0 25px #59a1f7, 0 0 50px #59a1f7,
+    0 0 100px #59a1f7;
+}
+
+.login-box a span {
+  position: absolute;
+  display: block;
+}
+
+.login-box a span:nth-child(1) {
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #f57504);
+  animation: btn-anim1 1s linear infinite;
+}
+
+@keyframes btn-anim1 {
+  0% {
+    left: -100%;
+  }
+  50%,
+  100% {
+    left: 100%;
+  }
+}
+
+.login-box a span:nth-child(2) {
+  top: -100%;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, transparent, #f57504);
+  animation: btn-anim2 1s linear infinite;
+  animation-delay: 0.25s;
+}
+
+@keyframes btn-anim2 {
+  0% {
+    top: -100%;
+  }
+  50%,
+  100% {
+    top: 100%;
+  }
+}
+
+.login-box a span:nth-child(3) {
+  bottom: 0;
+  right: -100%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(270deg, transparent, #f57504);
+  animation: btn-anim3 1s linear infinite;
+  animation-delay: 0.5s;
+}
+
+@keyframes btn-anim3 {
+  0% {
+    right: -100%;
+  }
+  50%,
+  100% {
+    right: 100%;
+  }
+}
+
+.login-box a span:nth-child(4) {
+  bottom: -100%;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(360deg, transparent, #f60000);
+  animation: btn-anim4 1s linear infinite;
+  animation-delay: 0.75s;
+}
+
+@keyframes btn-anim4 {
+  0% {
+    bottom: -100%;
+  }
+  50%,
+  100% {
+    bottom: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .login-box {
+    width: 80%;
+    padding: 20px;
+    img {
+      width: 60px;
+    }
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .login-box {
+    width: 60%;
+    padding: 30px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .login-box {
+    width: 500px;
+    padding: 40px;
+  }
+}

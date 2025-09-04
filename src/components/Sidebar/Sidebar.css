@@ -1,0 +1,310 @@
+/* Fuente personalizada */
+@font-face {
+  font-family: 'HemiHead';
+  src: url('/fonts/HemiHeadRg-BoldItalic.otf') format('opentype');
+  font-weight: bold;
+  font-style: italic;
+}
+
+/* Contenedor general */
+.sidebar-container {
+  position: relative;
+}
+
+/* Sidebar normal */
+.sidebar {
+  width: 250px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#ed8020, rgba(248, 249, 250, 0.497)),
+    url('/bodega.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: width 0.3s ease-in-out;
+  box-shadow: 4px 0 15px rgba(21, 197, 224, 0.4), 0px 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: none;
+}
+
+/* Sidebar colapsado */
+.sidebar.collapsed {
+  width: 80px;
+  align-items: center;
+}
+
+/* Parte superior (logo + título) */
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.8rem 0 0.5rem 0;
+}
+
+.logo-wrapper {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.logo-image {
+  width: 120px;
+  transition: width 0.3s ease-in-out;
+}
+.sidebar.collapsed .logo-image {
+  width: 40px;
+}
+
+.sidebar-title {
+  font-family: 'HemiHead', sans-serif;
+  font-size: 1.4rem;
+  color: white;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.sidebar-subtitle {
+  font-family: 'HemiHead', sans-serif;
+  font-size: 0.8rem;
+  margin: 0;
+}
+.by-text {
+  color: #ffffff;
+}
+.fastway-text {
+  color: #000000;
+}
+.plus-data {
+  color: white;
+}
+
+/* Menú */
+.sidebar-links {
+  flex-grow: 1;
+  padding: 0 1rem;
+}
+.sidebar-links h6 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin-top: 1rem;
+  color: #7d6f6c;
+  text-align: left;
+}
+.sidebar.collapsed .sidebar-links h6 {
+  display: none;
+}
+
+.sidebar-links ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.sidebar-links ul li {
+  margin-bottom: 0.5rem;
+}
+.sidebar-links ul li a {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 5px;
+  color: #212529;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+.sidebar-links ul li a:hover {
+  background-color: rgb(237, 128, 32);
+}
+.sidebar-links ul li a svg {
+  font-size: 1.5rem;
+}
+.sidebar-links ul li a span {
+  margin-left: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Íconos centrados al colapsar */
+.sidebar.collapsed .sidebar-links ul li a {
+  justify-content: center;
+}
+
+/* Enlace activo */
+.sidebar-links ul li.active > a {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #ff4800;
+  font-weight: bold;
+}
+
+/* Submenú */
+.has-submenu {
+  cursor: pointer;
+  position: relative;
+}
+.submenu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #212529;
+}
+.submenu-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.submenu {
+  padding-left: 3rem;
+  margin-top: 6px;
+  display: none;
+  border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+.has-submenu.open .submenu {
+  display: block;
+}
+.submenu li {
+  margin: 0.3rem 0;
+}
+.submenu li a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgb(255, 255, 255);
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+  background-color: transparent;
+}
+.submenu li a:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.submenu li.active > a {
+  background-color: rgba(255, 255, 255, 0.25);
+  font-weight: bold;
+  border-left: 4px solid white;
+  padding-left: 10px;
+}
+
+/* Ocultar texto al colapsar */
+.hide-text {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  overflow: hidden;
+  transition: all 0.3s ease-in-out;
+}
+
+/* Botón logout */
+.sidebar-bottom {
+  margin-top: auto;
+  padding: 1rem;
+  border-top: 1px solid #ebefe9;
+}
+.profile-logout {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.sidebar.collapsed .profile-logout {
+  justify-content: center;
+}
+.logout {
+  color: #f86909;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+.logout:hover {
+  color: #37acda;
+}
+
+/* Usuario */
+.sidebar-user {
+  margin-top: 10px;
+  padding: 0 10px;
+  text-align: center;
+}
+.sidebar-user-text {
+  font-size: 14px;
+  color: #212529;
+  font-weight: bold;
+}
+
+/* Hamburguesa (móvil) */
+.mobile-menu-button {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  background-color: #ff4400;
+  border: 1px solid #e9ecef;
+  padding: 5px;
+  border-radius: 5px;
+  z-index: 1300;
+  cursor: pointer;
+}
+
+/* Sidebar móvil */
+@media (max-width: 768px) {
+  .mobile-menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(-100%);
+    width: 250px;
+    height: 100vh;
+    transition: transform 0.3s ease-in-out;
+    z-index: 1200;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    width: 250px;
+  }
+
+  .toggle-tab {
+    display: none;
+  }
+}
+
+/* Botón expandir/collapse */
+.toggle-tab {
+  position: absolute;
+  top: 2rem;
+  left: 250px;
+  width: 30px;
+  height: 30px;
+  background-color: #ffffff;
+  border: 1px solid #e9ecef;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1100;
+  transition: left 0.3s ease-in-out;
+}
+.sidebar.collapsed ~ .toggle-tab {
+  left: 80px;
+}
+.toggle-tab:hover {
+  background-color: #37acda;
+  color: white;
+}

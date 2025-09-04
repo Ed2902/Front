@@ -1,0 +1,93 @@
+/* ---------------- MENU TICKETS ----------------- */
+.menu-tickets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* Botón del menú (sin saltos ni acercamientos) */
+.menu-tickets .menu-button {
+  background-color: #ffffff;
+  border: 2px solid #f74c1b; /* primario */
+  color: #212529;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1.25; /* evita reflujo por altura */
+  cursor: pointer;
+  min-width: 150px;
+  max-width: 200px;
+  text-align: center;
+
+  /* Transiciones solo de color (no tamaño/transform) */
+  transition: background-color 0.2s ease, color 0.2s ease,
+    border-color 0.2s ease, box-shadow 0.2s ease;
+
+  /* Kill-transform (evita “acercamiento”) */
+  transform: none !important;
+  backface-visibility: hidden;
+  will-change: auto;
+}
+
+/* Botón activo */
+.menu-tickets .menu-button.active {
+  background-color: #f74c1b; /* primario */
+  border-color: #f74c1b;
+  color: #ffffff;
+}
+
+/* Hover: cambia colores, nunca dimensiones ni transform */
+.menu-tickets .menu-button:hover {
+  background-color: #67e1ff; /* segundo secundario */
+  border-color: #67e1ff;
+  color: #ffffff;
+  transform: none !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+/* Focus accesible sin mover layout (no outline que empuje) */
+.menu-tickets .menu-button:focus {
+  outline: none;
+}
+.menu-tickets .menu-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(89, 161, 247, 0.35); /* anillo secundario */
+}
+
+/* Estado disabled (por si lo usas) */
+.menu-tickets .menu-button:disabled,
+.menu-tickets .menu-button.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+  border-color: #e9ecef;
+  color: #adb5bd;
+  box-shadow: none;
+}
+
+/* Responsive para móviles */
+@media (max-width: 768px) {
+  .menu-tickets {
+    flex-direction: column;
+  }
+
+  .menu-tickets .menu-button {
+    width: 90%;
+    max-width: 300px;
+  }
+}
+
+/* Respeta usuarios que prefieren menos animación */
+@media (prefers-reduced-motion: reduce) {
+  .menu-tickets .menu-button {
+    transition: none;
+  }
+}

@@ -1,0 +1,112 @@
+.diagrama-flujo-container {
+  padding: 20px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.07);
+}
+
+.filtros-diagrama {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  align-items: flex-end;
+}
+
+.filtros-diagrama select {
+  padding: 10px;
+  font-size: 14px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  color: #333;
+  min-width: 200px;
+  transition: border 0.2s ease;
+}
+
+.filtros-diagrama select:focus {
+  border-color: #59a1f7;
+  outline: none;
+}
+
+.btn-agregarform {
+  background-color: #59a1f7;
+  color: white;
+  padding: 8px 16px; /* ✅ más delgado: 8px arriba/abajo, 16px lados */
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+  width: fit-content; /* opcional: ajusta al contenido */
+  min-width: 140px; /* opcional: asegura un ancho mínimo */
+}
+
+.btn-agregarform:hover {
+  animation: bounce 0.6s ease;
+  background-color: #00ba59;
+}
+
+@keyframes bounce {
+  0% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  70% {
+    transform: translateY(-5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Opcional: estilos por tipo de nodo si usas clases personalizadas */
+/* .nodo-entrada { background: #bbf7d0; border-color: #22c55e; } */
+/* .nodo-transformacion { background: #dbeafe; border-color: #3b82f6; } */
+/* .nodo-salida { background: #fecdd3; border-color: #ef4444; } */
+.resumen-inventario,
+.resumen-movimientos {
+  background-color: #ffffff;
+  border: 2px solid #59a1f7;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.resumen-inventario h4,
+.resumen-movimientos h4 {
+  margin-bottom: 15px;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: bold;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+.resumen-inventario ul,
+.resumen-movimientos ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.resumen-inventario li,
+.resumen-movimientos li {
+  padding: 6px 0;
+  border-bottom: 1px dashed #d1d5db;
+  font-size: 15px;
+  color: #374151;
+}
+
+.resumen-inventario li:last-child,
+.resumen-movimientos li:last-child {
+  border-bottom: none;
+}

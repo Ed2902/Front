@@ -1,0 +1,187 @@
+.form-salida-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 24px;
+  overflow-y: auto;
+  background-color: #f9f9f9;
+}
+
+.form-salida-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .form-salida-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+}
+
+.campo label {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #333;
+}
+
+.campo select,
+.campo input,
+.campo textarea {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: #fff;
+}
+
+.campo textarea {
+  resize: vertical;
+}
+
+.table {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+  margin-top: 8px;
+  background-color: #fff;
+}
+
+.table th,
+.table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: center;
+}
+
+.table th {
+  background-color: #f0f0f0;
+  font-weight: 600;
+}
+
+.cuadro-inventario {
+  background-color: #eef9ff;
+  border-left: 4px solid #1890ff;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.campos button,
+.firma-container button,
+.btn-agregarform {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.campos button:hover,
+.firma-container button:hover,
+.btn-agregarform:hover {
+  background-color: #1478cc;
+}
+
+.firma-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.firma-pad {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 10px;
+  background-color: #fff;
+}
+
+.sigCanvas {
+  width: 100%;
+  height: 200px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.btn-agregarform {
+  margin-top: 24px;
+  font-size: 16px;
+  padding: 12px 24px;
+  width: 100%;
+}
+
+.btn-agregarform:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.d-flex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.camara-preview {
+  margin-top: 10px;
+  background-color: #fff;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+/* Botón cuando la firma ya fue guardada */
+.btn-firmado {
+  background-color: #28a745 !important;
+  color: white;
+}
+
+/* Botón de usar cámara */
+.btn-camara {
+  background-color: #007bff;
+  color: white;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-camara:hover {
+  background-color: #0056b3;
+}
+
+/* Botón de subir imagen */
+.btn-subir {
+  background-color: #6c757d;
+  color: white;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-subir:hover {
+  background-color: #5a6268;
+}

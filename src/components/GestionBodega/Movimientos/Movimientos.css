@@ -1,0 +1,252 @@
+/* Scroll horizontal estable */
+.tabla-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fija layout para que los anchos sean consistentes */
+.tabla-fija {
+  width: 100%;
+  min-width: 1400px; /* fuerza expansión horizontal cuando haga falta */
+  border-collapse: collapse;
+  table-layout: fixed; /* 👈 clave: respeta <colgroup> */
+}
+
+.tabla-fija th,
+.tabla-fija td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+  box-sizing: border-box; /* evita “saltos” por padding/border */
+  white-space: nowrap; /* no partir texto: mantiene filas alineadas */
+  overflow: hidden; /* oculta desbordes en celdas estrechas */
+  text-overflow: ellipsis; /* puntos suspensivos cuando no cabe */
+}
+
+/* Si quieres permitir que 'Comentario' sí envuelva texto: */
+.tabla-fija td:nth-last-child(1),
+.tabla-fija th:nth-last-child(1) {
+  white-space: normal; /* permite múltiples líneas en Comentario */
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Encabezados clicables */
+.th-sortable {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Botones evidencia con colores corporativos */
+.btn-evidencia {
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background-color: #59a1f7; /* secundario */
+  color: #fff;
+  cursor: pointer;
+}
+.btn-evidencia:hover {
+  background-color: #00ba59; /* tercer color */
+}
+
+/* Paginación */
+.paginacion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.paginacion button {
+  background-color: #f74c1b; /* primario */
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.paginacion button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filtros-tipo-movimiento {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 10px 0 20px 0;
+  padding-left: 10px;
+  font-weight: bold;
+}
+
+.filtros-tipo-movimiento label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+/* Centrado de íconos en la celda */
+.icono-accion {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  margin-left: 100%;
+}
+
+/* Botón ícono simple */
+.btn-evidencia {
+  background-color: transparent;
+  border: none;
+  color: #007bff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.btn-evidencia:hover {
+  color: #f74c1b;
+}
+
+/* Modal */
+.modal-evidencia {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.modal-contenido {
+  background: #fff;
+  padding: 16px;
+  border-radius: 10px;
+  width: 90%;
+  height: 90%;
+  position: relative;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* PDF e imagen en modal */
+.modal-contenido iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.modal-contenido img {
+  width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Botón cerrar solo ícono */
+.btn-cerrar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #333;
+  font-size: 22px;
+  cursor: pointer;
+}
+.alerta-permisos-doble {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #e0f7ff;
+  border-left: 5px solid #59a1f7;
+  font-weight: bold;
+  color: #333;
+  border-radius: 4px;
+}
+/* Wrapper responsive con scroll si hace falta */
+.responsive-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Mejora legibilidad en móviles */
+.responsive-table table {
+  width: 100%;
+  table-layout: fixed; /* permite partir texto */
+  border-collapse: collapse;
+}
+
+.responsive-table th,
+.responsive-table td {
+  padding: 10px 12px;
+  vertical-align: top;
+  word-wrap: break-word; /* legacy */
+  overflow-wrap: anywhere; /* moderno: parte palabras largas */
+  white-space: normal; /* permite salto de línea en encabezados */
+}
+
+/* Encabezados clicables */
+.th-sortable {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Ajustes tipográficos por breakpoint */
+@media (max-width: 640px) {
+  .responsive-table th {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .responsive-table td {
+    font-size: 13px;
+  }
+}
+
+/* Colores corporativos para botones de evidencia */
+.btn-evidencia {
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background-color: #59a1f7; /* secundario */
+  color: #fff;
+  cursor: pointer;
+}
+.btn-evidencia:hover {
+  background-color: #000000; /* tercer color */
+}
+
+/* Paginación */
+.paginacion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.paginacion button {
+  background-color: #00ffee; /* primario */
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.paginacion button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

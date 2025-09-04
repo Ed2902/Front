@@ -1,0 +1,18 @@
+html,
+body,
+#root {
+  height: 100%;
+  overflow: auto;
+}
+
+.main-content {
+  /* contenedor principal del layout */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.seccion-central {
+  flex: 1;
+  overflow-y: auto;
+}

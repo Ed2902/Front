@@ -1,0 +1,6 @@
+.Tickets-seccion {
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}

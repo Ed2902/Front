@@ -1,0 +1,20 @@
+.menu-terceros {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #ffffff;
+  border-bottom: 1px solid #ddd;
+}
+
+.menu-terceros button {
+  padding: 10px 20px;
+  border: none;
+  background-color: #eee;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.menu-terceros button.active {
+  background-color: #59a1f7;
+  color: white;
+}

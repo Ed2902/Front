@@ -1,0 +1,112 @@
+/* Ocupa todo el ancho del body */
+.news-section {
+  width: 100%;
+}
+.news-wrapper {
+  width: 100%;
+  margin: 0;
+  padding: 0 16px;
+}
+
+.news-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+/* Lista sin límite de alto (para que el form se vea debajo) */
+.news-scroll {
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+/* Grupo por día */
+.news-day {
+  margin-bottom: 24px;
+}
+.news-day-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* === UNA sola card por día === */
+.news-day-card {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  padding: 16px;
+}
+
+/* Grid interno: 2 columnas cuando hay 2 noticias; 1 cuando hay 1 */
+.news-day-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.news-day-grid.single {
+  grid-template-columns: 1fr; /* 1 sola */
+  max-width: 880px; /* centrada y agradable visualmente */
+  margin: 0 auto;
+}
+
+/* Cada noticia dentro del día */
+.news-entry {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Imagen grande centrada y fluida */
+.news-media {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+/* Texto y acciones centradas */
+.news-entry-body {
+  text-align: center;
+  margin-top: 10px;
+}
+.news-title {
+  font-weight: 700;
+  margin-top: 6px;
+}
+.news-text {
+  margin: 6px 0 0;
+}
+.news-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Hint */
+.news-hint {
+  color: #6c757d;
+  font-size: 0.875rem;
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* Responsive: en móviles, siempre 1 por fila */
+@media (max-width: 768px) {
+  .news-day-grid {
+    grid-template-columns: 1fr;
+  }
+}

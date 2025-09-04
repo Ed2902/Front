@@ -1,0 +1,81 @@
+.lotes-container {
+  padding: 20px;
+  background-color: #ffffff;
+}
+
+.btn-agregar-lote {
+  background-color: #00ba59;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.btn-agregar-lote:hover {
+  background-color: #009a4a;
+}
+
+.btn-editar {
+  background-color: #59a1f7;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.btn-editar:hover {
+  background-color: #428bd3;
+}
+
+.badge {
+  font-size: 13px;
+  padding: 6px 10px;
+  margin: 2px;
+  display: inline-block;
+}
+.btn-agregarform {
+  background-color: #59a1f7;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Activar animación en hover */
+.btn-agregarform:hover {
+  animation: bounce 0.6s ease;
+  background-color: #009a4a;
+}
+
+/* Animación tipo rebote */
+@keyframes bounce {
+  0% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  70% {
+    transform: translateY(-5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,44 @@
+.usuario-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-actualizar {
+  background-color: #f74c1b;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.3s;
+}
+
+.btn-actualizar:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.btn-actualizar:hover:enabled {
+  background-color: #d63810;
+}
+
+.seccion-toggle {
+  background-color: #59a1f7;
+  color: white;
+  font-weight: bold;
+  border-radius: 5px;
+  padding: 0.6rem 1rem;
+  margin: 0.3rem 0;
+  width: 100%;
+  text-align: left;
+}
+
+.accordion-button:not(.collapsed) {
+  background-color: #67e1ff;
+  color: #000;
+}

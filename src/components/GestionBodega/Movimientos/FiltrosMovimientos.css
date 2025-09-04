@@ -1,0 +1,92 @@
+/* Filtros de movimientos */
+.filtros-movimientos {
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.filtros-superiores {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.input-busqueda {
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  width: 250px;
+  font-size: 14px;
+}
+
+.total-registros {
+  font-size: 14px;
+  color: #333;
+}
+
+.grupo-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.filtro-grupo {
+  flex: 1;
+  min-width: 250px;
+}
+
+.filtro-label {
+  font-weight: bold;
+  margin-bottom: 8px;
+  display: block;
+  font-size: 14px;
+}
+
+.filtro-checklist {
+  display: flex;
+  flex-direction: column;
+}
+
+.filtro-checklist label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.filtro-checklist input[type='checkbox'] {
+  margin-right: 8px;
+}
+
+.select-filtro {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+}
+
+.select-filtro:focus {
+  border-color: #59a1f7;
+  outline: none;
+}
+
+/* Asegurarse de que el formulario se vea bien en dispositivos pequeños */
+@media (max-width: 768px) {
+  .filtros-superiores {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .grupo-filtros {
+    flex-direction: column;
+  }
+}
+
+.btn-excel {
+  gap: 8px; /* Espacio entre el ícono y el texto */
+  transition: background-color 0.3s ease;
+  margin-left: auto; /* Esto empuja el botón a la derecha */
+}

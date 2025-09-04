@@ -1,0 +1,56 @@
+/* ---------------- MENU GESTION BODEGA ----------------- */
+.menu-gestion-bodega {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* Botón del menú */
+.menu-button {
+  background-color: #ffffff;
+  border: 2px solid #f74c1b;
+  color: #212529;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 150px;
+  max-width: 200px;
+  text-align: center;
+  transition: background-color 0.3s ease, color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+/* Botón activo */
+.menu-button.active {
+  background-color: #f74c1b;
+  color: #ffffff;
+}
+
+/* Botón al hacer hover */
+.menu-button:hover {
+  background-color: #67e1ff;
+  border-color: #67e1ff;
+  color: #ffffff;
+}
+
+/* Responsive para móviles */
+@media (max-width: 768px) {
+  .menu-gestion-bodega {
+    flex-direction: column;
+  }
+
+  .menu-button {
+    width: 90%;
+    max-width: 300px;
+  }
+}

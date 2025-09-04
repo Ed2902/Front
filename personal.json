@@ -1,0 +1,79 @@
+[
+  {
+    "Id_personal": "1006178617",
+    "Nombre": "Karen",
+    "Apellido": "Gonzalez",
+    "Cargo": "Analista de carga internacional",
+    "id_usuario": 2
+  },
+  {
+    "Id_personal": "1032458345",
+    "Nombre": "Nicolas",
+    "Apellido": "Mantilla",
+    "Cargo": "Analista financiero",
+    "id_usuario": 3
+  },
+  {
+    "Id_personal": "1033746036",
+    "Nombre": "Kelly Estefania",
+    "Apellido": "Monroy",
+    "Cargo": "Asistente administrativo",
+    "id_usuario": 4
+  },
+  {
+    "Id_personal": "1000473425",
+    "Nombre": "Eliana",
+    "Apellido": "Puentes",
+    "Cargo": "Asistente de gerencia",
+    "id_usuario": 5
+  },
+  {
+    "Id_personal": "1032390180",
+    "Nombre": "Gina Paola",
+    "Apellido": "Sanchez",
+    "Cargo": "Gerente",
+    "id_usuario": 6
+  },
+  {
+    "Id_personal": "1022414392",
+    "Nombre": "Felipe",
+    "Apellido": "Barrera",
+    "Cargo": "Lider de proyectos",
+    "id_usuario": 7
+  },
+  {
+    "Id_personal": "79430189",
+    "Nombre": "Libardo",
+    "Apellido": "Sanchez",
+    "Cargo": "Operario de Bodega",
+    "id_usuario": 8
+  },
+  {
+    "Id_personal": "80000697",
+    "Nombre": "Omar",
+    "Apellido": "Melo",
+    "Cargo": "Operario de Bodega",
+    "id_usuario": 9
+  },
+  {
+    "Id_personal": "93481944",
+    "Nombre": "Luis",
+    "Apellido": "Mejia",
+    "Cargo": "Operario de Bodega",
+    "id_usuario": 10
+  },
+  {
+    "Id_personal": "1019602164",
+    "Nombre": "Luis David",
+    "Apellido": "Puentes",
+    "Cargo": "Programador",
+    "id_usuario": 11
+  },
+  {
+    "Id_personal": "52477858",
+    "Nombre": "Sandra",
+    "Apellido": "Quintero",
+    "Cargo": "Servicios Generales",
+    "id_usuario": 12
+  }
+]
