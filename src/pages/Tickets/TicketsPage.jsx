@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Sidebar from '../../components/Sidebar/Sidebar'
-import MenuTickets from '../../components/Tickets/Menutickets/MenuTickets'
-import SeccionDinamicaTickets from '../../components/Tickets/Secciontickets/SeccionDinamicaTickets'
+import MenuTickets from '../../components/Tickets/Menutickets/Menutickets'
+import SeccionDinamicaTickets from '../../components/Tickets/Secciontickets/SeccionDinamicatickets'
 import './Tickets.css'
 
 export default function Tickets() {
