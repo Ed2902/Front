@@ -1,4 +1,4 @@
-import './MenuTickets.css'
+import './Menutickets.css'
 import { useContext } from 'react'
 import AuthContext from '../../../context/AuthContext'
 import { usePermisos } from '../../../hooks/usePermisos'
