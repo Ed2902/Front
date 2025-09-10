@@ -1,13 +1,13 @@
+// src/components/ControlIngresos/ReporteAsistencia/ReporteDetalleDiario.jsx
 import { useEffect, useState } from 'react'
 import { utils, writeFile } from 'xlsx'
 import { getReporteDetalleDiario } from './reporte_asistencia_service'
-
-const pad2 = n => String(n).padStart(2, '0')
-const fmtHM = iso => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-}
+import {
+  fmtHM,
+  computeHorasDiaHMS,
+  computeRetrasoMin,
+  computeSalidaAntesMin,
+} from './asistencia_config'
 
 const ReporteDetalleDiario = ({ filtros = {} }) => {
   const { from = '', to = '', toleranciaRetrasoMin = 0 } = filtros || {}
@@ -26,7 +26,25 @@ const ReporteDetalleDiario = ({ filtros = {} }) => {
           to,
           toleranciaRetrasoMin,
         })
-        setRows(data)
+
+        // 🔁 Normalización y cálculo con 07:40 / 17:30 / almuerzo 13–14
+        const computed = (Array.isArray(data) ? data : []).map(d => {
+          const entradaIso = d?.entrada || null
+          const salidaIso = d?.salida || null
+
+          const horasDiaHMS = computeHorasDiaHMS(entradaIso, salidaIso)
+          const retrasoMin = computeRetrasoMin(entradaIso, toleranciaRetrasoMin)
+          const salidaAntesMin = computeSalidaAntesMin(salidaIso)
+
+          return {
+            ...d,
+            horasDiaHMS,
+            retrasoMin,
+            salidaAntesMin,
+          }
+        })
+
+        setRows(computed)
       } catch (err) {
         console.error(err)
         setError('No se pudo cargar el detalle diario.')

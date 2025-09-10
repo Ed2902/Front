@@ -2,12 +2,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { utils, writeFile } from 'xlsx'
 import { getReporteResumenPorPersona } from './reporte_asistencia_service'
+import {
+  HH_ENTRADA,
+  HH_SALIDA,
+  LUNCH_START,
+  LUNCH_END,
+} from './asistencia_config'
 
 // Referencia estable para default (no crea {} en cada render)
 const DEFAULT_HORAS_SEMANALES = Object.freeze({})
 
 const ReporteResumenPersona = ({ filtros = {} }) => {
-  // fallbacks sin crear objetos nuevos en cada render
+  // fallbacks
   const from = filtros?.from ?? ''
   const to = filtros?.to ?? ''
   const toleranciaRetrasoMin = filtros?.toleranciaRetrasoMin ?? 0
@@ -39,6 +45,11 @@ const ReporteResumenPersona = ({ filtros = {} }) => {
           to,
           toleranciaRetrasoMin,
           horasSemanalesPorDoc,
+          // 👇 Pasamos también la configuración de horarios (misma que Marcaciones)
+          hhEntrada: HH_ENTRADA,
+          hhSalida: HH_SALIDA,
+          lunchStart: LUNCH_START,
+          lunchEnd: LUNCH_END,
         })
         if (!cancelled) setRows(Array.isArray(data) ? data : [])
       } catch (err) {
@@ -53,7 +64,6 @@ const ReporteResumenPersona = ({ filtros = {} }) => {
     return () => {
       cancelled = true
     }
-    // 👇 Dependencias PRIMITIVAS + clave estable del objeto
   }, [from, to, toleranciaRetrasoMin, horasKey, horasSemanalesPorDoc])
 
   const filteredRows = useMemo(() => {

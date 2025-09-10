@@ -1,18 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { useState, useEffect } from 'react'
 import { createProducto, getProductos } from './Producto_service'
-import { OPCIONES_TIPO_PRODUCTO } from './prefijos' // tu repo de opciones
-
-// Mapa local: tipo → prefijo (mantener en sync con prefijos.js)
-const PREFIJO_POR_TIPO = {
-  YUTES: 'YUT',
-  ROLLOS: 'ROL',
-  PALLETS: 'PAL',
-  CAJAS: 'CAJ',
-  UNITARIO: 'UNI',
-  EXTRADIMENSIONADO: 'EXT',
-  BULTOS: 'BUL',
-}
+import { OPCIONES_TIPO_PRODUCTO, PREFIJO_POR_TIPO } from './prefijos' // opciones + mapa prefijos
 
 const FormProducto = ({ onSuccess = () => {} }) => {
   const {
@@ -115,7 +104,7 @@ const FormProducto = ({ onSuccess = () => {} }) => {
         </div>
       )}
 
-      {/* NUEVO: Tipo de producto (prefijo) */}
+      {/* Tipo de producto (prefijo) */}
       <div className='col-md-6'>
         <label className='form-label'>Tipo de producto</label>
         <select
