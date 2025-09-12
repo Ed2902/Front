@@ -62,3 +62,10 @@ export const getInventarioPorLoteYProducto = async (id_lote, id_producto) => {
   )
   return await response.json()
 }
+export const getProductos = async () => {
+  const token = getAuthToken()
+  const response = await api.get('/producto', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
