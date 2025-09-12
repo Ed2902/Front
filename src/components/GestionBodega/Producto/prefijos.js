@@ -77,6 +77,49 @@ export const OPCIONES_TIPO_PRODUCTO = [
   { value: 'SS-310 (RS SUCIO)', label: '(RS) Acero Inoxidable 310 — Sucio' },
   { value: 'SS-330 (RS LIMPIO)', label: '(RS) Acero Inoxidable 330 — Limpio' },
   { value: 'SS-330 (RS SUCIO)', label: '(RS) Acero Inoxidable 330 — Sucio' },
+
+  // ========= Materiales RS Genéricos =========
+  {
+    value: 'COBRE ALAMBRON (RS LIMPIO)',
+    label: '(RS) Cobre Alambrón — Limpio',
+  },
+  { value: 'COBRE ALAMBRON (RS SUCIO)', label: '(RS) Cobre Alambrón — Sucio' },
+
+  { value: 'ROTORES (RS LIMPIO)', label: '(RS) Rotores — Limpio' },
+  { value: 'ROTORES (RS SUCIO)', label: '(RS) Rotores — Sucio' },
+
+  {
+    value: 'CHICOTES TUBERIA QUEMAR (RS LIMPIO)',
+    label: '(RS) Chicotes de tubería para quemar — Limpio',
+  },
+  {
+    value: 'CHICOTES TUBERIA QUEMAR (RS SUCIO)',
+    label: '(RS) Chicotes de tubería para quemar — Sucio',
+  },
+
+  {
+    value: 'CABLE QUEMAR (RS LIMPIO)',
+    label: '(RS) Cable para quemar — Limpio',
+  },
+  { value: 'CABLE QUEMAR (RS SUCIO)', label: '(RS) Cable para quemar — Sucio' },
+
+  { value: 'ACERO 304 (RS LIMPIO)', label: '(RS) Acero 304 — Limpio' },
+  { value: 'ACERO 304 (RS SUCIO)', label: '(RS) Acero 304 — Sucio' },
+
+  { value: 'COBALTO (RS LIMPIO)', label: '(RS) Cobalto — Limpio' },
+  { value: 'COBALTO (RS SUCIO)', label: '(RS) Cobalto — Sucio' },
+
+  { value: 'TORNILLOS 304 (RS LIMPIO)', label: '(RS) Tornillos 304 — Limpio' },
+  { value: 'TORNILLOS 304 (RS SUCIO)', label: '(RS) Tornillos 304 — Sucio' },
+
+  { value: 'TUNGSTENO (RS LIMPIO)', label: '(RS) Tungsteno — Limpio' },
+  { value: 'TUNGSTENO (RS SUCIO)', label: '(RS) Tungsteno — Sucio' },
+
+  { value: 'MONEL (RS LIMPIO)', label: '(RS) Monel — Limpio' },
+  { value: 'MONEL (RS SUCIO)', label: '(RS) Monel — Sucio' },
+
+  { value: 'BRONCE (RS LIMPIO)', label: '(RS) Bronce — Limpio' },
+  { value: 'BRONCE (RS SUCIO)', label: '(RS) Bronce — Sucio' },
 ]
 
 // Mapa tipo → prefijo (sin colisiones). Los metales usan RS-<CÓDIGO>-L/S.
@@ -128,6 +171,37 @@ export const PREFIJO_POR_TIPO = {
   'SS-310 (RS SUCIO)': 'RS-SS310-S',
   'SS-330 (RS LIMPIO)': 'RS-SS330-L',
   'SS-330 (RS SUCIO)': 'RS-SS330-S',
+
+  // RS Genéricos
+  'COBRE ALAMBRON (RS LIMPIO)': 'RS-CGEN-L',
+  'COBRE ALAMBRON (RS SUCIO)': 'RS-CGEN-S',
+
+  'ROTORES (RS LIMPIO)': 'RS-RGEN-L',
+  'ROTORES (RS SUCIO)': 'RS-RGEN-S',
+
+  'CHICOTES TUBERIA QUEMAR (RS LIMPIO)': 'RS-CHI-L',
+  'CHICOTES TUBERIA QUEMAR (RS SUCIO)': 'RS-CHI-S',
+
+  'CABLE QUEMAR (RS LIMPIO)': 'RS-CAB-L',
+  'CABLE QUEMAR (RS SUCIO)': 'RS-CAB-S',
+
+  'ACERO 304 (RS LIMPIO)': 'RS-SS304-L',
+  'ACERO 304 (RS SUCIO)': 'RS-SS304-S',
+
+  'COBALTO (RS LIMPIO)': 'RS-CGEN-L',
+  'COBALTO (RS SUCIO)': 'RS-CGEN-S',
+
+  'TORNILLOS 304 (RS LIMPIO)': 'RS-SS304-L',
+  'TORNILLOS 304 (RS SUCIO)': 'RS-SS304-S',
+
+  'TUNGSTENO (RS LIMPIO)': 'RS-WGEN-L',
+  'TUNGSTENO (RS SUCIO)': 'RS-WGEN-S',
+
+  'MONEL (RS LIMPIO)': 'RS-MGEN-L',
+  'MONEL (RS SUCIO)': 'RS-MGEN-S',
+
+  'BRONCE (RS LIMPIO)': 'RS-BGEN-L',
+  'BRONCE (RS SUCIO)': 'RS-BGEN-S',
 }
 
 export default OPCIONES_TIPO_PRODUCTO

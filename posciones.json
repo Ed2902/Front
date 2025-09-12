@@ -1,0 +1,182 @@
+[
+  {
+    "id_ubicacion": "N1M1PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo1_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M1PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo1_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M2PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo2_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M2PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo2_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M3PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo3_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M3PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo3_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M4PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo4_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M4PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo4_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M5PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo5_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M5PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo5_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M6PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo6_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M6PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo6_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M7PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo7_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M7PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo7_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M8PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo8_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M8PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo8_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M9PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo9_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M9PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo9_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M10PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo10_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M10PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo10_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M11PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo11_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M11PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo11_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M12PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo12_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M12PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo12_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M13PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo13_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M13PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo13_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M14PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo14_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M14PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo14_PosicionB",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M15PA",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo15_PosicionA",
+    "capacidad": "2.64"
+  },
+  {
+    "id_ubicacion": "N1M15PB",
+    "id_bodega": "BOG001",
+    "nombre": "Nivel1_Modulo15_PosicionB",
+    "capacidad": "2.64"
+  }
+]
