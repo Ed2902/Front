@@ -1,5 +1,5 @@
 // src/components/ControlIngresos/asistencia_config.js
-export const HH_ENTRADA = { h: 7, m: 45 } // 07:40
+export const HH_ENTRADA = { h: 7, m: 30 } // 07:30
 export const HH_SALIDA = { h: 17, m: 30 } // 17:30
 export const LUNCH_START = { h: 13, m: 0 } // 13:00
 export const LUNCH_END = { h: 14, m: 0 } // 14:00

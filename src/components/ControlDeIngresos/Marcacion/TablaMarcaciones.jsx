@@ -1,5 +1,6 @@
 // src/components/ControlIngresos/Marcacion/TablaMarcaciones.jsx
 import { useEffect, useMemo, useState } from 'react'
+import DataTable from 'react-data-table-component'
 import { BiLogIn, BiLogOut } from 'react-icons/bi'
 import { getMarcacionHistorialDelUsuarioActual as getMarcacionesUsuario } from './Marcacion_service'
 
@@ -41,6 +42,7 @@ const diffToHM = ms => {
   const text = (hours > 0 ? `${hours}h ` : '') + `${minutes}m`
   return { sign, text: text.trim() }
 }
+
 const msToHMS = ms => {
   let total = Math.max(0, Math.floor(ms / 1000)) // a segundos
   const h = Math.floor(total / 3600)
@@ -51,8 +53,7 @@ const msToHMS = ms => {
   const parts = []
   if (h > 0) parts.push(`${h}h`)
   if (h > 0 || m > 0) parts.push(`${m}m`)
-  parts.push(`${String(s).padStart(2, '0')}s`) // segundos siempre
-
+  parts.push(`${String(s).padStart(2, '0')}s`)
   return parts.join(' ')
 }
 
@@ -68,11 +69,14 @@ const TablaMarcaciones = () => {
   const [onlyLast, setOnlyLast] = useState(false)
   const [tipoFilter, setTipoFilter] = useState('all') // 'all' | 'entrada' | 'salida'
 
+  // Buscador (subheader)
+  const [search, setSearch] = useState('')
+
   const fetchData = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await getMarcacionesUsuario() // ya filtra por documento del token
+      const data = await getMarcacionesUsuario() // filtra por documento del token
       const ordered = [...data].sort(
         (a, b) =>
           new Date(b.fecha_hora).getTime() - new Date(a.fecha_hora).getTime()
@@ -90,7 +94,7 @@ const TablaMarcaciones = () => {
     fetchData()
   }, [])
 
-  // Resumen por día (primera entrada y última salida)
+  // Resumen por día (primera ENTRADA y última SALIDA)
   const dailySummary = useMemo(() => {
     const map = new Map()
     for (const row of rows) {
@@ -120,7 +124,7 @@ const TablaMarcaciones = () => {
     return map
   }, [rows])
 
-  // Filtro por fechas, tipo y “solo último”
+  // Filtro por fechas, tipo, “solo último” y buscador
   const filteredRows = useMemo(() => {
     let out = rows
 
@@ -132,16 +136,29 @@ const TablaMarcaciones = () => {
       const end = new Date(toDate + 'T23:59:59.999')
       out = out.filter(r => new Date(r.fecha_hora) <= end)
     }
-
     if (tipoFilter !== 'all') {
       out = out.filter(r => r.tipo === tipoFilter)
     }
-
     if (onlyLast) {
-      return out.length ? [out[0]] : []
+      out = out.length ? [out[0]] : []
     }
-    return out
-  }, [rows, fromDate, toDate, tipoFilter, onlyLast])
+
+    const q = search.trim().toLowerCase()
+    if (!q) return out
+    return out.filter(r => {
+      const fecha = fmtDateTime(r.fecha_hora).toLowerCase()
+      const persona = r?.personal
+        ? `${r.personal.nombres ?? ''} ${r.personal.apellidos ?? ''} ${
+            r.personal.documento ?? ''
+          }`.toLowerCase()
+        : ''
+      return (
+        fecha.includes(q) ||
+        persona.includes(q) ||
+        (r.tipo || '').toLowerCase().includes(q)
+      )
+    })
+  }, [rows, fromDate, toDate, tipoFilter, onlyLast, search])
 
   const computeEstado = row => {
     const dt = new Date(row.fecha_hora)
@@ -169,10 +186,9 @@ const TablaMarcaciones = () => {
     return { kind: 'secondary', text: '-' }
   }
 
-  // Horas trabajadas del día (se muestra SOLO en la fila de SALIDA)
+  // Horas trabajadas del día (solo visible en la fila de SALIDA)
   const computeHorasDia = row => {
     if (row.tipo !== 'salida') return '-'
-
     const dt = new Date(row.fecha_hora)
     const dayKey = getDayKey(dt)
     const summary = dailySummary.get(dayKey)
@@ -182,7 +198,7 @@ const TablaMarcaciones = () => {
     const endMs = new Date(summary.salida.fecha_hora).getTime()
     const grossMs = Math.max(0, endMs - startMs)
 
-    // Ventana de almuerzo 13:00–14:00 (solo si entra antes de 13:00 y sale después de 14:00)
+    // Almuerzo 13:00–14:00 si cruza completamente
     const lunchStartMs = atTime(dt, LUNCH_START.h, LUNCH_START.m).getTime()
     const lunchEndMs = atTime(dt, LUNCH_END.h, LUNCH_END.m).getTime()
     const lunchDeduction =
@@ -191,6 +207,151 @@ const TablaMarcaciones = () => {
     const workMs = Math.max(0, grossMs - lunchDeduction)
     return msToHMS(workMs) || '00s'
   }
+
+  // Encabezados multilínea
+  const HeaderTwoLines = ({ top, bottom, align = 'left' }) => (
+    <div
+      className={`d-flex flex-column ${
+        align === 'right'
+          ? 'text-end'
+          : align === 'center'
+          ? 'text-center'
+          : 'text-start'
+      }`}
+    >
+      <span>{top}</span>
+      {bottom ? <small className='text-muted'>{bottom}</small> : null}
+    </div>
+  )
+
+  // Columnas DataTable (nombre amplio, numéricas compactas, badges)
+  const columns = useMemo(
+    () => [
+      {
+        name: <HeaderTwoLines top='Fecha / Hora' bottom='(local)' />,
+        selector: row => row.fecha_hora,
+        sortable: true,
+        width: '170px',
+        cell: row => (
+          <span className='text-start'>{fmtDateTime(row.fecha_hora)}</span>
+        ),
+      },
+      {
+        name: 'Tipo',
+        selector: row => row.tipo,
+        sortable: true,
+        width: '120px',
+        cell: row => (
+          <span
+            className={`badge ${
+              row.tipo === 'entrada' ? 'text-bg-success' : 'text-bg-primary'
+            }`}
+          >
+            {row.tipo === 'entrada' ? (
+              <>
+                <BiLogIn className='me-1' />
+                Entrada
+              </>
+            ) : (
+              <>
+                <BiLogOut className='me-1' />
+                Salida
+              </>
+            )}
+          </span>
+        ),
+      },
+      {
+        name: 'Persona',
+        sortable: true,
+        grow: 6, // 👈 mucho espacio
+        wrap: true,
+        selector: r =>
+          r?.personal
+            ? `${r.personal.nombres ?? ''} ${r.personal.apellidos ?? ''} (${
+                r.personal.documento ?? ''
+              })`
+            : '-',
+        cell: r => (
+          <span className='text-start'>
+            {r?.personal
+              ? `${r.personal.nombres ?? ''} ${r.personal.apellidos ?? ''} (${
+                  r.personal.documento ?? ''
+                })`
+              : '-'}
+          </span>
+        ),
+      },
+      {
+        name: 'Estado',
+        sortable: true,
+        width: '150px',
+        cell: row => {
+          const estado = computeEstado(row)
+          const klass =
+            estado.kind === 'success'
+              ? 'text-bg-success'
+              : estado.kind === 'warning'
+              ? 'text-bg-warning text-dark'
+              : estado.kind === 'danger'
+              ? 'text-bg-danger'
+              : 'text-bg-secondary'
+          return <span className={`badge ${klass}`}>{estado.text}</span>
+        },
+      },
+      {
+        name: <HeaderTwoLines top='Horas día' bottom='(solo en salida)' />,
+        sortable: false,
+        width: '150px',
+        cell: row => <span className='text-start'>{computeHorasDia(row)}</span>,
+      },
+      {
+        name: '—',
+        width: '90px',
+        cell: (row, index) => (
+          <span className='text-start'>
+            {index === 0 && !onlyLast ? (
+              <span className='badge text-bg-info'>Último</span>
+            ) : (
+              ''
+            )}
+          </span>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dailySummary, onlyLast]
+  )
+
+  // Estilos DataTable: encabezados multilínea + densidad
+  const customStyles = {
+    headCells: {
+      style: {
+        fontWeight: 600,
+        whiteSpace: 'normal',
+        lineHeight: '1.1',
+        paddingTop: '0.75rem',
+        paddingBottom: '0.75rem',
+      },
+    },
+    rows: { style: { minHeight: '44px' } },
+  }
+
+  // SubHeader: buscador
+  const SubHeader = (
+    <div className='d-flex flex-wrap gap-2 w-100'>
+      <div className='input-group' style={{ maxWidth: 360 }}>
+        <span className='input-group-text'>Buscar</span>
+        <input
+          type='text'
+          className='form-control'
+          placeholder='Fecha, persona o documento…'
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+    </div>
+  )
 
   return (
     <div className='card mt-3'>
@@ -252,86 +413,27 @@ const TablaMarcaciones = () => {
         </button>
       </div>
 
-      <div className='card-body p-0'>
-        {loading ? (
-          <div className='p-3 text-center text-muted small'>Cargando…</div>
-        ) : error ? (
-          <div className='p-3 text-danger small'>{error}</div>
-        ) : filteredRows.length === 0 ? (
-          <div className='p-3 text-center text-muted small'>Sin registros.</div>
-        ) : (
-          <div className='table-responsive'>
-            <table className='table table-sm table-striped align-middle mb-0'>
-              <thead className='table-light'>
-                <tr>
-                  <th style={{ whiteSpace: 'nowrap' }}>Fecha / Hora</th>
-                  <th>Tipo</th>
-                  <th>Persona</th>
-                  <th>Estado</th>
-                  <th style={{ whiteSpace: 'nowrap' }}>Horas día</th>
-                  <th>—</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row, index) => {
-                  const estado = computeEstado(row)
-                  const horasDia = computeHorasDia(row)
-                  const persona = row?.personal
-                    ? `${row.personal.nombres ?? ''} ${
-                        row.personal.apellidos ?? ''
-                      } (${row.personal.documento ?? ''})`
-                    : '-'
+      <div className='card-body'>
+        {error && <div className='alert alert-danger py-2 mb-2'>{error}</div>}
 
-                  return (
-                    <tr key={row.id}>
-                      <td>{fmtDateTime(row.fecha_hora)}</td>
-                      <td>
-                        {row.tipo === 'entrada' ? (
-                          <span className='badge text-bg-success'>
-                            <BiLogIn className='me-1' /> Entrada
-                          </span>
-                        ) : (
-                          <span className='badge text-bg-primary'>
-                            <BiLogOut className='me-1' /> Salida
-                          </span>
-                        )}
-                      </td>
-                      <td>{persona}</td>
-                      <td>
-                        {estado.kind === 'success' && (
-                          <span className='badge text-bg-success'>
-                            {estado.text}
-                          </span>
-                        )}
-                        {estado.kind === 'warning' && (
-                          <span className='badge text-bg-warning text-dark'>
-                            {estado.text}
-                          </span>
-                        )}
-                        {estado.kind === 'danger' && (
-                          <span className='badge text-bg-danger'>
-                            {estado.text}
-                          </span>
-                        )}
-                        {estado.kind === 'secondary' && (
-                          <span className='badge text-bg-secondary'>
-                            {estado.text}
-                          </span>
-                        )}
-                      </td>
-                      <td>{horasDia}</td>
-                      <td>
-                        {index === 0 && !onlyLast && (
-                          <span className='badge text-bg-info'>Último</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          columns={columns}
+          data={filteredRows}
+          progressPending={loading}
+          pagination
+          paginationPerPage={30}
+          paginationRowsPerPageOptions={[30, 50, 100]}
+          highlightOnHover
+          dense
+          responsive
+          customStyles={customStyles}
+          subHeader
+          subHeaderComponent={SubHeader}
+          persistTableHead
+          noDataComponent={
+            <div className='text-muted small py-3'>Sin registros.</div>
+          }
+        />
       </div>
     </div>
   )
