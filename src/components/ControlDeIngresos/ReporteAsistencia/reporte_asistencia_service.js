@@ -73,7 +73,7 @@ export const buildDiarioPorPersona = (marcaciones, options = {}) => {
     ? options.toleranciaRetrasoMin
     : 0
 
-  // Orden asc por fecha
+  // Orden asc por fecha (para no depender de id/orden del backend)
   const list = [...marcaciones].sort(
     (a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora)
   )
@@ -103,8 +103,12 @@ export const buildDiarioPorPersona = (marcaciones, options = {}) => {
     }
 
     const bucket = dayMap.get(dayKey)
-    if (item.tipo === 'entrada') bucket.entradas.push(item)
-    if (item.tipo === 'salida') bucket.salidas.push(item)
+    // 🔧 Normaliza tipo (evita 'Entrada', 'entrada ', etc.)
+    const t = String(item?.tipo || '')
+      .trim()
+      .toLowerCase()
+    if (t === 'entrada') bucket.entradas.push(item)
+    if (t === 'salida') bucket.salidas.push(item)
   }
 
   const dailyRows = []
@@ -184,7 +188,7 @@ export const buildDiarioPorPersona = (marcaciones, options = {}) => {
     }
   }
 
-  // Orden por persona y fecha desc
+  // Orden por persona y fecha desc (para mostrar reciente primero)
   dailyRows.sort((a, b) => {
     if (a.persona.documento !== b.persona.documento) {
       return a.persona.documento.localeCompare(b.persona.documento)
