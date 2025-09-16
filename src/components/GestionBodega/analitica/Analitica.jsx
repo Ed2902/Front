@@ -5,7 +5,7 @@ import Modal from 'react-modal'
 import FiltroGlobal from './FiltroGlobal'
 import KPIEntradas from './KPIEntradas'
 
-// Gráficos
+// Gráficosfrferfer
 import EntradasPorProveedor from './EntradasPorProveedor'
 import EntradasPorProducto from './EntradasPorProducto'
 import EntradasPorCliente from './EntradasPorCliente'
