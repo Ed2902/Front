@@ -14,20 +14,32 @@ const Lotes = () => {
   const [lotesData, setLotesData] = useState([])
   const [lotesComentarios, setLotesComentarios] = useState({})
   const [loading, setLoading] = useState(true)
+
   const [isAgregarModalOpen, setIsAgregarModalOpen] = useState(false)
   const [isEditarModalOpen, setIsEditarModalOpen] = useState(false)
   const [loteSeleccionado, setLoteSeleccionado] = useState(null)
+
+  // Modal de editar registro (producto)
+  const [isEditarRegistroOpen, setIsEditarRegistroOpen] = useState(false)
+  const [registroAEditar, setRegistroAEditar] = useState(null)
+
   const [globalFilter, setGlobalFilter] = useState('')
 
   const { tienePermiso } = usePermisos()
   const permisoLotesProveedor = tienePermiso('lotesProveedor')
   const permisoLotesCliente = tienePermiso('lotesCliente')
 
-  // Helper: ocultar lote "No Aplica" (case-insensitive, con trims)
   const isNoAplica = id =>
     String(id || '')
       .trim()
       .toLowerCase() === 'no aplica'
+  const getIdNum = id => {
+    const s = String(id || '')
+    const matches = s.match(/\d+/g)
+    if (!matches || matches.length === 0) return null
+    // Tomamos el último grupo de dígitos (soporta prefijos como FW_001)
+    return parseInt(matches[matches.length - 1], 10)
+  }
 
   useEffect(() => {
     if (permisoLotesProveedor || permisoLotesCliente) {
@@ -43,7 +55,6 @@ const Lotes = () => {
         getLotesDisponibles(),
       ])
 
-      // Mapa de comentarios por lote (sin "No Aplica")
       const comentariosMap = {}
       for (const lote of lotes) {
         if (isNoAplica(lote.Id_lote)) continue
@@ -58,7 +69,6 @@ const Lotes = () => {
     }
   }
 
-  // Filtro por permisos + búsqueda + excluir "No Aplica"
   const filteredLotes = useMemo(() => {
     let list = lotesData.filter(item => !isNoAplica(item.id_lote))
 
@@ -90,7 +100,9 @@ const Lotes = () => {
     return list
   }, [lotesData, globalFilter, permisoLotesProveedor, permisoLotesCliente])
 
-  // Agrupar por lote y ordenar por fecha mínima del grupo
+  // Agrupar por lote y ordenar:
+  // 1) Por número de id_lote (desc) si ambos tienen número
+  // 2) Si no, por fecha más reciente del grupo (desc)
   const lotesAgrupadosOrdenados = useMemo(() => {
     const agrupados = {}
     for (const item of filteredLotes) {
@@ -99,17 +111,31 @@ const Lotes = () => {
       agrupados[id_lote].push(item)
     }
     return Object.entries(agrupados).sort((a, b) => {
-      const fechaA = Math.min(
-        ...a[1].map(r => new Date(r.Fecha_registro).getTime())
+      const [idA, regsA] = a
+      const [idB, regsB] = b
+      const nA = getIdNum(idA)
+      const nB = getIdNum(idB)
+
+      if (
+        nA !== null &&
+        nB !== null &&
+        !Number.isNaN(nA) &&
+        !Number.isNaN(nB)
+      ) {
+        return nB - nA // DESC por número de ID
+      }
+
+      // fallback: fecha más reciente del grupo
+      const maxA = Math.max(
+        ...regsA.map(r => new Date(r.Fecha_registro).getTime())
       )
-      const fechaB = Math.min(
-        ...b[1].map(r => new Date(r.Fecha_registro).getTime())
+      const maxB = Math.max(
+        ...regsB.map(r => new Date(r.Fecha_registro).getTime())
       )
-      return fechaA - fechaB
+      return maxB - maxA
     })
   }, [filteredLotes])
 
-  // Helpers visuales
   const formatNum = (n, digits = 3) => {
     if (n == null || n === '') return ''
     const x = Number(n)
@@ -122,7 +148,6 @@ const Lotes = () => {
       ? null
       : Number(r.PesoUnitarioKg) * Number(r.Cantidad || 0)
 
-  // Excel (excluye "No Aplica")
   const exportToExcel = () => {
     const filasPlanas = filteredLotes.map(r => ({
       Lote: r.id_lote,
@@ -155,9 +180,26 @@ const Lotes = () => {
     fetchLotes()
   }
 
+  // Editar registro (producto)
+  const openEditarRegistro = registro => {
+    setRegistroAEditar(registro)
+    setIsEditarRegistroOpen(true)
+  }
+  const closeEditarRegistro = () => {
+    setRegistroAEditar(null)
+    setIsEditarRegistroOpen(false)
+  }
+
+  // utilidad para key estable (usa id_lote_producto si existe)
+  const rowKey = (r, i) =>
+    r.id_lote_producto ||
+    r.Id_lote_producto ||
+    r.id ||
+    `${r.id_lote}-${r.id_producto}-${i}`
+
   return (
     <>
-      {/* Modales */}
+      {/* Modal Agregar */}
       <Modal
         isOpen={isAgregarModalOpen}
         onRequestClose={() => setIsAgregarModalOpen(false)}
@@ -169,6 +211,7 @@ const Lotes = () => {
         <FormLote onSuccess={handleSuccessAgregar} />
       </Modal>
 
+      {/* Modal Editar Lote (cabecera) */}
       <Modal
         isOpen={isEditarModalOpen}
         onRequestClose={handleCerrarEditarModal}
@@ -185,19 +228,83 @@ const Lotes = () => {
         )}
       </Modal>
 
+      {/* Modal Editar Registro (producto) */}
+      <Modal
+        isOpen={isEditarRegistroOpen}
+        onRequestClose={closeEditarRegistro}
+        contentLabel='Editar Registro'
+        className='modal-content'
+        overlayClassName='modal-overlay'
+      >
+        <h3 className='mb-3'>Editar producto del lote</h3>
+        {registroAEditar ? (
+          <div className='d-flex flex-column gap-2'>
+            <div>
+              <strong>ID Lote-Producto:</strong>{' '}
+              {registroAEditar.id_lote_producto ||
+                registroAEditar.Id_lote_producto ||
+                '—'}
+            </div>
+            <div>
+              <strong>Lote:</strong> {registroAEditar.id_lote}
+            </div>
+            <div>
+              <strong>Producto:</strong> {registroAEditar.id_producto}
+            </div>
+            <div>
+              <strong>Cantidad:</strong>{' '}
+              {formatNum(registroAEditar.Cantidad, 2)}
+            </div>
+            <div>
+              <strong>Peso U. (Kg):</strong>{' '}
+              {registroAEditar.PesoUnitarioKg == null
+                ? 'N/A'
+                : formatNum(registroAEditar.PesoUnitarioKg, 3)}
+            </div>
+
+            {/* Placeholder: aquí luego llamas updateLoteProducto(`/lote-producto/${id}`) */}
+            <div className='alert alert-info mt-2'>
+              Hola — aquí irá el formulario de edición. Usarás:{' '}
+              <code>
+                /lote-producto/
+                {String(
+                  registroAEditar.id_lote_producto ||
+                    registroAEditar.Id_lote_producto ||
+                    ''
+                ).trim()}
+              </code>
+            </div>
+
+            <div className='text-end'>
+              <button
+                className='btn btn-secondary'
+                onClick={closeEditarRegistro}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p>Hola</p>
+        )}
+      </Modal>
+
       <div className='lotes-container container mt-4'>
-        {/* Toolbar */}
-        <div className='d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3'>
-          <h2 className='m-0'>Lotes</h2>
-          <div className='d-flex gap-2 ms-auto'>
+        {/* Toolbar con buscador centrado */}
+        <div className='d-flex flex-wrap align-items-center gap-2 mb-3'>
+          <h2 className='m-0 me-auto'>Lotes</h2>
+
+          <div className='flex-grow-1 d-flex justify-content-center'>
             <input
               type='text'
-              className='form-control buscador-pequeno'
+              className='form-control buscador-pequeno w-75'
               placeholder='Buscar lote, producto, cliente, proveedor...'
               value={globalFilter}
               onChange={e => setGlobalFilter(e.target.value)}
-              style={{ minWidth: 260 }}
             />
+          </div>
+
+          <div className='d-flex gap-2'>
             <button
               className='btn-excel'
               onClick={exportToExcel}
@@ -222,12 +329,13 @@ const Lotes = () => {
         ) : (
           <div className='accordion' id='lotesAccordion'>
             {lotesAgrupadosOrdenados.map(([idLote, registros], index) => {
-              // fecha mínima del grupo
-              const fechaGrupo = formatDate(
-                Math.min(
+              // fecha más reciente del grupo para mostrar
+              const fechaGrupo = (() => {
+                const maxTs = Math.max(
                   ...registros.map(r => new Date(r.Fecha_registro).getTime())
                 )
-              )
+                return new Date(maxTs).toLocaleString()
+              })()
               const comentario = lotesComentarios[idLote] || 'Sin comentarios'
 
               return (
@@ -241,7 +349,6 @@ const Lotes = () => {
                       aria-expanded='false'
                       aria-controls={`collapse-${index}`}
                     >
-                      {/* Encabezado enriquecido */}
                       <div className='w-100 d-flex flex-column flex-md-row align-items-md-center gap-2'>
                         <span className='badge rounded-pill text-bg-primary px-3 py-2'>
                           Lote: {idLote}
@@ -249,11 +356,12 @@ const Lotes = () => {
                         <span className='text-muted small flex-grow-1'>
                           Comentario: {comentario}
                         </span>
-                        <span className='text-muted small'>🗓 {fechaGrupo}</span>
+                        <span className='text-muted small'>
+                          Fecha: {fechaGrupo}
+                        </span>
                       </div>
                     </button>
                   </h2>
-
                   <div
                     id={`collapse-${index}`}
                     className='accordion-collapse collapse'
@@ -261,130 +369,75 @@ const Lotes = () => {
                     data-bs-parent='#lotesAccordion'
                   >
                     <div className='accordion-body'>
-                      {/* Comentario destacado en el cuerpo también, por si hace falta */}
-                      <p className='text-muted mb-2 d-none d-md-block'>
-                        <strong>Comentario del lote:</strong> {comentario}
-                      </p>
-
-                      {/* Tabla (desktop) */}
-                      <div className='d-none d-md-block'>
-                        <table className='table table-bordered table-sm text-center align-middle'>
-                          <thead>
-                            <tr>
-                              <th>Producto</th>
-                              <th>Cantidad</th>
-                              <th>Peso U. (Kg)</th>
-                              <th>Peso Total (Kg)</th>
-                              <th>Cliente / Proveedor</th>
-                              <th>Acciones</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[...registros]
-                              .sort(
-                                (a, b) =>
-                                  new Date(a.Fecha_registro) -
-                                  new Date(b.Fecha_registro)
+                      <table className='table table-bordered table-sm text-center align-middle'>
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Peso U. (Kg)</th>
+                            <th>Peso Total (Kg)</th>
+                            <th>Cliente / Proveedor</th>
+                            <th>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...registros]
+                            .sort(
+                              (a, b) =>
+                                new Date(a.Fecha_registro) -
+                                new Date(b.Fecha_registro)
+                            )
+                            .map((r, i) => {
+                              const pTotal = pesoTotal(r)
+                              const terceroBadge = r.Proveedor?.Nombre ? (
+                                <span className='badge bg-warning text-dark'>
+                                  Proveedor: {r.Proveedor.Nombre}
+                                </span>
+                              ) : r.Cliente?.Nombre ? (
+                                <span className='badge bg-primary'>
+                                  Cliente: {r.Cliente.Nombre}
+                                </span>
+                              ) : (
+                                'N/A'
                               )
-                              .map((r, i) => {
-                                const pTotal = pesoTotal(r)
-                                const terceroBadge = r.Proveedor?.Nombre ? (
-                                  <span className='badge bg-warning text-dark'>
-                                    Proveedor: {r.Proveedor.Nombre}
-                                  </span>
-                                ) : r.Cliente?.Nombre ? (
-                                  <span className='badge bg-primary'>
-                                    Cliente: {r.Cliente.Nombre}
-                                  </span>
-                                ) : (
-                                  'N/A'
-                                )
-                                return (
-                                  <tr key={i}>
-                                    <td className='text-break'>
-                                      {r.id_producto}
-                                    </td>
-                                    <td>{formatNum(r.Cantidad, 2)}</td>
-                                    <td>
-                                      {r.PesoUnitarioKg == null ? (
-                                        <span className='badge text-bg-secondary'>
-                                          Sin peso
-                                        </span>
-                                      ) : (
-                                        <span className='badge text-bg-success'>
-                                          {formatNum(r.PesoUnitarioKg, 3)}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td>
-                                      {pTotal == null
-                                        ? '—'
-                                        : formatNum(pTotal, 3)}
-                                    </td>
-                                    <td>{terceroBadge}</td>
-                                    <td>—</td>
-                                  </tr>
-                                )
-                              })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Cards (móvil) */}
-                      <div className='d-md-none'>
-                        {[...registros]
-                          .sort(
-                            (a, b) =>
-                              new Date(a.Fecha_registro) -
-                              new Date(b.Fecha_registro)
-                          )
-                          .map((r, i) => {
-                            const pTotal = pesoTotal(r)
-                            return (
-                              <div key={i} className='card mb-2 shadow-sm'>
-                                <div className='card-body'>
-                                  <div className='d-flex justify-content-between'>
-                                    <strong className='text-break'>
-                                      {r.id_producto}
-                                    </strong>
-                                    <small className='text-muted'>
-                                      {formatDate(r.Fecha_registro)}
-                                    </small>
-                                  </div>
-                                  <div className='mt-2 d-flex flex-wrap gap-2'>
-                                    <span className='badge text-bg-light'>
-                                      Cant: {formatNum(r.Cantidad, 2)}
-                                    </span>
+                              return (
+                                <tr key={rowKey(r, i)}>
+                                  <td className='text-break'>
+                                    {r.id_producto}
+                                  </td>
+                                  <td>{formatNum(r.Cantidad, 2)}</td>
+                                  <td>
                                     {r.PesoUnitarioKg == null ? (
                                       <span className='badge text-bg-secondary'>
                                         Sin peso
                                       </span>
                                     ) : (
-                                      <>
-                                        <span className='badge text-bg-success'>
-                                          U: {formatNum(r.PesoUnitarioKg, 3)} Kg
-                                        </span>
-                                        <span className='badge text-bg-info'>
-                                          Tot: {formatNum(pTotal, 3)} Kg
-                                        </span>
-                                      </>
-                                    )}
-                                    {r.Proveedor?.Nombre && (
-                                      <span className='badge bg-warning text-dark'>
-                                        Prov: {r.Proveedor.Nombre}
+                                      <span className='badge text-bg-success'>
+                                        {formatNum(r.PesoUnitarioKg, 3)}
                                       </span>
                                     )}
-                                    {r.Cliente?.Nombre && (
-                                      <span className='badge bg-primary'>
-                                        Cli: {r.Cliente.Nombre}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                      </div>
+                                  </td>
+                                  <td>
+                                    {pTotal == null
+                                      ? '—'
+                                      : formatNum(pTotal, 3)}
+                                  </td>
+                                  <td>{terceroBadge}</td>
+                                  <td className='text-nowrap'>
+                                    <button
+                                      type='button'
+                                      className='btn btn-outline-secondary btn-sm'
+                                      onClick={() => openEditarRegistro(r)}
+                                      title={`Editar ${r.id_producto}`}
+                                    >
+                                      Editar
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
