@@ -1,5 +1,4 @@
-import { useForm } from 'react-hook-form'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   getLotesDisponibles,
   getProductosDisponibles,
@@ -11,26 +10,29 @@ import {
 import { usePermisos } from '../../../hooks/usePermisos'
 
 const FormLote = ({ onSuccess = () => {} }) => {
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm()
-
   const { tienePermiso } = usePermisos()
 
+  // Catálogos
   const [lotes, setLotes] = useState([])
   const [productos, setProductos] = useState([])
   const [clientes, setClientes] = useState([])
   const [proveedores, setProveedores] = useState([])
 
+  // Selecciones maestras
   const [selectedLote, setSelectedLote] = useState('')
-  const [selectedProducto, setSelectedProducto] = useState('')
-  const [tipoTercero, setTipoTercero] = useState('')
+  const [tipoTercero, setTipoTercero] = useState('') // '', 'cliente', 'proveedor'
+  const [selectedCliente, setSelectedCliente] = useState('')
+  const [selectedProveedor, setSelectedProveedor] = useState('')
 
-  const [loading, setLoading] = useState(false)
-  const [serverResponse, setServerResponse] = useState(null)
+  // Peso opcional/obligatorio (aplica a todas las filas)
+  const [pesoRequerido, setPesoRequerido] = useState(false)
+
+  // Filas
+  const [rows, setRows] = useState([
+    { id: Date.now(), id_producto: '', cantidad: '', peso: '' },
+  ])
+
+  // Crear Lote inline
   const [showCrearLote, setShowCrearLote] = useState(false)
   const [nuevoLote, setNuevoLote] = useState({
     Id_lote: '',
@@ -38,6 +40,9 @@ const FormLote = ({ onSuccess = () => {} }) => {
     Fecha_fabri: '',
     Comentarios: '',
   })
+
+  const [loading, setLoading] = useState(false)
+  const [serverResponse, setServerResponse] = useState(null)
 
   const permisoProductosRS = tienePermiso('productosRS')
   const permisoProductosBodega = tienePermiso('productosBodega')
@@ -62,7 +67,6 @@ const FormLote = ({ onSuccess = () => {} }) => {
         console.error('Error cargando terceros:', err)
       }
     }
-
     if (tipoTercero) cargarTerceros()
   }, [tipoTercero])
 
@@ -70,12 +74,8 @@ const FormLote = ({ onSuccess = () => {} }) => {
     try {
       const data = await getLotesDisponibles()
       setLotes(data)
-
       const sugerido = sugerirSiguienteId(data.map(l => l.Id_lote))
-      setNuevoLote(prev => ({
-        ...prev,
-        Id_lote: sugerido,
-      }))
+      setNuevoLote(prev => ({ ...prev, Id_lote: sugerido }))
     } catch (error) {
       console.error('Error cargando lotes:', error)
     }
@@ -84,14 +84,12 @@ const FormLote = ({ onSuccess = () => {} }) => {
   const fetchProductos = async () => {
     try {
       const data = await getProductosDisponibles()
-
       const productosFiltrados = data.filter(p => {
         if (permisoProductosRS && p.Tipo === 'RS') return true
         if (permisoProductosBodega && p.Tipo === 'Bodega') return true
         if (permisoProductosRS && permisoProductosBodega) return true
         return false
       })
-
       setProductos(productosFiltrados)
     } catch (error) {
       console.error('Error cargando productos:', error)
@@ -104,7 +102,6 @@ const FormLote = ({ onSuccess = () => {} }) => {
       .filter(id => id.startsWith(prefix))
       .map(id => parseInt(id.replace(prefix, ''), 10))
       .filter(num => !isNaN(num))
-
     const max = numeros.length ? Math.max(...numeros) : 0
     const siguienteNumero = max + 1
     const idFormateado = siguienteNumero.toString().padStart(3, '0')
@@ -114,17 +111,10 @@ const FormLote = ({ onSuccess = () => {} }) => {
   const handleCrearLote = async e => {
     e.preventDefault()
     const { Id_lote, Fecha_vence, Fecha_fabri, Comentarios } = nuevoLote
-
-    if (!Id_lote) {
-      alert('El campo Id_lote es obligatorio.')
-      return
-    }
+    if (!Id_lote) return alert('El campo Id_lote es obligatorio.')
 
     const existe = lotes.some(l => l.Id_lote === Id_lote.trim())
-    if (existe) {
-      alert(`El ID de lote "${Id_lote}" ya existe.`)
-      return
-    }
+    if (existe) return alert(`El ID de lote "${Id_lote}" ya existe.`)
 
     const payload = {
       Id_lote: Id_lote.trim(),
@@ -134,7 +124,6 @@ const FormLote = ({ onSuccess = () => {} }) => {
     }
 
     try {
-      console.log('Enviando nuevo lote:', payload)
       await createLote(payload)
       await fetchLotes()
       setNuevoLote({
@@ -151,56 +140,176 @@ const FormLote = ({ onSuccess = () => {} }) => {
     }
   }
 
-  const onSubmit = async data => {
+  // Helpers de filas
+  const addRow = () => {
+    setRows(prev => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        id_producto: '',
+        cantidad: '',
+        peso: '',
+      },
+    ])
+  }
+  const removeRow = id => {
+    setRows(prev => (prev.length > 1 ? prev.filter(r => r.id !== id) : prev))
+  }
+  const updateRow = (id, field, value) => {
+    setRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)))
+  }
+
+  // Validaciones locales (sin forzar número en id_producto)
+  const validoMaestro = useMemo(() => {
+    if (!selectedLote) return false
+    if (!tipoTercero) return false
+    if (tipoTercero === 'cliente' && !selectedCliente) return false
+    if (tipoTercero === 'proveedor' && !selectedProveedor) return false
+    return true
+  }, [selectedLote, tipoTercero, selectedCliente, selectedProveedor])
+
+  const filasNormalizadas = useMemo(() => {
+    // id_producto se mantiene string; cantidades/peso a número cuando haya valor
+    return rows.map(r => ({
+      id_producto: String(r.id_producto || '').trim(),
+      cantidad: r.cantidad === '' ? '' : Number(r.cantidad),
+      peso: r.peso === '' ? '' : Number(r.peso),
+    }))
+  }, [rows])
+
+  const validoFilas = useMemo(() => {
+    return filasNormalizadas.every(r => {
+      const okProd = r.id_producto !== ''
+      const okCant = r.cantidad !== '' && Number(r.cantidad) > 0
+      const okPeso = pesoRequerido ? r.peso !== '' && Number(r.peso) > 0 : true
+      return okProd && okCant && okPeso
+    })
+  }, [filasNormalizadas, pesoRequerido])
+
+  const hayDuplicados = useMemo(() => {
+    const keyBy = new Set()
+    for (const r of filasNormalizadas) {
+      const key = `${selectedLote}|${
+        tipoTercero === 'cliente'
+          ? `C${selectedCliente}`
+          : `P${selectedProveedor}`
+      }|${r.id_producto}`
+      if (keyBy.has(key)) return true
+      keyBy.add(key)
+    }
+    return false
+  }, [
+    filasNormalizadas,
+    selectedLote,
+    tipoTercero,
+    selectedCliente,
+    selectedProveedor,
+  ])
+
+  // Envío MASIVO (secuencial)
+  const onSubmit = async () => {
+    if (!validoMaestro) {
+      alert('Completa Lote y Tercero antes de enviar.')
+      return
+    }
+    if (!validoFilas) {
+      alert('Revisa las filas: producto/cantidad y, si corresponde, peso.')
+      return
+    }
+    if (hayDuplicados) {
+      alert(
+        'Hay productos duplicados para el mismo lote y tercero. Unifícalos o elimínalos.'
+      )
+      return
+    }
+
     const confirmar = window.confirm(
-      '¿Seguro que desea guardar este lote-producto?'
+      '¿Seguro que deseas guardar todos los registros?'
     )
     if (!confirmar) return
 
+    setLoading(true)
+    setServerResponse(null)
+
+    const terceroPayload =
+      tipoTercero === 'cliente'
+        ? { id_Cliente: selectedCliente } // si tu backend exige número, usa Number(selectedCliente)
+        : { id_proveedor: selectedProveedor } // idem
+
+    // Construir payloads por fila
+    const payloads = filasNormalizadas.map(r => ({
+      id_lote: selectedLote.trim(),
+      id_producto: r.id_producto, // ← string intacto
+      Cantidad: Number(r.cantidad),
+      PesoUnitarioKg: r.peso === '' ? null : Number(r.peso), // ← null si no aplica
+      ...terceroPayload,
+    }))
+
+    const detalleFallos = []
+    let ok = 0
+
     try {
-      setLoading(true)
-      const payload = {
-        id_lote: selectedLote,
-        id_producto: selectedProducto,
-        Cantidad: data.Cantidad,
-        ...(tipoTercero === 'cliente' && { id_Cliente: data.id_Cliente }),
-        ...(tipoTercero === 'proveedor' && { id_proveedor: data.id_Proveedor }),
+      for (let i = 0; i < payloads.length; i++) {
+        try {
+          console.log('➡️ Enviando fila', i + 1, JSON.stringify(payloads[i]))
+          await createLoteProducto(payloads[i])
+          ok++
+        } catch (err) {
+          const backendMsg =
+            err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            JSON.stringify(err?.response?.data || {})
+          console.error('🧨 Error fila', i + 1, backendMsg)
+          detalleFallos.push({ index: i + 1, error: backendMsg })
+        }
       }
 
-      console.log('Payload final enviado:', payload)
-      await createLoteProducto(payload)
+      const total = payloads.length
+      const fail = total - ok
+      setServerResponse({
+        mensaje: `Procesadas ${total}. Éxitos: ${ok}. Fallos: ${fail}.`,
+        detalleFallos,
+      })
 
-      setServerResponse({ mensaje: 'Registro exitoso.' })
-      reset()
-      setSelectedLote('')
-      setSelectedProducto('')
-      setTipoTercero('')
-
-      setTimeout(() => {
-        onSuccess()
-      }, 1000)
-    } catch (error) {
-      console.error('Error al guardar lote-producto:', error)
-      setServerResponse({ error: 'Ocurrió un error al guardar.' })
+      if (fail === 0) {
+        setRows([{ id: Date.now(), id_producto: '', cantidad: '', peso: '' }])
+        setTipoTercero('')
+        setSelectedCliente('')
+        setSelectedProveedor('')
+        setPesoRequerido(false)
+        setTimeout(() => onSuccess(), 300)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className='row g-3'>
+    <div className='row g-3'>
+      {/* Mensaje servidor */}
       {serverResponse && (
         <div
           className={`alert text-center w-100 ${
             serverResponse.error ? 'alert-danger' : 'alert-success'
           }`}
         >
-          {serverResponse?.mensaje ||
-            serverResponse?.error ||
-            'Registro exitoso.'}
+          {serverResponse.mensaje || serverResponse.error}
+          {serverResponse.detalleFallos?.length > 0 && (
+            <details className='mt-2'>
+              <summary>Ver fallos</summary>
+              <ul className='text-start'>
+                {serverResponse.detalleFallos.map(df => (
+                  <li key={df.index}>
+                    Fila #{df.index}: {String(df.error)}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 
+      {/* Selección de Lote */}
       <div className='col-md-8'>
         <label className='form-label'>Lote</label>
         <select
@@ -233,6 +342,7 @@ const FormLote = ({ onSuccess = () => {} }) => {
         </button>
       </div>
 
+      {/* Crear Lote inline */}
       {showCrearLote && (
         <div className='col-12 border rounded p-3 bg-light'>
           <div className='mb-2'>
@@ -278,7 +388,7 @@ const FormLote = ({ onSuccess = () => {} }) => {
               onChange={e =>
                 setNuevoLote(prev => ({ ...prev, Comentarios: e.target.value }))
               }
-            ></textarea>
+            />
           </div>
           <div className='text-end'>
             <button className='btn btn-success' onClick={handleCrearLote}>
@@ -288,113 +398,173 @@ const FormLote = ({ onSuccess = () => {} }) => {
         </div>
       )}
 
-      <div className='col-12'>
-        <label className='form-label'>Producto</label>
+      {/* Tercero */}
+      <div className='col-md-4'>
+        <label className='form-label'>Tipo de tercero</label>
         <select
           className='form-select'
-          value={selectedProducto}
-          onChange={e => setSelectedProducto(e.target.value)}
+          value={tipoTercero}
+          onChange={e => {
+            setTipoTercero(e.target.value)
+            setSelectedCliente('')
+            setSelectedProveedor('')
+          }}
         >
-          <option value=''>Seleccione un producto</option>
-          {productos.map(p => (
-            <option key={p.Id_producto} value={p.Id_producto}>
-              {p.Nombre} ({p.Id_producto})
-            </option>
-          ))}
+          <option value=''>Seleccione tipo</option>
+          <option value='cliente'>Cliente</option>
+          <option value='proveedor'>Proveedor</option>
         </select>
       </div>
 
-      {selectedLote && selectedProducto && (
-        <>
-          <div className='col-md-6'>
-            <label className='form-label'>Tipo</label>
-            <select
-              className='form-select'
-              value={tipoTercero}
-              onChange={e => setTipoTercero(e.target.value)}
-            >
-              <option value=''>Seleccione tipo</option>
-              <option value='cliente'>Cliente</option>
-              <option value='proveedor'>Proveedor</option>
-            </select>
-          </div>
-
-          {tipoTercero === 'cliente' && (
-            <div className='col-md-6'>
-              <label className='form-label'>Cliente</label>
-              <select
-                className={`form-select ${
-                  errors.id_Cliente ? 'is-invalid' : ''
-                }`}
-                {...register('id_Cliente', { required: true })}
+      {tipoTercero === 'cliente' && (
+        <div className='col-md-8'>
+          <label className='form-label'>Cliente</label>
+          <select
+            className='form-select'
+            value={selectedCliente}
+            onChange={e => setSelectedCliente(e.target.value)}
+          >
+            <option value=''>Seleccione un cliente</option>
+            {clientes.map(c => (
+              <option
+                key={c.id_Cliente || c.Id_Cliente}
+                value={c.id_Cliente || c.Id_Cliente}
               >
-                <option value=''>Seleccione un cliente</option>
-                {clientes.map(cliente => (
-                  <option
-                    key={cliente.id_Cliente || cliente.Id_Cliente}
-                    value={cliente.id_Cliente || cliente.Id_Cliente}
-                  >
-                    {cliente.Nombre} ({cliente.id_Cliente || cliente.Id_Cliente}
-                    )
-                  </option>
-                ))}
-              </select>
-              {errors.id_Cliente && (
-                <div className='invalid-feedback'>Cliente requerido</div>
-              )}
-            </div>
-          )}
-
-          {tipoTercero === 'proveedor' && (
-            <div className='col-md-6'>
-              <label className='form-label'>Proveedor</label>
-              <select
-                className={`form-select ${
-                  errors.id_Proveedor ? 'is-invalid' : ''
-                }`}
-                {...register('id_Proveedor', { required: true })}
-              >
-                <option value=''>Seleccione un proveedor</option>
-                {proveedores.map(p => (
-                  <option
-                    key={p.id_proveedor || p.Id_proveedor}
-                    value={p.id_proveedor || p.Id_proveedor}
-                  >
-                    {p.Nombre} ({p.id_proveedor || p.Id_proveedor})
-                  </option>
-                ))}
-              </select>
-              {errors.id_Proveedor && (
-                <div className='invalid-feedback'>Proveedor requerido</div>
-              )}
-            </div>
-          )}
-
-          <div className='col-12'>
-            <label className='form-label'>Cantidad</label>
-            <input
-              type='number'
-              step='0.01'
-              className={`form-control ${errors.Cantidad ? 'is-invalid' : ''}`}
-              {...register('Cantidad', { required: true })}
-            />
-            {errors.Cantidad && (
-              <div className='invalid-feedback'>Cantidad requerida</div>
-            )}
-          </div>
-
-          <div className='col-12'>
-            <button
-              type='submit'
-              className='btn-agregarform'
-              disabled={loading}
-            >
-              {loading ? 'Guardando...' : 'Guardar Lote Producto'}
-            </button>
-          </div>
-        </>
+                {c.Nombre} ({c.id_Cliente || c.Id_Cliente})
+              </option>
+            ))}
+          </select>
+        </div>
       )}
-    </form>
+
+      {tipoTercero === 'proveedor' && (
+        <div className='col-md-8'>
+          <label className='form-label'>Proveedor</label>
+          <select
+            className='form-select'
+            value={selectedProveedor}
+            onChange={e => setSelectedProveedor(e.target.value)}
+          >
+            <option value=''>Seleccione un proveedor</option>
+            {proveedores.map(p => (
+              <option
+                key={p.id_proveedor || p.Id_proveedor}
+                value={p.id_proveedor || p.Id_proveedor}
+              >
+                {p.Nombre} ({p.id_proveedor || p.Id_proveedor})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Switch Peso */}
+      <div className='col-12 d-flex align-items-center gap-2'>
+        <input
+          id='pesoReq'
+          type='checkbox'
+          className='form-check-input'
+          checked={pesoRequerido}
+          onChange={e => setPesoRequerido(e.target.checked)}
+        />
+        <label htmlFor='pesoReq' className='form-check-label'>
+          Requerir PesoUnitarioKg en cada fila
+        </label>
+      </div>
+
+      {/* Tabla de filas */}
+      <div className='col-12'>
+        <div className='table-responsive'>
+          <table className='table table-sm align-middle'>
+            <thead>
+              <tr>
+                <th style={{ width: '45%' }}>Producto</th>
+                <th style={{ width: '20%' }}>Cantidad</th>
+                <th style={{ width: '25%' }}>
+                  PesoUnitarioKg {pesoRequerido ? '*' : '(opcional)'}
+                </th>
+                <th style={{ width: '10%' }} className='text-end'>
+                  Acciones
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td>
+                    <select
+                      className='form-select'
+                      value={r.id_producto}
+                      onChange={e =>
+                        updateRow(r.id, 'id_producto', e.target.value)
+                      }
+                    >
+                      <option value=''>Seleccione un producto</option>
+                      {productos.map(p => (
+                        <option key={p.Id_producto} value={p.Id_producto}>
+                          {p.Nombre} ({p.Id_producto})
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type='number'
+                      step='0.01'
+                      className='form-control'
+                      value={r.cantidad}
+                      onChange={e =>
+                        updateRow(r.id, 'cantidad', e.target.value)
+                      }
+                      placeholder='0.00'
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type='number'
+                      step='0.01'
+                      className='form-control'
+                      value={r.peso}
+                      onChange={e => updateRow(r.id, 'peso', e.target.value)}
+                      placeholder={pesoRequerido ? 'Obligatorio' : 'Opcional'}
+                    />
+                  </td>
+                  <td className='text-end'>
+                    <button
+                      type='button'
+                      className='btn btn-outline-danger btn-sm'
+                      onClick={() => removeRow(r.id)}
+                      title='Quitar fila'
+                      disabled={rows.length === 1}
+                    >
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className='d-flex gap-2'>
+          <button
+            type='button'
+            className='btn btn-outline-primary'
+            onClick={addRow}
+          >
+            + Agregar fila
+          </button>
+          <button
+            type='button'
+            className='btn-agregarform'
+            disabled={loading}
+            onClick={onSubmit}
+          >
+            {loading ? 'Guardando...' : 'Guardar Carga Masiva'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
