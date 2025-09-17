@@ -1,7 +1,9 @@
+// FormProducto.jsx
 import { useForm } from 'react-hook-form'
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createProducto, getProductos } from './Producto_service'
-import { OPCIONES_TIPO_PRODUCTO, PREFIJO_POR_TIPO } from './prefijos' // opciones + mapa prefijos
+import { getPrefijos } from './Prefijos_service'
+import { usePermisos } from '../../../hooks/usePermisos'
 
 const FormProducto = ({ onSuccess = () => {} }) => {
   const {
@@ -17,35 +19,57 @@ const FormProducto = ({ onSuccess = () => {} }) => {
   const [serverResponse, setServerResponse] = useState(null)
   const [productos, setProductos] = useState([])
 
-  // Cargar productos existentes (para calcular siguiente ID por prefijo)
+  const [prefijos, setPrefijos] = useState([])
+  const [loadingPrefijos, setLoadingPrefijos] = useState(false)
+  const [errorPrefijos, setErrorPrefijos] = useState(null)
+  const [buscarPrefijo, setBuscarPrefijo] = useState('')
+
+  // ---- Permisos (no modificamos tu hook) ----
+  const { tienePermiso } = usePermisos()
+  const puedeVerRS = !!tienePermiso?.('productosRS')
+
+  // cargar productos (para correlativo)
   useEffect(() => {
     ;(async () => {
       try {
         const data = await getProductos()
         setProductos(Array.isArray(data) ? data : [])
       } catch (e) {
-        console.error('Error obteniendo productos para prefijos:', e)
+        console.error('Error obteniendo productos:', e)
         setProductos([])
       }
     })()
   }, [])
 
-  // Observa el tipo de producto (prefijo)
-  const tipoProducto = watch('Tipo_producto')
-
-  // Calcula el siguiente ID cuando cambia el tipo de producto o la lista
+  // cargar prefijos
   useEffect(() => {
-    if (!tipoProducto) {
-      setValue('Id_producto', '')
-      return
-    }
-    const pref = (PREFIJO_POR_TIPO[tipoProducto] || '').toUpperCase()
+    ;(async () => {
+      try {
+        setLoadingPrefijos(true)
+        setErrorPrefijos(null)
+        const list = await getPrefijos()
+        setPrefijos(list)
+      } catch (e) {
+        console.error('Error obteniendo prefijos:', e)
+        setErrorPrefijos('No fue posible cargar los prefijos')
+        setPrefijos([])
+      } finally {
+        setLoadingPrefijos(false)
+      }
+    })()
+  }, [])
+
+  // observar prefijo seleccionado
+  const selectedPrefijo = watch('Prefijo')
+
+  // recalcular Id_producto cuando cambia prefijo
+  useEffect(() => {
+    const pref = (selectedPrefijo || '').toUpperCase().trim()
     if (!pref) {
       setValue('Id_producto', '')
       return
     }
 
-    // Busca el mayor correlativo existente para ese prefijo (case-insensitive)
     const max = productos.reduce((m, p) => {
       const id = String(p?.Id_producto || p?.id_producto || '').toUpperCase()
       if (!id.startsWith(pref)) return m
@@ -55,25 +79,58 @@ const FormProducto = ({ onSuccess = () => {} }) => {
     }, 0)
 
     const siguiente = max + 1
-    // 3 cifras por defecto; si superas 999, crece automáticamente
     const ancho = siguiente < 1000 ? 3 : String(siguiente).length
     const candidato = `${pref}${String(siguiente).padStart(ancho, '0')}`
 
     setValue('Id_producto', candidato)
-  }, [tipoProducto, productos, setValue])
+  }, [selectedPrefijo, productos, setValue])
 
+  // filtrar por búsqueda + permisos
+  const prefijosFiltrados = useMemo(() => {
+    const q = buscarPrefijo.trim().toLowerCase()
+    return prefijos
+      .filter(p => {
+        // Ocultar RS si no hay permiso
+        if (
+          !puedeVerRS &&
+          (p.tipo === 'RS_ESPECIFICO' || p.tipo === 'RS_GENERICO')
+        ) {
+          return false
+        }
+        return true
+      })
+      .filter(p => {
+        if (!q) return true
+        return (
+          p.prefijo.toLowerCase().includes(q) ||
+          p.nombre.toLowerCase().includes(q) ||
+          String(p.id_prefijo).toLowerCase().includes(q)
+        )
+      })
+  }, [buscarPrefijo, prefijos, puedeVerRS])
+
+  // agrupar por tipo
+  const prefijosAgrupados = useMemo(() => {
+    return prefijosFiltrados.reduce((acc, p) => {
+      if (!acc[p.tipo]) acc[p.tipo] = []
+      acc[p.tipo].push(p)
+      return acc
+    }, {})
+  }, [prefijosFiltrados])
+
+  // submit
   const onSubmit = async data => {
     const confirmar = window.confirm('¿Seguro que desea guardar este producto?')
     if (!confirmar) return
 
     try {
       setLoading(true)
-      // Enviar como viene: Id_producto ya está en readOnly/autogenerado
-      const response = await createProducto({
+      const payload = {
         ...data,
         Id_producto: (data.Id_producto || '').toUpperCase().trim(),
-      })
-
+        Prefijo: (data.Prefijo || '').toUpperCase().trim(),
+      }
+      const response = await createProducto(payload)
       setServerResponse(response)
       reset()
       setTimeout(() => onSuccess(), 1000)
@@ -88,6 +145,8 @@ const FormProducto = ({ onSuccess = () => {} }) => {
       setLoading(false)
     }
   }
+
+  const disabledSelect = loadingPrefijos // no hay loading de permisos en tu hook
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className='row g-3'>
@@ -104,26 +163,49 @@ const FormProducto = ({ onSuccess = () => {} }) => {
         </div>
       )}
 
-      {/* Tipo de producto (prefijo) */}
+      {/* Prefijo + búsqueda */}
       <div className='col-md-6'>
-        <label className='form-label'>Tipo de producto</label>
+        <label className='form-label'>Prefijo</label>
+
+        <input
+          type='text'
+          className='form-control mb-2'
+          placeholder='Buscar por prefijo, nombre o código...'
+          value={buscarPrefijo}
+          onChange={e => setBuscarPrefijo(e.target.value)}
+          disabled={disabledSelect}
+        />
+
         <select
-          className={`form-select ${errors.Tipo_producto ? 'is-invalid' : ''}`}
-          {...register('Tipo_producto', { required: true })}
+          className={`form-select ${errors.Prefijo ? 'is-invalid' : ''}`}
+          {...register('Prefijo', { required: true })}
+          disabled={disabledSelect}
         >
-          <option value=''>Seleccione un tipo</option>
-          {OPCIONES_TIPO_PRODUCTO.map(op => (
-            <option key={op.value} value={op.value}>
-              {op.label}
-            </option>
+          <option value=''>Seleccione un prefijo</option>
+          {Object.entries(prefijosAgrupados).map(([tipo, items]) => (
+            <optgroup key={tipo} label={tipo}>
+              {items.map(p => (
+                <option key={p.id_prefijo} value={p.prefijo}>
+                  {p.prefijo} — {p.nombre}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
-        {errors.Tipo_producto && (
-          <div className='invalid-feedback'>Tipo de producto es requerido</div>
+        {errors.Prefijo && (
+          <div className='invalid-feedback'>El prefijo es requerido</div>
+        )}
+        {errorPrefijos && (
+          <div className='text-danger mt-1'>{errorPrefijos}</div>
+        )}
+        {!puedeVerRS && (
+          <div className='form-text mt-1'>
+            Algunos prefijos RS no se muestran por permisos.
+          </div>
         )}
       </div>
 
-      {/* ID Producto (readOnly, autogenerado por prefijo) */}
+      {/* ID Producto */}
       <div className='col-md-6'>
         <label className='form-label'>ID Producto</label>
         <input
@@ -166,7 +248,7 @@ const FormProducto = ({ onSuccess = () => {} }) => {
         )}
       </div>
 
-      {/* Tipo (RS/Bodega) */}
+      {/* Tipo */}
       <div className='col-md-6'>
         <label className='form-label'>Tipo</label>
         <select
@@ -248,7 +330,11 @@ const FormProducto = ({ onSuccess = () => {} }) => {
 
       {/* Botón Submit */}
       <div className='col-12'>
-        <button type='submit' className='btn-agregarform' disabled={loading}>
+        <button
+          type='submit'
+          className='btn-agregarform'
+          disabled={loading || loadingPrefijos}
+        >
           {loading ? 'Guardando...' : 'Guardar Producto'}
         </button>
       </div>
