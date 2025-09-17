@@ -1,25 +1,31 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import DataTable from 'react-data-table-component'
 import { FaFileExcel } from 'react-icons/fa'
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  flexRender,
-} from '@tanstack/react-table'
-import { BiSortUp, BiSortDown } from 'react-icons/bi'
 import { utils, writeFile } from 'xlsx'
-import { getInventarioCompleto } from './inventario_service'
+import {
+  getInventarioCompleto,
+  getLotesProductoByProducto,
+} from './inventario_service'
 import { usePermisos } from '../../../hooks/usePermisos'
-import './Inventario.css'
+
+const numberCO = (n, d = 2) =>
+  (Number(n) || 0).toLocaleString('es-CO', {
+    minimumFractionDigits: d,
+    maximumFractionDigits: d,
+  })
+
+const isUnidad = u => (u || '').toLowerCase() === 'unidades'
+const isKiloUnit = u => /(kg|kilo)/i.test((u || '').toLowerCase())
 
 const InventarioGeneral = () => {
-  const [dataOriginal, setDataOriginal] = useState([])
+  const [data, setData] = useState([]) // filas enriquecidas
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  // Filtros UI
   const [globalFilter, setGlobalFilter] = useState('')
+  const [tiposDisponibles, setTiposDisponibles] = useState(['todos'])
   const [tipoSeleccionado, setTipoSeleccionado] = useState('todos')
-  const [tiposDisponibles, setTiposDisponibles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [sorting, setSorting] = useState([])
-  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 30 })
 
   const { tienePermiso } = usePermisos()
 
@@ -29,231 +35,371 @@ const InventarioGeneral = () => {
     return true
   }
 
+  // ==== Carga base + enriquecimiento con /lote-producto si unidad = "unidades" ====
   useEffect(() => {
-    const fetchData = async () => {
+    let cancelled = false
+    const load = async () => {
       try {
         setLoading(true)
-        const data = await getInventarioCompleto()
-        const agrupado = agruparPorProducto(data)
-        setDataOriginal(agrupado)
+        setError(null)
 
-        const tiposUnicos = Array.from(
-          new Set(data.map(item => item.Producto?.Tipo))
-        ).filter(Boolean)
-        setTiposDisponibles(['todos', ...tiposUnicos])
-      } catch (error) {
-        console.error('Error cargando inventario general:', error.message)
+        const crudo = await getInventarioCompleto()
+        const agrupado = agruparPorProducto(crudo)
+
+        // Para los de unidad "unidades": calcular pesoUnitarioProm y pesoTotalKg
+        const deUnidades = agrupado.filter(p => isUnidad(p.unidad))
+
+        const pesosMap = new Map() // Map<id_producto, {pesoUnitarioProm, pesoTotalKg}>
+        if (deUnidades.length > 0) {
+          const jobs = deUnidades.map(async p => {
+            try {
+              const lotes = await getLotesProductoByProducto(p.id_producto)
+              let sumPU = 0
+              let countPU = 0
+              let totalKg = 0
+              for (const it of Array.isArray(lotes) ? lotes : []) {
+                const pu = Number(it?.PesoUnitarioKg)
+                const cant = Number(it?.Cantidad)
+                if (pu > 0) {
+                  sumPU += pu
+                  countPU += 1
+                  if (cant > 0) totalKg += cant * pu
+                }
+              }
+              const prom = countPU > 0 ? sumPU / countPU : 0
+              pesosMap.set(p.id_producto, {
+                pesoUnitarioProm: prom,
+                pesoTotalKg: totalKg,
+              })
+            } catch (e) {
+              console.error('Error /lote-producto', p.id_producto, e)
+              pesosMap.set(p.id_producto, {
+                pesoUnitarioProm: 0,
+                pesoTotalKg: 0,
+              })
+            }
+          })
+          await Promise.all(jobs)
+        }
+
+        const enriquecido = agrupado.map(p => {
+          const pesos = pesosMap.get(p.id_producto)
+          return {
+            ...p,
+            pesoUnitarioKg: isUnidad(p.unidad)
+              ? Number(pesos?.pesoUnitarioProm || 0)
+              : 0,
+            pesoTotalKg: isUnidad(p.unidad)
+              ? Number(pesos?.pesoTotalKg || 0)
+              : 0,
+          }
+        })
+
+        const tiposUI = [
+          'todos',
+          ...Array.from(new Set(enriquecido.map(r => r.tipo).filter(Boolean))),
+        ]
+
+        if (!cancelled) {
+          setData(enriquecido)
+          setTiposDisponibles(tiposUI)
+        }
+      } catch (err) {
+        console.error(err)
+        if (!cancelled) setError('No se pudo cargar el inventario.')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
-
-    fetchData()
+    load()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const agruparPorProducto = data => {
-    const mapa = {}
-
-    for (const item of data) {
-      const key = item.id_producto
-      if (!mapa[key]) {
-        mapa[key] = {
-          id_producto: item.Producto.Id_producto,
-          nombre_producto: item.Producto.Nombre,
-          unidad: item.Producto.Unidad_de_medida,
-          tipo: item.Producto.Tipo,
+  // ==== Agrupar por producto ====
+  const agruparPorProducto = rows => {
+    const mapa = new Map()
+    for (const item of rows || []) {
+      const key = item?.id_producto || item?.Producto?.Id_producto
+      if (!key) continue
+      if (!mapa.has(key)) {
+        mapa.set(key, {
+          id_producto: item?.Producto?.Id_producto ?? key,
+          nombre_producto: item?.Producto?.Nombre ?? '',
+          unidad: item?.Producto?.Unidad_de_medida ?? '',
+          tipo: item?.Producto?.Tipo ?? '',
           cantidad: 0,
-          ultima_fecha: item.LoteProducto?.Fecha_registro || null,
-        }
+          ultima_fecha: item?.LoteProducto?.Fecha_registro ?? null,
+        })
       }
+      const acc = mapa.get(key)
+      acc.cantidad += Number(item?.Cantidad) || 0
 
-      mapa[key].cantidad += item.Cantidad
-
-      const nuevaFecha = item.LoteProducto?.Fecha_registro
-      if (nuevaFecha) {
-        const actual = new Date(mapa[key].ultima_fecha)
-        const nueva = new Date(nuevaFecha)
-        if (nueva > actual) {
-          mapa[key].ultima_fecha = nuevaFecha
-        }
+      const nf = item?.LoteProducto?.Fecha_registro
+      if (nf) {
+        const actual = acc.ultima_fecha ? new Date(acc.ultima_fecha) : null
+        const nueva = new Date(nf)
+        if (!actual || nueva > actual) acc.ultima_fecha = nf
       }
     }
 
-    return Object.values(mapa).map(item => ({
-      ...item,
-      cantidad: Number(item.cantidad),
-      ultima_fecha: item.ultima_fecha
-        ? new Date(item.ultima_fecha).toLocaleDateString('es-CO')
+    return Array.from(mapa.values()).map(it => ({
+      ...it,
+      cantidad: Number(it.cantidad) || 0,
+      ultima_fecha_fmt: it.ultima_fecha
+        ? new Date(it.ultima_fecha).toLocaleDateString('es-CO')
         : 'N/A',
     }))
   }
 
-  const filteredData = useMemo(() => {
-    let filtrado = dataOriginal
-
-    // 🛑 Filtrar primero por permisos
-    filtrado = filtrado.filter(obj => puedeVerTipo(obj.tipo))
-
-    // 🎯 Luego por tipo seleccionado
-    if (tipoSeleccionado !== 'todos') {
-      filtrado = filtrado.filter(obj => obj.tipo === tipoSeleccionado)
-    }
-
-    // 🔍 Y finalmente filtro global por texto
-    if (globalFilter) {
-      filtrado = filtrado.filter(obj =>
-        Object.values(obj).some(value =>
-          String(value).toLowerCase().includes(globalFilter.toLowerCase())
-        )
+  // ==== Filtrado UI (permisos, tipo, buscador) ====
+  const filtered = useMemo(() => {
+    const q = globalFilter.trim().toLowerCase()
+    return data
+      .filter(r => puedeVerTipo(r.tipo))
+      .filter(r =>
+        tipoSeleccionado === 'todos' ? true : r.tipo === tipoSeleccionado
       )
-    }
-
-    return filtrado
+      .filter(r => {
+        if (!q) return true
+        return (
+          String(r.id_producto).toLowerCase().includes(q) ||
+          String(r.nombre_producto).toLowerCase().includes(q) ||
+          String(r.unidad).toLowerCase().includes(q) ||
+          String(r.tipo).toLowerCase().includes(q)
+        )
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataOriginal, globalFilter, tipoSeleccionado])
+  }, [data, globalFilter, tipoSeleccionado])
 
-  const totalCantidad = useMemo(() => {
-    return filteredData.reduce((sum, item) => sum + item.cantidad, 0)
-  }, [filteredData])
+  // ==== Totales correctos por tipo de unidad ====
+  const totalUnidades = useMemo(
+    () =>
+      filtered
+        .filter(r => isUnidad(r.unidad))
+        .reduce((s, r) => s + (Number(r.cantidad) || 0), 0),
+    [filtered]
+  )
 
+  const totalKilos = useMemo(
+    () =>
+      filtered.reduce((s, r) => {
+        if (isUnidad(r.unidad)) {
+          // unidades -> usar kilos calculados desde /lote-producto
+          return s + (Number(r.pesoTotalKg) || 0)
+        }
+        if (isKiloUnit(r.unidad)) {
+          // unidad ya es kilo -> sumar cantidad
+          return s + (Number(r.cantidad) || 0)
+        }
+        // otras unidades (m, l, etc.) no suman a kilos
+        return s
+      }, 0),
+    [filtered]
+  )
+
+  // ==== Exportar Excel ====
+  const exportar = () => {
+    const wb = utils.book_new()
+    const head = [
+      ['Inventario General'],
+      ['Filtros', `Tipo=${tipoSeleccionado}`, `Buscar="${globalFilter}"`],
+      [
+        'Totales',
+        `Unidades=${totalUnidades}`,
+        `Kilos=${numberCO(totalKilos, 2)}`,
+      ],
+      [],
+    ]
+    const sheet = utils.aoa_to_sheet(head)
+    utils.sheet_add_json(
+      sheet,
+      filtered.map(r => ({
+        'Código Producto': r.id_producto,
+        'Nombre Producto': r.nombre_producto,
+        Unidad: r.unidad,
+        Tipo: r.tipo,
+        'Cantidad Total': r.cantidad,
+        'Peso unitario (kg)': Number(r.pesoUnitarioKg) || 0,
+        'Medida en kilos (kg)':
+          Number(r.pesoTotalKg) ||
+          (isKiloUnit(r.unidad) ? Number(r.cantidad) || 0 : 0),
+        'Última Entrada': r.ultima_fecha_fmt,
+      })),
+      { origin: -1 }
+    )
+    utils.book_append_sheet(wb, sheet, 'Inventario')
+    writeFile(wb, 'InventarioGeneral.xlsx')
+  }
+
+  // ==== Columnas DataTable ====
   const columns = useMemo(
     () => [
-      { accessorKey: 'id_producto', header: 'Código Producto' },
-      { accessorKey: 'nombre_producto', header: 'Nombre Producto' },
-      { accessorKey: 'unidad', header: 'Unidad' },
       {
-        accessorKey: 'cantidad',
-        header: 'Cantidad Total',
-        sortingFn: 'basic',
+        name: 'Código',
+        selector: r => r.id_producto,
+        sortable: true,
+        width: '160px',
       },
-      { accessorKey: 'ultima_fecha', header: 'Última Entrada' },
+      {
+        name: 'Nombre',
+        selector: r => r.nombre_producto,
+        sortable: true,
+        grow: 3,
+        wrap: true,
+      },
+      {
+        name: 'Unidad',
+        selector: r => r.unidad,
+        sortable: true,
+        width: '120px',
+      },
+      {
+        name: 'Cantidad Total',
+        selector: r => r.cantidad,
+        sortable: true,
+        right: true,
+        width: '150px',
+        cell: r => <span className='text-end'>{numberCO(r.cantidad, 2)}</span>,
+      },
+      {
+        name: 'Peso unitario (kg)',
+        selector: r => r.pesoUnitarioKg,
+        sortable: true,
+        right: true,
+        width: '170px',
+        cell: r =>
+          isUnidad(r.unidad) ? (
+            <span className='text-end'>{numberCO(r.pesoUnitarioKg, 2)}</span>
+          ) : (
+            <span className='text-muted'>—</span>
+          ),
+      },
+      {
+        name: 'Medida en kilos (kg)',
+        selector: r =>
+          isUnidad(r.unidad)
+            ? r.pesoTotalKg
+            : isKiloUnit(r.unidad)
+            ? r.cantidad
+            : 0,
+        sortable: true,
+        right: true,
+        width: '190px',
+        cell: r => {
+          const kg = isUnidad(r.unidad)
+            ? r.pesoTotalKg
+            : isKiloUnit(r.unidad)
+            ? r.cantidad
+            : 0
+          return kg > 0 ? (
+            <span className='fw-semibold text-end'>{numberCO(kg, 2)}</span>
+          ) : (
+            <span className='text-muted'>—</span>
+          )
+        },
+      },
+      {
+        name: 'Última Entrada',
+        selector: r => r.ultima_fecha_fmt,
+        sortable: true,
+        width: '150px',
+      },
     ],
     []
   )
 
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    manualPagination: false,
-    pageCount: Math.ceil(filteredData.length / pagination.pageSize),
-  })
-
-  const exportToExcel = () => {
-    const worksheet = utils.json_to_sheet(filteredData)
-    const workbook = utils.book_new()
-    utils.book_append_sheet(workbook, worksheet, 'Inventario General')
-    writeFile(workbook, 'InventarioGeneral.xlsx')
+  // Estilos DataTable (coinciden con tus otras tablas)
+  const customStyles = {
+    headCells: {
+      style: {
+        fontWeight: 600,
+        whiteSpace: 'normal',
+        lineHeight: '1.1',
+        paddingTop: '0.75rem',
+        paddingBottom: '0.75rem',
+      },
+    },
+    rows: { style: { minHeight: '44px' } },
   }
 
-  return (
-    <div className='producto-container'>
-      <div className='producto-header'>
-        <div className='izquierda'>
-          <button className='btn-excel' onClick={exportToExcel}>
-            <FaFileExcel size={32} />
-          </button>
-        </div>
+  // SubHeader (buscador, tipos, totales, export)
+  const SubHeader = (
+    <div className='d-flex flex-wrap gap-2 w-100 align-items-center'>
+      <div className='input-group' style={{ maxWidth: 320 }}>
+        <span className='input-group-text'>Buscar</span>
+        <input
+          type='text'
+          className='form-control'
+          placeholder='Código, nombre, unidad o tipo…'
+          value={globalFilter}
+          onChange={e => setGlobalFilter(e.target.value)}
+        />
       </div>
 
-      <div className='filtro-radio-tipo'>
-        {tiposDisponibles.map(tipo => (
-          <label key={tipo}>
+      <div className='d-flex align-items-center flex-wrap gap-2'>
+        {tiposDisponibles.map(t => (
+          <label key={t} className='form-check form-check-inline m-0'>
             <input
               type='radio'
+              className='form-check-input'
               name='tipo'
-              value={tipo}
-              checked={tipoSeleccionado === tipo}
-              onChange={() => setTipoSeleccionado(tipo)}
+              value={t}
+              checked={tipoSeleccionado === t}
+              onChange={() => setTipoSeleccionado(t)}
             />
-            <span>{tipo === 'todos' ? 'Todos' : tipo}</span>
+            <span className='ms-1'>{t === 'todos' ? 'Todos' : t}</span>
           </label>
         ))}
       </div>
 
-      <div className='barra-busqueda-total'>
-        <input
-          type='text'
-          placeholder='Buscar...'
-          className='form-control buscador-pequeno'
-          value={globalFilter}
-          onChange={e => setGlobalFilter(e.target.value)}
+      <div className='ms-auto d-flex align-items-center gap-3'>
+        <div className='text-muted small'>
+          <strong>Total Unidades:</strong> {numberCO(totalUnidades, 2)}
+          {'  ·  '}
+          <strong>Total Kilos:</strong> {numberCO(totalKilos, 2)}
+        </div>
+        <button
+          className='btn btn-sm btn-success'
+          onClick={exportar}
+          disabled={loading || filtered.length === 0}
+        >
+          <FaFileExcel className='me-1' /> Exportar
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className='card'>
+      <div className='card-header d-flex flex-wrap gap-2 align-items-end'>
+        <div className='me-auto'>
+          <strong>Inventario General</strong>
+        </div>
+      </div>
+
+      <div className='card-body'>
+        {error && <div className='alert alert-danger py-2 mb-3'>{error}</div>}
+
+        <DataTable
+          columns={columns}
+          data={filtered}
+          progressPending={loading}
+          pagination
+          paginationPerPage={30}
+          paginationRowsPerPageOptions={[30, 50, 100]}
+          highlightOnHover
+          dense
+          responsive
+          customStyles={customStyles}
+          subHeader
+          subHeaderComponent={SubHeader}
+          persistTableHead
+          noDataComponent={
+            <div className='text-muted small py-3'>Sin datos.</div>
+          }
         />
-        <span className='total-cantidad'>
-          Total: {totalCantidad.toLocaleString()} Cantidad
-        </span>
-      </div>
-
-      <div className='tabla-productos'>
-        {loading ? (
-          <p>Cargando inventario...</p>
-        ) : (
-          <table>
-            <thead>
-              {table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <th key={header.id}>
-                      <div
-                        onClick={header.column.getToggleSortingHandler()}
-                        style={{
-                          cursor: header.column.getCanSort()
-                            ? 'pointer'
-                            : 'default',
-                        }}
-                      >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                        {header.column.getIsSorted() === 'asc' && <BiSortUp />}
-                        {header.column.getIsSorted() === 'desc' && (
-                          <BiSortDown />
-                        )}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map(row => (
-                <tr key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className='paginacion'>
-        <button
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          ◀ Anterior
-        </button>
-        <span>
-          Página {pagination.pageIndex + 1} de {table.getPageCount()}
-        </span>
-        <button
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          Siguiente ▶
-        </button>
       </div>
     </div>
   )

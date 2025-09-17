@@ -55,3 +55,19 @@ export const getHistorialConLote = async () => {
   })
   return response.data
 }
+
+/* ✅ NUEVO: /lote-producto por id_producto
+   - Retorna los registros de lote-producto filtrados por producto
+   - Usa el mismo api + token de arriba (sin crear otro service)
+*/
+export const getLotesProductoByProducto = async id_producto => {
+  if (!id_producto) return []
+  const token = getAuthToken()
+  const { data } = await api.get('/lote-producto', {
+    params: { id_producto },
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  return Array.isArray(data) ? data : []
+}
