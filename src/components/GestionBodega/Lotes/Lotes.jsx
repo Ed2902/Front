@@ -1,9 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import Modal from 'react-modal'
-import { getLotes, getLotesDisponibles } from './Lotes_service.js'
+import {
+  getLotes,
+  getLotesDisponibles,
+  getProductosDisponibles,
+} from './Lotes_service.js' // 👈 import catálogo
+import EditarRegistro from './EditarRegistro'
 import { utils, writeFile } from 'xlsx'
 import FormLote from './FormLote'
-import FormEditarLote from './FormEditarLote'
 import './Lotes.css'
 import { FaFileExcel } from 'react-icons/fa'
 import { usePermisos } from '../../../hooks/usePermisos'
@@ -16,14 +20,15 @@ const Lotes = () => {
   const [loading, setLoading] = useState(true)
 
   const [isAgregarModalOpen, setIsAgregarModalOpen] = useState(false)
-  const [isEditarModalOpen, setIsEditarModalOpen] = useState(false)
-  const [loteSeleccionado, setLoteSeleccionado] = useState(null)
+  // Removed unused state: isEditarModalOpen, loteSeleccionado
 
-  // Modal de editar registro (producto)
   const [isEditarRegistroOpen, setIsEditarRegistroOpen] = useState(false)
   const [registroAEditar, setRegistroAEditar] = useState(null)
 
   const [globalFilter, setGlobalFilter] = useState('')
+
+  // 👇 catálogo productos en mapa id->nombre
+  const [productNameById, setProductNameById] = useState({})
 
   const { tienePermiso } = usePermisos()
   const permisoLotesProveedor = tienePermiso('lotesProveedor')
@@ -37,15 +42,33 @@ const Lotes = () => {
     const s = String(id || '')
     const matches = s.match(/\d+/g)
     if (!matches || matches.length === 0) return null
-    // Tomamos el último grupo de dígitos (soporta prefijos como FW_001)
     return parseInt(matches[matches.length - 1], 10)
   }
 
   useEffect(() => {
     if (permisoLotesProveedor || permisoLotesCliente) {
       fetchLotes()
+      fetchProductoMap() // 👈 cargar nombres
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permisoLotesProveedor, permisoLotesCliente])
+
+  const fetchProductoMap = async () => {
+    try {
+      const data = await getProductosDisponibles()
+      // data: [{ Id_producto, Nombre, ... }]
+      const map = Object.fromEntries(
+        (data || []).map(p => [String(p.Id_producto), p.Nombre])
+      )
+      setProductNameById(map)
+    } catch (err) {
+      console.error(
+        'Error cargando catálogo de productos:',
+        err?.message || err
+      )
+      setProductNameById({})
+    }
+  }
 
   const fetchLotes = async () => {
     try {
@@ -72,17 +95,12 @@ const Lotes = () => {
   const filteredLotes = useMemo(() => {
     let list = lotesData.filter(item => !isNoAplica(item.id_lote))
 
-    if (permisoLotesProveedor && !permisoLotesCliente) {
-      list = list.filter(item => item.Proveedor !== null)
-    }
-    if (permisoLotesCliente && !permisoLotesProveedor) {
-      list = list.filter(item => item.Cliente !== null)
-    }
-    if (permisoLotesProveedor && permisoLotesCliente) {
-      list = list.filter(
-        item => item.Proveedor !== null || item.Cliente !== null
-      )
-    }
+    if (permisoLotesProveedor && !permisoLotesCliente)
+      list = list.filter(i => i.Proveedor !== null)
+    if (permisoLotesCliente && !permisoLotesProveedor)
+      list = list.filter(i => i.Cliente !== null)
+    if (permisoLotesProveedor && permisoLotesCliente)
+      list = list.filter(i => i.Proveedor !== null || i.Cliente !== null)
 
     if (globalFilter) {
       const gf = globalFilter.toLowerCase()
@@ -100,9 +118,6 @@ const Lotes = () => {
     return list
   }, [lotesData, globalFilter, permisoLotesProveedor, permisoLotesCliente])
 
-  // Agrupar por lote y ordenar:
-  // 1) Por número de id_lote (desc) si ambos tienen número
-  // 2) Si no, por fecha más reciente del grupo (desc)
   const lotesAgrupadosOrdenados = useMemo(() => {
     const agrupados = {}
     for (const item of filteredLotes) {
@@ -115,17 +130,9 @@ const Lotes = () => {
       const [idB, regsB] = b
       const nA = getIdNum(idA)
       const nB = getIdNum(idB)
-
-      if (
-        nA !== null &&
-        nB !== null &&
-        !Number.isNaN(nA) &&
-        !Number.isNaN(nB)
-      ) {
+      if (nA != null && nB != null && !Number.isNaN(nA) && !Number.isNaN(nB)) {
         return nB - nA // DESC por número de ID
       }
-
-      // fallback: fecha más reciente del grupo
       const maxA = Math.max(
         ...regsA.map(r => new Date(r.Fecha_registro).getTime())
       )
@@ -151,7 +158,9 @@ const Lotes = () => {
   const exportToExcel = () => {
     const filasPlanas = filteredLotes.map(r => ({
       Lote: r.id_lote,
-      Producto: r.id_producto,
+      Producto: `${r.id_producto} — ${
+        productNameById[String(r.id_producto)] || r.Nombre || ''
+      }`, // 👈 id + nombre
       Cantidad: r.Cantidad,
       'Peso x Unidad (Kg)':
         r.PesoUnitarioKg == null ? '' : Number(r.PesoUnitarioKg),
@@ -167,20 +176,6 @@ const Lotes = () => {
     writeFile(libro, 'Lotes.xlsx')
   }
 
-  const handleCerrarEditarModal = () => {
-    setLoteSeleccionado(null)
-    setIsEditarModalOpen(false)
-  }
-  const handleSuccessEditar = () => {
-    handleCerrarEditarModal()
-    fetchLotes()
-  }
-  const handleSuccessAgregar = () => {
-    setIsAgregarModalOpen(false)
-    fetchLotes()
-  }
-
-  // Editar registro (producto)
   const openEditarRegistro = registro => {
     setRegistroAEditar(registro)
     setIsEditarRegistroOpen(true)
@@ -190,7 +185,6 @@ const Lotes = () => {
     setIsEditarRegistroOpen(false)
   }
 
-  // utilidad para key estable (usa id_lote_producto si existe)
   const rowKey = (r, i) =>
     r.id_lote_producto ||
     r.Id_lote_producto ||
@@ -199,7 +193,7 @@ const Lotes = () => {
 
   return (
     <>
-      {/* Modal Agregar */}
+      {/* Modales */}
       <Modal
         isOpen={isAgregarModalOpen}
         onRequestClose={() => setIsAgregarModalOpen(false)}
@@ -208,27 +202,14 @@ const Lotes = () => {
         overlayClassName='modal-overlay'
       >
         <h2 className='mb-4'>Agregar Lote</h2>
-        <FormLote onSuccess={handleSuccessAgregar} />
+        <FormLote
+          onSuccess={() => {
+            setIsAgregarModalOpen(false)
+            fetchLotes()
+          }}
+        />
       </Modal>
 
-      {/* Modal Editar Lote (cabecera) */}
-      <Modal
-        isOpen={isEditarModalOpen}
-        onRequestClose={handleCerrarEditarModal}
-        contentLabel='Editar Lote'
-        className='modal-content'
-        overlayClassName='modal-overlay'
-      >
-        <h2 className='mb-4'>Editar Lote</h2>
-        {loteSeleccionado && (
-          <FormEditarLote
-            lote={loteSeleccionado}
-            onSuccess={handleSuccessEditar}
-          />
-        )}
-      </Modal>
-
-      {/* Modal Editar Registro (producto) */}
       <Modal
         isOpen={isEditarRegistroOpen}
         onRequestClose={closeEditarRegistro}
@@ -237,63 +218,22 @@ const Lotes = () => {
         overlayClassName='modal-overlay'
       >
         <h3 className='mb-3'>Editar producto del lote</h3>
-        {registroAEditar ? (
-          <div className='d-flex flex-column gap-2'>
-            <div>
-              <strong>ID Lote-Producto:</strong>{' '}
-              {registroAEditar.id_lote_producto ||
-                registroAEditar.Id_lote_producto ||
-                '—'}
-            </div>
-            <div>
-              <strong>Lote:</strong> {registroAEditar.id_lote}
-            </div>
-            <div>
-              <strong>Producto:</strong> {registroAEditar.id_producto}
-            </div>
-            <div>
-              <strong>Cantidad:</strong>{' '}
-              {formatNum(registroAEditar.Cantidad, 2)}
-            </div>
-            <div>
-              <strong>Peso U. (Kg):</strong>{' '}
-              {registroAEditar.PesoUnitarioKg == null
-                ? 'N/A'
-                : formatNum(registroAEditar.PesoUnitarioKg, 3)}
-            </div>
-
-            {/* Placeholder: aquí luego llamas updateLoteProducto(`/lote-producto/${id}`) */}
-            <div className='alert alert-info mt-2'>
-              Hola — aquí irá el formulario de edición. Usarás:{' '}
-              <code>
-                /lote-producto/
-                {String(
-                  registroAEditar.id_lote_producto ||
-                    registroAEditar.Id_lote_producto ||
-                    ''
-                ).trim()}
-              </code>
-            </div>
-
-            <div className='text-end'>
-              <button
-                className='btn btn-secondary'
-                onClick={closeEditarRegistro}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p>Hola</p>
+        {registroAEditar && (
+          <EditarRegistro
+            registro={registroAEditar}
+            onCancel={closeEditarRegistro}
+            onSuccess={() => {
+              closeEditarRegistro()
+              fetchLotes()
+            }}
+          />
         )}
       </Modal>
 
+      {/* Toolbar */}
       <div className='lotes-container container mt-4'>
-        {/* Toolbar con buscador centrado */}
         <div className='d-flex flex-wrap align-items-center gap-2 mb-3'>
           <h2 className='m-0 me-auto'>Lotes</h2>
-
           <div className='flex-grow-1 d-flex justify-content-center'>
             <input
               type='text'
@@ -303,7 +243,6 @@ const Lotes = () => {
               onChange={e => setGlobalFilter(e.target.value)}
             />
           </div>
-
           <div className='d-flex gap-2'>
             <button
               className='btn-excel'
@@ -315,7 +254,6 @@ const Lotes = () => {
             <button
               className='btn-agregar-lote'
               onClick={() => setIsAgregarModalOpen(true)}
-              disabled={!permisoLotesProveedor && !permisoLotesCliente}
             >
               Agregar Lote
             </button>
@@ -324,18 +262,14 @@ const Lotes = () => {
 
         {loading ? (
           <p>Cargando lotes...</p>
-        ) : !permisoLotesProveedor && !permisoLotesCliente ? (
-          <p>No tiene permisos para ver los lotes</p>
         ) : (
           <div className='accordion' id='lotesAccordion'>
             {lotesAgrupadosOrdenados.map(([idLote, registros], index) => {
-              // fecha más reciente del grupo para mostrar
-              const fechaGrupo = (() => {
-                const maxTs = Math.max(
+              const fechaGrupo = new Date(
+                Math.max(
                   ...registros.map(r => new Date(r.Fecha_registro).getTime())
                 )
-                return new Date(maxTs).toLocaleString()
-              })()
+              ).toLocaleString()
               const comentario = lotesComentarios[idLote] || 'Sin comentarios'
 
               return (
@@ -362,6 +296,7 @@ const Lotes = () => {
                       </div>
                     </button>
                   </h2>
+
                   <div
                     id={`collapse-${index}`}
                     className='accordion-collapse collapse'
@@ -400,10 +335,22 @@ const Lotes = () => {
                               ) : (
                                 'N/A'
                               )
+                              const nombre =
+                                productNameById[String(r.id_producto)] ||
+                                r.Nombre ||
+                                ''
                               return (
                                 <tr key={rowKey(r, i)}>
                                   <td className='text-break'>
-                                    {r.id_producto}
+                                    <div className='text-start'>
+                                      <div className='fw-semibold'>
+                                        {r.id_producto}
+                                      </div>
+                                      <div className='text-muted small'>
+                                        {nombre}
+                                      </div>{' '}
+                                      {/* 👈 nombre debajo */}
+                                    </div>
                                   </td>
                                   <td>{formatNum(r.Cantidad, 2)}</td>
                                   <td>
