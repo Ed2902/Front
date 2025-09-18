@@ -4,7 +4,6 @@ import './Inventario.css'
 import {
   FaBoxes,
   FaTruckLoading,
-  FaUserFriends,
   FaSearch,
   FaExchangeAlt,
   FaArrowDown,
@@ -15,9 +14,9 @@ import {
 
 import InventarioGeneral from './InventarioGeneral'
 import InventarioProveedor from './InventarioProveedor'
-import InventarioCliente from './InventarioCliente'
 import InventarioLote from './InventarioLote.jsx'
 import InventarioPorTercero from './InventarioPorTercero.jsx'
+import InventarioConsolidadoRS from './InventarioConsolidadoRS'
 import UbicarProducto from './UbicarProducto'
 import FormIngreso from './Formingreso'
 import FormTransformacion from './FormTransformacion'
@@ -39,8 +38,9 @@ const Inventario = () => {
 
   const renderTabContent = () => {
     if (activeTab === 'general') return <InventarioGeneral />
+    if (activeTab === 'consolidado' && puedeVerRS)
+      return <InventarioConsolidadoRS /> // ✅ Nuevo
     if (activeTab === 'proveedor' && puedeVerRS) return <InventarioProveedor />
-    if (activeTab === 'cliente' && puedeVerBodega) return <InventarioCliente />
     if (activeTab === 'lote' && (puedeVerRS || puedeVerBodega))
       return <InventarioLote />
     if (activeTab === 'ocupacion' && (puedeVerRS || puedeVerBodega))
@@ -60,6 +60,16 @@ const Inventario = () => {
             <FaBoxes className='icono-tab' /> Inventario General
           </li>
 
+          {/* ✅ Nueva pestaña: después de Inventario General */}
+          {puedeVerRS && (
+            <li
+              className={activeTab === 'consolidado' ? 'activo' : ''}
+              onClick={() => setActiveTab('consolidado')}
+            >
+              <FaBoxes className='icono-tab' /> Cons por producto
+            </li>
+          )}
+
           {puedeVerRS && (
             <li
               className={activeTab === 'proveedor' ? 'activo' : ''}
@@ -69,6 +79,7 @@ const Inventario = () => {
             </li>
           )}
 
+          {/* ❌ Quitado: Por Cliente
           {puedeVerBodega && (
             <li
               className={activeTab === 'cliente' ? 'activo' : ''}
@@ -76,7 +87,7 @@ const Inventario = () => {
             >
               <FaUserFriends className='icono-tab' /> Por Cliente
             </li>
-          )}
+          )} */}
 
           {(puedeVerRS || puedeVerBodega) && (
             <>

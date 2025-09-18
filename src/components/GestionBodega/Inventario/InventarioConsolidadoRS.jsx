@@ -3,6 +3,7 @@ import DataTable from 'react-data-table-component'
 import { FaFileExcel } from 'react-icons/fa'
 import { utils, writeFile } from 'xlsx'
 import { getInventarioResumen } from './inventario_service'
+import { usePermisos } from '../../../hooks/usePermisos'
 
 const numberCO = (n, d = 2) =>
   (Number(n) || 0).toLocaleString('es-CO', {
@@ -13,11 +14,13 @@ const numberCO = (n, d = 2) =>
 const isUnidad = u => (u || '').toLowerCase() === 'unidades'
 const isKiloUnit = u => /(kg|kilo)/i.test((u || '').toLowerCase())
 
-const InventarioProveedor = () => {
-  const [rows, setRows] = useState([]) // filas consolidadas por proveedor+producto
+const InventarioConsolidadoRS = () => {
+  const [rows, setRows] = useState([]) // filas consolidadas por producto (solo RS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
+
+  const { tienePermiso } = usePermisos()
 
   useEffect(() => {
     let cancelled = false
@@ -29,67 +32,49 @@ const InventarioProveedor = () => {
         const data = await getInventarioResumen()
         const arr = Array.isArray(data) ? data : []
 
-        // Consolidar por (proveedor, producto)
-        const map = new Map()
-        for (const it of arr) {
-          const provId = it?.Id_proveedor ?? it?.id_proveedor ?? 'SIN_PROV'
-          const provName =
-            it?.Nombre_Proveedor ?? it?.Proveedor?.Nombre ?? 'Sin proveedor'
-          const prodId = it?.Id_producto ?? it?.id_producto
-          if (!prodId) continue
+        // 1) SOLO RS
+        const onlyRS = arr.filter(it => (it?.Tipo ?? '').toUpperCase() === 'RS')
 
-          const prodName = it?.Nombre_Producto ?? it?.Producto?.Nombre ?? ''
+        // 2) Consolidar por Id_producto
+        const map = new Map()
+        for (const it of onlyRS) {
+          const id = it?.Id_producto ?? it?.id_producto
+          if (!id) continue
+
+          const nombre = it?.Nombre_Producto ?? it?.Producto?.Nombre ?? ''
           const unidad =
             it?.Unidad_de_medida ?? it?.Producto?.Unidad_de_medida ?? ''
-          const loteId = it?.Id_lote ?? it?.id_lote ?? null
           const fechaUlt =
             it?.Fecha_ultimo_registro ?? it?.Fecha_ultimo_registri ?? null
 
-          // Cantidad fila (prefiere inventario; fallback lote)
+          // Cantidad de la fila (preferir inventario; fallback lote)
           const cantidadFila =
             Number(it?.Cantidad_Inventario ?? it?.Cantidad) ||
             Number(it?.Cantidad_Lote) ||
             0
 
-          // Kilos por fila:
-          //  - Usa PesoTotalKg si viene (>0)
-          //  - Si unidad = unidades y hay PU -> cantidad * PU
-          //  - Si unidad es kilos -> cantidad
-          //  - Si no, 0
-          let kilosFila = 0
-          const pesoTotalFromBE = Number(it?.PesoTotalKg) || 0
+          // Kilos por fila
           const pu =
             it?.PesoUnitarioKg != null ? Number(it.PesoUnitarioKg) : null
+          let kilosFila = 0
+          if (isUnidad(unidad) && pu && pu > 0) kilosFila = cantidadFila * pu
+          else if (isKiloUnit(unidad)) kilosFila = cantidadFila
 
-          if (pesoTotalFromBE > 0) {
-            kilosFila = pesoTotalFromBE
-          } else if (isUnidad(unidad) && pu && pu > 0) {
-            kilosFila = cantidadFila * pu
-          } else if (isKiloUnit(unidad)) {
-            kilosFila = cantidadFila
-          }
-
-          const key = `${provId}|${prodId}`
-          if (!map.has(key)) {
-            map.set(key, {
-              id_proveedor: provId,
-              proveedor: provName,
-              id_producto: prodId,
-              nombre_producto: prodName,
+          if (!map.has(id)) {
+            map.set(id, {
+              id_producto: id,
+              nombre_producto: nombre,
               unidad_referencial: unidad, // informativo
-              cantidad_total: 0,
-              unidades_total: 0, // solo donde unidad = "unidades"
-              kilos_total: 0,
-              lotes: new Set(),
+              cantidad_total: 0, // suma de cantidades crudas (puede mezclar)
+              unidades_total: 0, // 👈 suma SÓLO donde unidad=unidades
+              kilos_total: 0, // suma de kilos calculados/ya en kg
               ultimo_ingreso: fechaUlt,
             })
           }
-
-          const acc = map.get(key)
+          const acc = map.get(id)
           acc.cantidad_total += cantidadFila
           acc.kilos_total += kilosFila
-          if (isUnidad(unidad)) acc.unidades_total += cantidadFila
-          if (loteId) acc.lotes.add(loteId)
+          if (isUnidad(unidad)) acc.unidades_total += cantidadFila // 👈 indicador de unidades
 
           // último ingreso más reciente
           if (fechaUlt) {
@@ -104,20 +89,18 @@ const InventarioProveedor = () => {
           cantidad_total: Number(r.cantidad_total) || 0,
           unidades_total: Number(r.unidades_total) || 0,
           kilos_total: Number(r.kilos_total) || 0,
-          lotes_count: r.lotes.size,
           ultimo_ingreso_fmt: r.ultimo_ingreso
             ? new Date(r.ultimo_ingreso).toLocaleDateString('es-CO')
             : 'N/A',
         }))
 
-        // Orden sugerido: más kilos primero
+        // Orden: más kilos primero
         out.sort((a, b) => b.kilos_total - a.kilos_total)
 
         if (!cancelled) setRows(out)
       } catch (err) {
         console.error(err)
-        if (!cancelled)
-          setError('No se pudo cargar el inventario por proveedor.')
+        if (!cancelled) setError('No se pudo cargar el consolidado RS.')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -128,44 +111,45 @@ const InventarioProveedor = () => {
     }
   }, [])
 
-  // Buscar por proveedor, código o nombre
+  // Buscar por código o nombre (respetando permiso RS)
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return rows.filter(r => {
-      if (!q) return true
-      return (
-        String(r.proveedor).toLowerCase().includes(q) ||
-        String(r.id_producto).toLowerCase().includes(q) ||
-        String(r.nombre_producto).toLowerCase().includes(q)
-      )
-    })
-  }, [rows, search])
+    return rows
+      .filter(() => tienePermiso('productosRS'))
+      .filter(r => {
+        if (!q) return true
+        return (
+          String(r.id_producto).toLowerCase().includes(q) ||
+          String(r.nombre_producto).toLowerCase().includes(q)
+        )
+      })
+  }, [rows, search, tienePermiso])
 
   // Totales
-  const totalCantidad = useMemo(
+  const totalCant = useMemo(
     () => filtered.reduce((s, r) => s + (Number(r.cantidad_total) || 0), 0),
+    [filtered]
+  )
+  const totalKg = useMemo(
+    () => filtered.reduce((s, r) => s + (Number(r.kilos_total) || 0), 0),
     [filtered]
   )
   const totalUnidades = useMemo(
     () => filtered.reduce((s, r) => s + (Number(r.unidades_total) || 0), 0),
     [filtered]
   )
-  const totalKilos = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.kilos_total) || 0), 0),
-    [filtered]
-  )
 
-  // Exportar Excel (consolidado)
+  // Export a Excel
   const exportar = () => {
     const wb = utils.book_new()
     const head = [
-      ['Inventario por Proveedor (consolidado por producto)'],
+      ['Consolidado RS por producto'],
       ['Filtros', `Buscar="${search}"`],
       [
         'Totales',
-        `Cantidad=${numberCO(totalCantidad, 2)}`,
+        `Cantidad=${numberCO(totalCant, 2)}`,
         `Unidades=${numberCO(totalUnidades, 2)}`,
-        `Kilos=${numberCO(totalKilos, 2)}`,
+        `Kilos=${numberCO(totalKg, 2)}`,
       ],
       [],
     ]
@@ -173,32 +157,22 @@ const InventarioProveedor = () => {
     utils.sheet_add_json(
       sheet,
       filtered.map(r => ({
-        Proveedor: r.proveedor,
         'Código Producto': r.id_producto,
         'Nombre Producto': r.nombre_producto,
-        'Unidad (ref.)': r.unidad_referencial,
         'Cantidad Total': r.cantidad_total,
-        'Unidades (agregadas)': r.unidades_total,
+        'Unidades (agregadas)': r.unidades_total, // 👈 nuevo en export
         'Kilos Totales': r.kilos_total,
-        'N° Lotes': r.lotes_count,
         'Último ingreso': r.ultimo_ingreso_fmt,
       })),
       { origin: -1 }
     )
-    utils.book_append_sheet(wb, sheet, 'Por Proveedor')
-    writeFile(wb, 'InventarioPorProveedor.xlsx')
+    utils.book_append_sheet(wb, sheet, 'Consolidado RS')
+    writeFile(wb, 'Consolidado_RS.xlsx')
   }
 
-  // Columnas (Nombre amplio, números a la derecha)
+  // Columnas (Nombre amplio + indicador de unidades)
   const columns = useMemo(
     () => [
-      {
-        name: 'Proveedor',
-        selector: r => r.proveedor,
-        sortable: true,
-        width: '180px',
-        wrap: true,
-      },
       {
         name: 'Código',
         selector: r => r.id_producto,
@@ -210,14 +184,8 @@ const InventarioProveedor = () => {
         selector: r => r.nombre_producto,
         sortable: true,
         grow: 6,
-        minWidth: '420px',
+        minWidth: '390px',
         wrap: false,
-      },
-      {
-        name: 'Unidad (ref.)',
-        selector: r => r.unidad_referencial,
-        sortable: true,
-        width: '100px',
       },
       {
         name: 'Cantidad Total',
@@ -257,13 +225,6 @@ const InventarioProveedor = () => {
         ),
       },
       {
-        name: 'N° Lotes',
-        selector: r => r.lotes_count,
-        sortable: true,
-        right: true,
-        width: '110px',
-      },
-      {
         name: 'Último ingreso',
         selector: r => r.ultimo_ingreso_fmt,
         sortable: true,
@@ -293,7 +254,7 @@ const InventarioProveedor = () => {
         <input
           type='text'
           className='form-control'
-          placeholder='Proveedor, código o nombre…'
+          placeholder='Código o nombre…'
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -301,11 +262,11 @@ const InventarioProveedor = () => {
 
       <div className='ms-auto d-flex align-items-center gap-3'>
         <div className='text-muted small'>
-          <strong>Total Cantidad:</strong> {numberCO(totalCantidad, 2)}
           {'  ·  '}
           <strong>Total Unidades:</strong> {numberCO(totalUnidades, 2)}
           {'  ·  '}
-          <strong>Total Kilos:</strong> {numberCO(totalKilos, 2)}
+          {'  ·  '}
+          <strong>Total Kilos:</strong> {numberCO(totalKg, 2)}
         </div>
         <button
           className='btn btn-sm btn-success'
@@ -322,8 +283,11 @@ const InventarioProveedor = () => {
     <div className='card'>
       <div className='card-header d-flex flex-wrap gap-2 align-items-end'>
         <div className='me-auto'>
-          <strong>Inventario por Proveedor</strong>
-          <div className='text-muted small'></div>
+          <strong>Consolidado RS por producto</strong>
+          <div className='text-muted small'>
+            Suma cantidades y kilos de todos los lotes del mismo producto (tipo
+            RS).
+          </div>
         </div>
       </div>
 
@@ -353,4 +317,4 @@ const InventarioProveedor = () => {
   )
 }
 
-export default InventarioProveedor
+export default InventarioConsolidadoRS

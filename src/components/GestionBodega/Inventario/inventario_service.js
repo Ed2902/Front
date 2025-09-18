@@ -71,3 +71,12 @@ export const getLotesProductoByProducto = async id_producto => {
   })
   return Array.isArray(data) ? data : []
 }
+
+// ✅ Inventario resumen (producto+lote con PU ya resuelto en el backend)
+export const getInventarioResumen = async () => {
+  const token = localStorage.getItem('token')
+  const response = await api.get('/inventario/resumen', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}

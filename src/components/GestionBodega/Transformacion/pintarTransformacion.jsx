@@ -1,14 +1,17 @@
-// src/components/Inventario/Transformaciones/PintarTransformacion.jsx
-import React, { useEffect, useMemo, useState } from 'react'
+// src/components/Inventario/Transformaciones/pintarTransformacion.jsx
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import Webcam from 'react-webcam'
 import {
   getInventarioDetalle,
   registrarTransformacion,
   getProductos,
   getBodegas,
   getUbicaciones,
-  getOperaciones, // 👈 nuevo: para llenar el select de Operación (opcional)
+  getOperaciones,
 } from './TransformacionService'
 
+// ---- helpers token → id_personal
+const getAuthToken = () => localStorage.getItem('token') || ''
 const obtenerIdPersonal = token => {
   try {
     const base64Url = token.split('.')[1]
@@ -20,89 +23,107 @@ const obtenerIdPersonal = token => {
         .join('')
     )
     return JSON.parse(jsonPayload).id_personal
-  } catch (error) {
-    console.error('Error al decodificar el token:', error)
+  } catch {
     return ''
   }
 }
 
-const getAuthToken = () => localStorage.getItem('token') || ''
+// Serializa FormData para el único log por iteración
+const serializeFormData = fd => {
+  const out = {}
+  for (const [k, v] of fd.entries()) {
+    if (v instanceof File) {
+      out[k] = { __file: true, name: v.name, size: v.size, type: v.type }
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
 
 const PintarTransformacion = ({ transformacionData }) => {
   const token = getAuthToken()
   const personalId = token ? obtenerIdPersonal(token) : ''
 
+  // Catálogos / datos base
   const [inventarioData, setInventarioData] = useState([])
   const [productos, setProductos] = useState([])
   const [bodegas, setBodegas] = useState([])
   const [ubicaciones, setUbicaciones] = useState([])
-  const [operaciones, setOperaciones] = useState([]) // 👈 lista para el select
+  const [operaciones, setOperaciones] = useState([])
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [status, setStatus] = useState(null) // {type: 'success'|'error', text: string}
 
-  const loteProductoTransformacion =
-    transformacionData?.LoteProducto?.Id_lote_producto
+  // Estado de envío / status
+  const [procesando, setProcesando] = useState(false)
+  const [status, setStatus] = useState(null) // {type, text}
+  const [progreso, setProgreso] = useState([]) // [{idx, estado, mensaje}]
 
+  // Inventario origen
+  const idLP = transformacionData?.LoteProducto?.Id_lote_producto ?? ''
   const inventarioCoincidente = useMemo(
     () =>
-      inventarioData.find(
-        item =>
-          item?.LoteProducto?.id_lote_producto === loteProductoTransformacion
+      (inventarioData || []).find(
+        i => i?.LoteProducto?.id_lote_producto === idLP
       ),
-    [inventarioData, loteProductoTransformacion]
+    [inventarioData, idLP]
   )
 
-  const [formData, setFormData] = useState({
+  // Cantidad del paso (UNIDADES) desde la tabla
+  const cantidadPaso = Number(transformacionData?.Cantidad) || ''
+
+  // Formulario GLOBAL
+  const [globalForm, setGlobalForm] = useState({
     Id_lote: '',
-    Cantidad_generada: '',
-    Tipos_transformacion: '',
     Id_producto: '',
-    Id_producto_new: '',
+    Id_Personal: personalId,
     id_bodega_origen: '',
-    id_bodega_destino: '',
     id_ubicacion_origen: '',
+    id_bodega_destino: '',
     id_ubicacion_destino: '',
     Comentario: '',
-    operacion: '', // 👈 NUEVO (opcional)
-    Id_Personal: personalId,
-    evidencia: null,
+    operacion: '',
+    Cantidad_consumada: cantidadPaso,
   })
+
+  // Ítems (carrito)
+  const [items, setItems] = useState([])
+  const [draftItem, setDraftItem] = useState({
+    Id_producto_new: '',
+    Cantidad_generada: '',
+    Tipos_transformacion: '',
+  })
+
+  // Cámara
+  const [cameraIndex, setCameraIndex] = useState(null)
+  const webcamRef = useRef(null)
 
   // Carga inicial
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       try {
         setLoading(true)
-        const [inventario, prods, bods, ubis, ops] = await Promise.all([
+        const [inv, prods, bods, ubis, ops] = await Promise.all([
           getInventarioDetalle(),
           getProductos(),
           getBodegas(),
           getUbicaciones(),
-          getOperaciones()?.catch(() => []), // por si no existe en el backend aún
+          getOperaciones().catch(() => []),
         ])
-        setInventarioData(inventario || [])
+        setInventarioData(inv || [])
         setProductos(prods || [])
         setBodegas(bods || [])
         setUbicaciones(ubis || [])
         setOperaciones(Array.isArray(ops) ? ops : [])
-      } catch (error) {
-        console.error('Error al obtener datos:', error)
-        setInventarioData([])
-        setProductos([])
-        setBodegas([])
-        setUbicaciones([])
-        setOperaciones([])
       } finally {
         setLoading(false)
       }
     }
-    fetchData()
+    load()
   }, [])
 
-  // Autocompletar campos origen con el inventario coincidente
+  // Autocompletar origen global + Cantidad_consumada
   useEffect(() => {
-    setFormData(prev => ({
+    setGlobalForm(prev => ({
       ...prev,
       Id_lote:
         transformacionData?.LoteProducto?.Lote?.Id_lote ||
@@ -112,83 +133,201 @@ const PintarTransformacion = ({ transformacionData }) => {
       id_bodega_origen: inventarioCoincidente?.id_bodega || '',
       id_ubicacion_origen: inventarioCoincidente?.id_ubicacion || '',
       Id_Personal: personalId,
+      Cantidad_consumada: cantidadPaso,
     }))
-  }, [transformacionData, inventarioCoincidente, personalId])
+  }, [transformacionData, inventarioCoincidente, personalId, cantidadPaso])
 
-  // Ubicaciones destino filtradas por bodega destino
+  // Ubicaciones destino según bodega
   const ubicacionesDestino = useMemo(() => {
-    if (!formData.id_bodega_destino) return []
-    return (ubicaciones || []).filter(
-      u => String(u.id_bodega) === String(formData.id_bodega_destino)
-    )
-  }, [ubicaciones, formData.id_bodega_destino])
+    const idB = globalForm.id_bodega_destino
+    if (!idB) return []
+    return (ubicaciones || []).filter(u => String(u.id_bodega) === String(idB))
+  }, [ubicaciones, globalForm.id_bodega_destino])
 
-  const handleInputChange = e => {
+  // Handlers
+  const onGlobalChange = e => {
     const { name, value } = e.target
-    setFormData(prev => ({
+    setGlobalForm(prev => ({
       ...prev,
       [name]: value,
       ...(name === 'id_bodega_destino' ? { id_ubicacion_destino: '' } : {}),
     }))
   }
 
-  const handleFileChange = e => {
-    setFormData(prev => ({ ...prev, evidencia: e.target.files[0] || null }))
+  const onDraftChange = e => {
+    const { name, value } = e.target
+    setDraftItem(prev => ({ ...prev, [name]: value }))
   }
 
-  const requiredOk =
-    formData.Cantidad_generada &&
-    formData.Tipos_transformacion &&
-    formData.Id_producto_new &&
-    formData.id_bodega_destino &&
-    formData.id_ubicacion_destino &&
-    formData.evidencia
+  const addItem = () => {
+    const { Id_producto_new, Cantidad_generada, Tipos_transformacion } =
+      draftItem
+    const cant = Number(Cantidad_generada)
+    if (!Id_producto_new || !cant || cant <= 0 || !Tipos_transformacion) {
+      setStatus({
+        type: 'error',
+        text: 'Completa producto, tipo y cantidad (>0).',
+      })
+      setTimeout(() => setStatus(null), 2000)
+      return
+    }
+    setItems(prev => [
+      ...prev,
+      {
+        ...draftItem,
+        Cantidad_generada: cant,
+        evidenciaFile: null,
+        evidenciaName: '',
+      },
+    ])
+    setDraftItem({
+      Id_producto_new: '',
+      Cantidad_generada: '',
+      Tipos_transformacion: '',
+    })
+  }
+
+  const removeItem = idx => setItems(prev => prev.filter((_, i) => i !== idx))
+
+  const onFileForItem = (idx, file) => {
+    setItems(prev => {
+      const copy = [...prev]
+      copy[idx] = {
+        ...copy[idx],
+        evidenciaFile: file || null,
+        evidenciaName: file?.name || '',
+      }
+      return copy
+    })
+  }
+
+  const openCameraForItem = idx => setCameraIndex(idx)
+  const closeCamera = () => setCameraIndex(null)
+  const captureForItem = () => {
+    const imageSrc = webcamRef.current?.getScreenshot()
+    if (!imageSrc) return
+    fetch(imageSrc)
+      .then(r => r.blob())
+      .then(blob => {
+        const file = new File(
+          [blob],
+          `foto-transform-${cameraIndex}-${Date.now()}.jpg`,
+          { type: 'image/jpeg' }
+        )
+        onFileForItem(cameraIndex, file)
+        setCameraIndex(null)
+      })
+  }
+
+  const allRequiredGlobal =
+    globalForm.Id_lote &&
+    globalForm.Id_producto &&
+    globalForm.id_bodega_origen &&
+    globalForm.id_ubicacion_origen &&
+    globalForm.id_bodega_destino &&
+    globalForm.id_ubicacion_destino &&
+    globalForm.Comentario
+
+  const allItemsHaveEvidence =
+    items.length > 0 && items.every(it => !!it.evidenciaFile)
 
   const handleSubmit = async e => {
     e.preventDefault()
     setStatus(null)
 
-    if (!requiredOk) {
+    if (!allRequiredGlobal) {
       setStatus({
         type: 'error',
-        text: 'Completa los campos obligatorios y adjunta evidencia.',
+        text: 'Completa campos globales y comentario.',
       })
+      setTimeout(() => setStatus(null), 2200)
+      return
+    }
+    if (!items.length) {
+      setStatus({ type: 'error', text: 'Agrega al menos un ítem destino.' })
+      setTimeout(() => setStatus(null), 1800)
+      return
+    }
+    if (!allItemsHaveEvidence) {
+      setStatus({ type: 'error', text: 'Cada ítem debe tener evidencia.' })
+      setTimeout(() => setStatus(null), 2200)
       return
     }
 
-    const payload = new FormData()
-    Object.entries(formData).forEach(([key, value]) => {
-      // Operación es opcional; el resto se envía si tiene valor
-      if (value !== null && value !== '') payload.append(key, value)
-    })
+    setProcesando(true)
+    setProgreso(
+      items.map((_, idx) => ({ idx, estado: 'pendiente', mensaje: '' }))
+    )
 
-    try {
-      setSubmitting(true)
-      await registrarTransformacion(payload)
-      setStatus({ type: 'success', text: 'Transformación registrada ✅' })
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      const fd = new FormData()
 
-      // Reset “suave” (mantener origen autocompletado)
-      setFormData(prev => ({
-        ...prev,
-        Cantidad_generada: '',
-        Tipos_transformacion: '',
-        Id_producto_new: '',
-        id_bodega_destino: '',
-        id_ubicacion_destino: '',
-        Comentario: '',
-        operacion: '',
-        evidencia: null,
-      }))
-    } catch (error) {
-      console.error('Error al registrar transformación:', error)
-      setStatus({ type: 'error', text: 'Error al registrar ❌' })
-    } finally {
-      setSubmitting(false)
-      setTimeout(() => setStatus(null), 2500)
+      // Globales
+      fd.append('Id_lote', globalForm.Id_lote)
+      fd.append('Id_producto', globalForm.Id_producto) // ORIGEN (fijo)
+      fd.append('Id_Personal', globalForm.Id_Personal || '')
+      fd.append('id_bodega_origen', globalForm.id_bodega_origen)
+      fd.append('id_ubicacion_origen', globalForm.id_ubicacion_origen)
+      fd.append('id_bodega_destino', globalForm.id_bodega_destino)
+      fd.append('id_ubicacion_destino', globalForm.id_ubicacion_destino)
+      fd.append('Comentario', globalForm.Comentario)
+      if (globalForm.operacion) fd.append('operacion', globalForm.operacion)
+
+      // 👉 Cantidad_consumada en CADA iteración (como pediste)
+      fd.append(
+        'Cantidad_consumida',
+        String(globalForm.Cantidad_consumada ?? '')
+      )
+
+      // Por ítem
+      fd.append('Id_producto_new', it.Id_producto_new)
+      fd.append('Cantidad_generada', String(it.Cantidad_generada))
+      fd.append('Tipos_transformacion', it.Tipos_transformacion)
+      fd.append('evidencia', it.evidenciaFile)
+
+      // ÚNICO LOG por iteración: lo que enviamos al backend para este producto
+      const serialized = serializeFormData(fd)
+      console.log(
+        `📤 [TX ${i + 1}/${items.length}] /historial-transformacion`,
+        serialized
+      )
+
+      try {
+        await registrarTransformacion(fd)
+        setProgreso(prev => {
+          const copy = [...prev]
+          copy[i] = { idx: i, estado: 'ok', mensaje: 'OK' }
+          return copy
+        })
+      } catch (err) {
+        setProgreso(prev => {
+          const copy = [...prev]
+          copy[i] = {
+            idx: i,
+            estado: 'error',
+            mensaje: err?.response?.data?.message || err?.message || 'Error',
+          }
+          return copy
+        })
+      }
     }
+
+    setProcesando(false)
+    setTimeout(() => {
+      const huboError = (progreso || []).some(p => p.estado === 'error')
+      setStatus({
+        type: huboError ? 'error' : 'success',
+        text: huboError
+          ? 'Proceso finalizado con errores.'
+          : 'Transformaciones registradas.',
+      })
+      setItems([])
+      setTimeout(() => setStatus(null), 2800)
+    }, 0)
   }
 
-  // Ordenar operaciones por número (si son tipo "OP001")
+  // Ordenar operaciones (OP###)
   const operacionesOrdenadas = useMemo(() => {
     const toNum = id => Number(String(id || '').replace(/\D+/g, '')) || 0
     return [...operaciones].sort(
@@ -198,7 +337,6 @@ const PintarTransformacion = ({ transformacionData }) => {
 
   return (
     <div className='container-fluid py-3'>
-      {/* Status flotante */}
       {status && (
         <div
           className={`alert ${
@@ -211,117 +349,57 @@ const PintarTransformacion = ({ transformacionData }) => {
       )}
 
       <div className='row g-3'>
-        {/* Columna izquierda: Formulario */}
+        {/* Izquierda: formulario */}
         <div className='col-lg-7'>
           <div className='card shadow-sm'>
-            <div className='card-header d-flex align-items-center justify-content-between'>
-              <h6 className='m-0'>Formulario de Transformación</h6>
+            <div className='card-header d-flex justify-content-between align-items-center'>
+              <h6 className='m-0'>Transformación (masivo por ítems)</h6>
               {loading && <span className='badge bg-secondary'>Cargando…</span>}
             </div>
+
             <div className='card-body'>
-              <form encType='multipart/form-data' onSubmit={handleSubmit}>
-                {/* Lote & Cantidad */}
+              <form onSubmit={handleSubmit} encType='multipart/form-data'>
                 <div className='row g-2'>
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>ID Lote</label>
+                  <div className='col-md-4'>
+                    <label className='form-label mb-1'>Lote</label>
                     <input
-                      type='text'
                       className='form-control form-control-sm'
-                      name='Id_lote'
-                      value={formData.Id_lote}
+                      value={globalForm.Id_lote}
                       readOnly
                     />
                   </div>
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>Cantidad generada</label>
-                    <input
-                      type='number'
-                      min='0'
-                      step='any'
-                      className='form-control form-control-sm'
-                      name='Cantidad_generada'
-                      value={formData.Cantidad_generada}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                </div>
-
-                {/* Tipo & Producto Origen (readonly) */}
-                <div className='row g-2 mt-1'>
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>
-                      Tipo transformación
-                    </label>
-                    <select
-                      className='form-select form-select-sm'
-                      name='Tipos_transformacion'
-                      value={formData.Tipos_transformacion}
-                      onChange={handleInputChange}
-                    >
-                      <option value=''>Seleccione un tipo</option>
-                      <option value='Limpieza'>Limpieza</option>
-                      <option value='Corte'>Corte</option>
-                      <option value='Re-Ubicación'>Re-Ubicación</option>
-                    </select>
-                  </div>
-
-                  <div className='col-md-6'>
+                  <div className='col-md-8'>
                     <label className='form-label mb-1'>Producto origen</label>
                     <input
-                      type='text'
                       className='form-control form-control-sm'
                       readOnly
-                      value={`${
-                        inventarioCoincidente?.Producto?.Nombre || ''
-                      } (ID: ${
-                        inventarioCoincidente?.Producto?.Id_producto || '—'
-                      })`}
+                      value={
+                        inventarioCoincidente?.Producto
+                          ? `${inventarioCoincidente?.Producto?.Nombre} (ID: ${inventarioCoincidente?.Producto?.Id_producto})`
+                          : ''
+                      }
                     />
                   </div>
                 </div>
 
-                {/* Producto Destino & Bodega Origen (readonly) */}
                 <div className='row g-2 mt-1'>
-                  <div className='col-md-6'>
+                  <div className='col-md-4'>
                     <label className='form-label mb-1'>
-                      Producto destino (ID)
+                      Cantidad consumida (UN)
                     </label>
-                    <select
-                      className='form-select form-select-sm'
-                      name='Id_producto_new'
-                      value={formData.Id_producto_new}
-                      onChange={handleInputChange}
-                    >
-                      <option value=''>Seleccione producto</option>
-                      {productos.map(p => (
-                        <option key={p.Id_producto} value={p.Id_producto}>
-                          {p.Nombre} (ID: {p.Id_producto})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>Bodega origen</label>
                     <input
-                      type='text'
                       className='form-control form-control-sm'
+                      value={globalForm.Cantidad_consumada ?? ''}
                       readOnly
-                      value={`${
-                        inventarioCoincidente?.Bodega?.nombre || ''
-                      } (ID: ${inventarioCoincidente?.id_bodega || '—'})`}
                     />
                   </div>
-                </div>
-
-                {/* Bodega/Ubicación destino & Ubicación Origen (readonly) */}
-                <div className='row g-2 mt-1'>
-                  <div className='col-md-6'>
+                  <div className='col-md-4'>
                     <label className='form-label mb-1'>Bodega destino</label>
                     <select
                       className='form-select form-select-sm'
                       name='id_bodega_destino'
-                      value={formData.id_bodega_destino}
-                      onChange={handleInputChange}
+                      value={globalForm.id_bodega_destino}
+                      onChange={onGlobalChange}
                     >
                       <option value=''>Seleccione bodega</option>
                       {bodegas.map(b => (
@@ -332,33 +410,19 @@ const PintarTransformacion = ({ transformacionData }) => {
                     </select>
                   </div>
 
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>Ubicación origen</label>
-                    <input
-                      type='text'
-                      className='form-control form-control-sm'
-                      readOnly
-                      value={`${
-                        inventarioCoincidente?.UbicacionBodega?.nombre || ''
-                      } (ID: ${inventarioCoincidente?.id_ubicacion || '—'})`}
-                    />
-                  </div>
-                </div>
-
-                <div className='row g-2 mt-1'>
-                  <div className='col-md-6'>
+                  <div className='col-md-4'>
                     <label className='form-label mb-1'>Ubicación destino</label>
                     <select
                       className='form-select form-select-sm'
                       name='id_ubicacion_destino'
-                      value={formData.id_ubicacion_destino}
-                      onChange={handleInputChange}
-                      disabled={!formData.id_bodega_destino}
+                      value={globalForm.id_ubicacion_destino}
+                      onChange={onGlobalChange}
+                      disabled={!globalForm.id_bodega_destino}
                     >
                       <option value=''>
-                        {formData.id_bodega_destino
+                        {globalForm.id_bodega_destino
                           ? 'Seleccione ubicación'
-                          : 'Seleccione una bodega primero'}
+                          : 'Seleccione bodega primero'}
                       </option>
                       {ubicacionesDestino.map(u => (
                         <option key={u.id_ubicacion} value={u.id_ubicacion}>
@@ -367,20 +431,8 @@ const PintarTransformacion = ({ transformacionData }) => {
                       ))}
                     </select>
                   </div>
-
-                  <div className='col-md-6'>
-                    <label className='form-label mb-1'>Evidencia</label>
-                    <input
-                      type='file'
-                      className='form-control form-control-sm'
-                      name='evidencia'
-                      onChange={handleFileChange}
-                      accept='image/*'
-                    />
-                  </div>
                 </div>
 
-                {/* Operación (opcional) */}
                 <div className='row g-2 mt-1'>
                   <div className='col-md-6'>
                     <label className='form-label mb-1'>
@@ -389,8 +441,8 @@ const PintarTransformacion = ({ transformacionData }) => {
                     <select
                       className='form-select form-select-sm'
                       name='operacion'
-                      value={formData.operacion}
-                      onChange={handleInputChange}
+                      value={globalForm.operacion}
+                      onChange={onGlobalChange}
                     >
                       <option value=''>Sin operación</option>
                       {operacionesOrdenadas.map(op => (
@@ -400,54 +452,300 @@ const PintarTransformacion = ({ transformacionData }) => {
                       ))}
                     </select>
                   </div>
+                  <div className='col-md-6'>
+                    <label className='form-label mb-1'>Comentario global</label>
+                    <input
+                      className='form-control form-control-sm'
+                      name='Comentario'
+                      value={globalForm.Comentario}
+                      onChange={onGlobalChange}
+                      placeholder='Notas u observaciones…'
+                    />
+                  </div>
                 </div>
 
-                {/* Comentario */}
-                <div className='mt-2'>
-                  <label className='form-label mb-1'>Comentario</label>
-                  <textarea
-                    className='form-control form-control-sm'
-                    name='Comentario'
-                    rows={2}
-                    value={formData.Comentario}
-                    onChange={handleInputChange}
-                  />
+                {/* Sub-ítem */}
+                <div className='mt-3 p-2 border rounded'>
+                  <div className='small text-muted fw-semibold mb-2'>
+                    Agregar ítem (destino)
+                  </div>
+
+                  <div className='row g-2'>
+                    <div className='col-md-5'>
+                      <label className='form-label mb-1'>
+                        Producto destino
+                      </label>
+                      <select
+                        className='form-select form-select-sm'
+                        name='Id_producto_new'
+                        value={draftItem.Id_producto_new}
+                        onChange={onDraftChange}
+                      >
+                        <option value=''>Seleccione producto</option>
+                        {productos.map(p => (
+                          <option key={p.Id_producto} value={p.Id_producto}>
+                            {p.Nombre} (ID: {p.Id_producto})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className='col-md-3'>
+                      <label className='form-label mb-1'>Tipo</label>
+                      <select
+                        className='form-select form-select-sm'
+                        name='Tipos_transformacion'
+                        value={draftItem.Tipos_transformacion}
+                        onChange={onDraftChange}
+                      >
+                        <option value=''>Seleccione</option>
+                        <option value='Limpieza'>Limpieza</option>
+                        <option value='Corte'>Corte</option>
+                        <option value='Re-Ubicación'>Re-Ubicación</option>
+                      </select>
+                    </div>
+                    <div className='col-md-2'>
+                      <label className='form-label mb-1'>Kg generados</label>
+                      <input
+                        type='number'
+                        min='0'
+                        step='any'
+                        className='form-control form-control-sm'
+                        name='Cantidad_generada'
+                        value={draftItem.Cantidad_generada}
+                        onChange={onDraftChange}
+                      />
+                    </div>
+                    <div className='col-md-2 d-grid'>
+                      <button
+                        type='button'
+                        className='btn btn-primary btn-sm mt-4'
+                        onClick={addItem}
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* IDs ocultos backend */}
-                <input
-                  type='hidden'
-                  name='Id_Personal'
-                  value={formData.Id_Personal}
-                />
-                <input
-                  type='hidden'
-                  name='Id_producto'
-                  value={formData.Id_producto}
-                />
-                <input
-                  type='hidden'
-                  name='id_bodega_origen'
-                  value={formData.id_bodega_origen}
-                />
-                <input
-                  type='hidden'
-                  name='id_ubicacion_origen'
-                  value={formData.id_ubicacion_origen}
-                />
+                {/* Lista de ítems */}
+                <div className='mt-3'>
+                  <div className='d-flex justify-content-between align-items-center mb-2'>
+                    <span className='small text-muted'>
+                      Ítems a procesar: <strong>{items.length}</strong>
+                    </span>
+                    <button
+                      type='button'
+                      className='btn btn-outline-danger btn-sm'
+                      onClick={() => setItems([])}
+                      disabled={!items.length || procesando}
+                    >
+                      Vaciar
+                    </button>
+                  </div>
+
+                  <div className='table-responsive'>
+                    <table className='table table-sm table-striped align-middle'>
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Producto destino</th>
+                          <th className='text-end'>Kg generados</th>
+                          <th>Tipo</th>
+                          <th>Evidencia</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.length === 0 ? (
+                          <tr>
+                            <td colSpan='6' className='text-center text-muted'>
+                              Sin ítems
+                            </td>
+                          </tr>
+                        ) : (
+                          items.map((it, idx) => (
+                            <tr key={`${it.Id_producto_new}-${idx}`}>
+                              <td>{idx + 1}</td>
+                              <td>
+                                <div className='fw-semibold'>
+                                  {productos.find(
+                                    p => p.Id_producto === it.Id_producto_new
+                                  )?.Nombre || it.Id_producto_new}
+                                </div>
+                                <div className='text-muted small'>
+                                  {it.Id_producto_new}
+                                </div>
+                              </td>
+                              <td className='text-end'>
+                                {it.Cantidad_generada}
+                              </td>
+                              <td>{it.Tipos_transformacion}</td>
+                              <td>
+                                <div className='d-flex flex-column gap-2'>
+                                  <div className='d-flex gap-2'>
+                                    <button
+                                      type='button'
+                                      className='btn btn-outline-secondary btn-sm'
+                                      onClick={() => openCameraForItem(idx)}
+                                      disabled={procesando}
+                                    >
+                                      Usar cámara
+                                    </button>
+                                    <button
+                                      type='button'
+                                      className='btn btn-outline-secondary btn-sm'
+                                      onClick={() =>
+                                        document
+                                          .getElementById(`file-item-${idx}`)
+                                          .click()
+                                      }
+                                      disabled={procesando}
+                                    >
+                                      Subir imagen
+                                    </button>
+                                  </div>
+                                  <input
+                                    id={`file-item-${idx}`}
+                                    type='file'
+                                    accept='image/*'
+                                    hidden
+                                    onChange={e =>
+                                      onFileForItem(
+                                        idx,
+                                        e.target.files?.[0] || null
+                                      )
+                                    }
+                                  />
+                                  <div className='small'>
+                                    {it.evidenciaName ? (
+                                      <span className='text-success'>
+                                        Archivo:{' '}
+                                        <strong>{it.evidenciaName}</strong>
+                                      </span>
+                                    ) : (
+                                      <span className='text-danger'>
+                                        Sin evidencia
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className='text-end'>
+                                <button
+                                  type='button'
+                                  className='btn btn-outline-danger btn-sm'
+                                  onClick={() => removeItem(idx)}
+                                  disabled={procesando}
+                                >
+                                  Eliminar
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Cámara */}
+                  {cameraIndex !== null && (
+                    <div
+                      className='mt-3 border rounded p-3'
+                      style={{ minHeight: 320 }}
+                    >
+                      <div className='d-flex justify-content-between align-items-center mb-2'>
+                        <div className='fw-semibold'>
+                          Cámara — ítem #{cameraIndex + 1}
+                        </div>
+                        <button
+                          type='button'
+                          className='btn btn-outline-dark btn-sm'
+                          onClick={closeCamera}
+                        >
+                          Cerrar
+                        </button>
+                      </div>
+                      <div className='ratio ratio-16x9'>
+                        <Webcam
+                          ref={webcamRef}
+                          screenshotFormat='image/jpeg'
+                          videoConstraints={{ facingMode: 'environment' }}
+                          className='w-100 h-100'
+                        />
+                      </div>
+                      <div className='d-flex justify-content-center gap-3 mt-3'>
+                        <button
+                          type='button'
+                          className='btn btn-primary btn-sm'
+                          onClick={captureForItem}
+                        >
+                          Capturar
+                        </button>
+                        <button
+                          type='button'
+                          className='btn btn-outline-danger btn-sm'
+                          onClick={closeCamera}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progreso */}
+                {procesando && (
+                  <div className='mt-3'>
+                    <div className='small text-muted mb-2'>Procesando…</div>
+                    <div className='list-group'>
+                      {items.map((it, i) => {
+                        const p = progreso.find(x => x.idx === i)
+                        const estado = p?.estado || 'pendiente'
+                        const badge =
+                          estado === 'ok'
+                            ? 'bg-success'
+                            : estado === 'error'
+                            ? 'bg-danger'
+                            : 'bg-secondary'
+                        return (
+                          <div
+                            key={i}
+                            className='list-group-item d-flex justify-content-between align-items-center'
+                          >
+                            <span>
+                              {productos.find(
+                                p => p.Id_producto === it.Id_producto_new
+                              )?.Nombre || it.Id_producto_new}{' '}
+                              — {it.Cantidad_generada} kg —{' '}
+                              {it.Tipos_transformacion}
+                            </span>
+                            <span className={`badge ${badge}`}>{estado}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className='d-grid mt-3'>
                   <button
                     type='submit'
                     className='btn btn-primary btn-sm'
-                    disabled={submitting || !requiredOk}
+                    disabled={
+                      procesando ||
+                      !allRequiredGlobal ||
+                      !items.length ||
+                      !allItemsHaveEvidence
+                    }
                     title={
-                      requiredOk
-                        ? 'Enviar'
-                        : 'Completa datos requeridos y adjunta evidencia'
+                      !items.length
+                        ? 'Agrega ítems'
+                        : !allItemsHaveEvidence
+                        ? 'Cada ítem requiere evidencia'
+                        : 'Enviar'
                     }
                   >
-                    {submitting ? 'Guardando…' : 'Registrar Transformación'}
+                    {procesando ? 'Guardando…' : 'Registrar Transformaciones'}
                   </button>
                 </div>
               </form>
@@ -455,7 +753,7 @@ const PintarTransformacion = ({ transformacionData }) => {
           </div>
         </div>
 
-        {/* Columna derecha: Información / tabla inventario */}
+        {/* Derecha: paneles */}
         <div className='col-lg-5'>
           <div className='card shadow-sm mb-3'>
             <div className='card-header'>
@@ -470,9 +768,13 @@ const PintarTransformacion = ({ transformacionData }) => {
                     '—'}
                 </li>
                 <li className='list-group-item'>
-                  <strong>Producto:</strong>{' '}
+                  <strong>Producto origen:</strong>{' '}
                   {inventarioCoincidente?.Producto?.Nombre || '—'} (ID:{' '}
                   {inventarioCoincidente?.Producto?.Id_producto || '—'})
+                </li>
+                <li className='list-group-item'>
+                  <strong>Cantidad consumida (UN):</strong>{' '}
+                  {globalForm.Cantidad_consumada ?? '—'}
                 </li>
               </ul>
             </div>
@@ -486,7 +788,7 @@ const PintarTransformacion = ({ transformacionData }) => {
               {loading ? (
                 <div className='d-flex align-items-center'>
                   <div className='spinner-border me-2' role='status' />
-                  <span>Cargando datos de inventario…</span>
+                  <span>Cargando datos…</span>
                 </div>
               ) : inventarioCoincidente ? (
                 <div className='table-responsive'>
@@ -503,14 +805,15 @@ const PintarTransformacion = ({ transformacionData }) => {
                       <tr>
                         <td>{inventarioCoincidente.id_inventario}</td>
                         <td>
-                          {inventarioCoincidente?.Bodega?.nombre || '—'} <br />
+                          {inventarioCoincidente?.Bodega?.nombre || '—'}
+                          <br />
                           <small className='text-muted'>
                             ID: {inventarioCoincidente?.id_bodega || '—'}
                           </small>
                         </td>
                         <td>
                           {inventarioCoincidente?.UbicacionBodega?.nombre ||
-                            '—'}{' '}
+                            '—'}
                           <br />
                           <small className='text-muted'>
                             ID: {inventarioCoincidente?.id_ubicacion || '—'}
@@ -523,7 +826,7 @@ const PintarTransformacion = ({ transformacionData }) => {
                 </div>
               ) : (
                 <div className='text-muted'>
-                  No se encontró inventario para el lote producto seleccionado.
+                  No se encontró inventario para el LP seleccionado.
                 </div>
               )}
             </div>

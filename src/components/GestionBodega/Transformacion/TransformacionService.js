@@ -265,3 +265,45 @@ export const getProductosDesdeInventario = async () => {
     throw error
   }
 }
+
+// ✅ Cerrar paso y guardar merma (PUT vía path param)
+export const cerrarTransformacionPaso = async ({
+  id_transformacion_paso,
+  operacion,
+}) => {
+  const token = getAuthToken()
+  try {
+    const url = `/transformacion-paso/${encodeURIComponent(
+      id_transformacion_paso
+    )}/cerrar`
+    const body = operacion ? { operacion } : {}
+    const resp = await api.put(url, body, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return resp.data
+  } catch (error) {
+    console.error('Error al cerrar paso de transformación:', error.message)
+    throw error
+  }
+}
+
+// ✅ Calcular merma sin cerrar (GET vía path param)
+export const calcularMermaPaso = async ({
+  id_transformacion_paso,
+  operacion,
+}) => {
+  const token = getAuthToken()
+  try {
+    const url = `/transformacion-paso/${encodeURIComponent(
+      id_transformacion_paso
+    )}/merma`
+    const resp = await api.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: operacion ? { operacion } : {},
+    })
+    return resp.data
+  } catch (error) {
+    console.error('Error al calcular merma del paso:', error.message)
+    throw error
+  }
+}
