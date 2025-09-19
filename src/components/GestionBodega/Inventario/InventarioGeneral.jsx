@@ -49,11 +49,8 @@ const InventarioGeneral = () => {
             it?.Unidad_de_medida ?? it?.Producto?.Unidad_de_medida ?? ''
           const id_lote = it?.Id_lote ?? it?.id_lote ?? ''
 
-          // Cantidad (prioriza Cantidad_Inventario; fallback a Cantidad_Lote)
-          const cantidad =
-            Number(it?.Cantidad_Inventario ?? it?.Cantidad) ||
-            Number(it?.Cantidad_Lote) ||
-            0
+          // Ahora (solo inventario)
+          const cantidad = Number(it?.Cantidad_Inventario ?? it?.Cantidad) || 0
 
           // PU llega directo del backend para ese producto+lote
           const pesoUnitarioKg =
@@ -128,6 +125,7 @@ const InventarioGeneral = () => {
           String(r.id_lote).toLowerCase().includes(q)
         )
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, globalFilter, tipoSeleccionado])
 
   // Totales
