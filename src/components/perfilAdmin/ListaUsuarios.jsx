@@ -1,12 +1,14 @@
 // src/components/Usuarios/ListaUsuarios.jsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import DataTable from 'react-data-table-component'
 import {
   obtenerUsuarios,
   actualizarPermisosUsuario,
 } from './listaUsuarios.service'
 import { BiUser, BiLock, BiBuilding, BiSave } from 'react-icons/bi'
-import './ListaUsuarios.css'
 
+// =================== Definición de secciones (pilares) ===================
+// Nota: "Aw Tiempos en PC" es su propio pilar.
 const SECCIONES = [
   {
     nombre: 'Perfil Admin',
@@ -59,12 +61,10 @@ const SECCIONES = [
     nombre: 'Operaciones',
     icono: <BiBuilding />,
     permisos: [
-      // 👇 Acceso general (Sidebar + ruta)
       {
         clave: 'accesoGeneralOperaciones',
         label: 'Acceso general (Operaciones)',
       },
-      // 👇 Permisos del menú interno (hijos del acceso general)
       {
         clave: 'operaciones',
         label: 'Operaciones (Bodega)',
@@ -97,6 +97,13 @@ const SECCIONES = [
     ],
   },
   {
+    nombre: 'Aw Tiempos en PC',
+    icono: <BiBuilding />,
+    permisos: [
+      { clave: 'awTiemposEnPc', label: 'Aw Tiempos en PC' }, // pilar propio
+    ],
+  },
+  {
     nombre: 'News',
     icono: <BiBuilding />,
     permisos: [
@@ -115,265 +122,354 @@ const SECCIONES = [
   },
 ]
 
+// Lista plana de permisos para defaults
+const PERMISOS_PLANOS = SECCIONES.flatMap(sec => sec.permisos.map(p => p.clave))
+
 const ListaUsuarios = () => {
   const [usuarios, setUsuarios] = useState([])
+  const [busqueda, setBusqueda] = useState('')
 
+  // ====== Cargar usuarios ======
   useEffect(() => {
     const fetchUsuarios = async () => {
       try {
         const data = await obtenerUsuarios()
-        const formateados = data.map(usuario => ({
-          id: usuario.id_usuario,
-          username: usuario.username,
-          permisos: {
-            // defaults
-
-            // Perfil
-            perfilAdmin: false,
-
-            // Bodega
-            gestionBodega: false,
-            ingreso: false,
-            salida: false,
-            transformacion: false,
-            inventario: false,
-            dashboard: false,
-            productosRS: false,
-            productosBodega: false,
-            lotesProveedor: false,
-            lotesCliente: false,
-
-            // Terceros
-            terceros: false,
-            clientes: false,
-            proveedores: false,
-            personal_externo: false,
-
-            // Operaciones
-            accesoGeneralOperaciones: false, // 👈 acceso general (Sidebar + ruta)
-            operaciones: false, // 👈 menú: Operaciones Bodega
-            operador: false, // 👈 menú: Operador
-            operacionRS: false, // 👈 menú: Operaciones RS
-
-            // Control de Ingresos
-            gestioniingresos: false,
-            crearUsuario: false,
-            marcacion: false,
-            reporte: false,
-
-            // News
-            news: false,
-            crearNoticia: false,
-
-            // merge con lo guardado en BD
-            ...JSON.parse(usuario.permisos || '{}'),
-          },
-          editado: false,
-        }))
+        const formateados = data.map(usuario => {
+          // defaults = false para todos los permisos conocidos
+          const base = Object.fromEntries(PERMISOS_PLANOS.map(k => [k, false]))
+          let guardados = {}
+          try {
+            guardados = JSON.parse(usuario.permisos || '{}')
+          } catch {
+            guardados = {}
+          }
+          return {
+            id: usuario.id_usuario,
+            username: usuario.username,
+            permisos: { ...base, ...guardados },
+            editado: false,
+          }
+        })
         setUsuarios(formateados)
       } catch (error) {
         console.error('Error al cargar usuarios:', error)
       }
     }
-
     fetchUsuarios()
   }, [])
 
-  // ---------- Helpers de "seleccionar todos" ----------
-  const allUsersHavePermiso = permisoClave =>
-    usuarios.length > 0 && usuarios.every(u => !!u.permisos[permisoClave])
+  // ====== Helpers de edición / toggles ======
+  const togglePermisoUsuario = useCallback((userId, clave) => {
+    setUsuarios(prev =>
+      prev.map(u =>
+        u.id === userId
+          ? {
+              ...u,
+              permisos: { ...u.permisos, [clave]: !u.permisos[clave] },
+              editado: true,
+            }
+          : u
+      )
+    )
+  }, [])
 
-  const togglePermisoAllUsers = (permisoClave, value) => {
+  const allUsersHavePermiso = useCallback(
+    clave => usuarios.length > 0 && usuarios.every(u => !!u.permisos[clave]),
+    [usuarios]
+  )
+
+  const togglePermisoAll = useCallback((clave, checked) => {
     setUsuarios(prev =>
       prev.map(u => ({
         ...u,
-        permisos: { ...u.permisos, [permisoClave]: value },
+        permisos: { ...u.permisos, [clave]: checked },
         editado: true,
       }))
     )
-  }
+  }, [])
 
-  const getSectionKeys = seccion => seccion.permisos.map(p => p.clave)
+  const getSectionKeys = useCallback(
+    seccion => seccion.permisos.map(p => p.clave),
+    []
+  )
+  const getSectionParentKeys = useCallback(
+    seccion =>
+      Array.from(new Set(seccion.permisos.map(p => p.padre).filter(Boolean))),
+    []
+  )
 
-  const getSectionParentKeys = seccion =>
-    Array.from(new Set(seccion.permisos.map(p => p.padre).filter(Boolean)))
+  const userHasEntireSection = useCallback(
+    (usuario, seccion) => {
+      const keys = getSectionKeys(seccion)
+      return keys.every(k => !!usuario.permisos[k])
+    },
+    [getSectionKeys]
+  )
 
-  const userHasEntireSection = (usuario, seccion) => {
-    const keys = getSectionKeys(seccion)
-    return keys.every(k => !!usuario.permisos[k])
-  }
-
-  const toggleSectionForUser = (userId, seccion, value) => {
-    const keys = getSectionKeys(seccion)
-    const parentKeys = getSectionParentKeys(seccion)
-
-    setUsuarios(prev =>
-      prev.map(u => {
-        if (u.id !== userId) return u
-        const nuevosPermisos = { ...u.permisos }
-        // set de todos los permisos de la sección
-        keys.forEach(k => {
-          nuevosPermisos[k] = value
-        })
-        // Si NO quieres que "Seleccionar todo" toque el acceso general,
-        // comenta este bloque de padres:
-        parentKeys.forEach(pk => {
-          nuevosPermisos[pk] = value
-        })
-        return { ...u, permisos: nuevosPermisos, editado: true }
-      })
-    )
-  }
-  // -----------------------------------------------------
-
-  const handleCheckboxChange = (id, permiso) => {
-    setUsuarios(prev =>
-      prev.map(usuario =>
-        usuario.id === id
-          ? {
-              ...usuario,
-              permisos: {
-                ...usuario.permisos,
-                [permiso]: !usuario.permisos[permiso],
-              },
-              editado: true,
-            }
-          : usuario
-      )
-    )
-  }
-
-  const handleGuardar = async id => {
-    const usuario = usuarios.find(u => u.id === id)
-    try {
-      await actualizarPermisosUsuario(id, usuario.permisos)
+  const toggleSectionForUser = useCallback(
+    (userId, seccion, value) => {
+      const keys = getSectionKeys(seccion)
+      const parentKeys = getSectionParentKeys(seccion)
       setUsuarios(prev =>
-        prev.map(u => (u.id === id ? { ...u, editado: false } : u))
+        prev.map(u => {
+          if (u.id !== userId) return u
+          const nuevos = { ...u.permisos }
+          keys.forEach(k => {
+            nuevos[k] = value
+          })
+          parentKeys.forEach(pk => {
+            nuevos[pk] = value
+          })
+          return { ...u, permisos: nuevos, editado: true }
+        })
       )
-      alert('Permisos actualizados correctamente.')
-    } catch (error) {
-      console.error('Error al guardar permisos:', error)
-      alert('Error al guardar cambios.')
-    }
-  }
+    },
+    [getSectionKeys, getSectionParentKeys]
+  )
+
+  const handleGuardar = useCallback(
+    async id => {
+      const usuario = usuarios.find(u => u.id === id)
+      if (!usuario) return
+      try {
+        await actualizarPermisosUsuario(id, usuario.permisos)
+        setUsuarios(prev =>
+          prev.map(u => (u.id === id ? { ...u, editado: false } : u))
+        )
+        alert('Permisos actualizados correctamente.')
+      } catch (error) {
+        console.error('Error al guardar permisos:', error)
+        alert('Error al guardar cambios.')
+      }
+    },
+    [usuarios]
+  )
+
+  // ====== Datos del DataTable padre (secciones) ======
+  const seccionesFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return SECCIONES
+    return SECCIONES.filter(
+      sec =>
+        sec.nombre.toLowerCase().includes(q) ||
+        sec.permisos.some(p => p.label.toLowerCase().includes(q))
+    )
+  }, [busqueda])
+
+  const parentColumns = useMemo(
+    () => [
+      {
+        name: 'Sección',
+        selector: r => r.nombre,
+        sortable: true,
+        grow: 2,
+        minWidth: '280px', // más espacio a la primera columna
+        cell: r => (
+          <div className='d-flex align-items-center gap-2'>
+            <span>{r.icono}</span>
+            <span className='fw-semibold'>{r.nombre}</span>
+          </div>
+        ),
+      },
+      {
+        name: 'Permisos',
+        selector: r => r.permisos.length,
+        sortable: true,
+        right: true,
+        width: '130px',
+      },
+      {
+        name: 'Usuarios',
+        selector: () => usuarios.length,
+        sortable: false,
+        right: true,
+        width: '120px',
+      },
+    ],
+    [usuarios]
+  )
+
+  // ====== Columnas de la subtabla (por sección) ======
+  const buildChildColumns = useCallback(
+    seccion => {
+      const isSectionSelectorRow = row => row.__tipo === 'SELECCION_SECCION'
+
+      const baseCols = [
+        {
+          name: 'Permiso',
+          selector: row => row.label || 'Seleccionar todo en sección',
+          sortable: false,
+          grow: 3,
+          minWidth: '340px',
+          cell: row => (
+            <span className={row.padre ? 'ps-3' : 'fw-semibold'}>
+              {isSectionSelectorRow(row)
+                ? 'Seleccionar todo en sección'
+                : row.label}
+            </span>
+          ),
+        },
+        {
+          name: 'Todos',
+          width: '120px',
+          right: true,
+          cell: row => {
+            if (isSectionSelectorRow(row)) {
+              return <span className='text-muted'>—</span>
+            }
+            return (
+              <input
+                type='checkbox'
+                title='Aplicar a todos los usuarios'
+                checked={allUsersHavePermiso(row.clave)}
+                onChange={e => togglePermisoAll(row.clave, e.target.checked)}
+              />
+            )
+          },
+          ignoreRowClick: true,
+          button: true,
+        },
+      ]
+
+      const userCols = usuarios.map(u => ({
+        name: (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              rowGap: '12px', // más espacio entre nombre y botón
+              minWidth: '120px', // evita que se pegue a la izquierda
+            }}
+          >
+            <strong style={{ lineHeight: 1.1, textAlign: 'center' }}>
+              {u.username}
+            </strong>
+            <button
+              className='btn btn-sm btn-primary'
+              style={{ padding: '4px 8px' }}
+              disabled={!u.editado}
+              onClick={() => handleGuardar(u.id)}
+              title='Guardar cambios'
+            >
+              <BiSave />
+            </button>
+          </div>
+        ),
+        width: '160px', // más aire para el header de usuario
+        right: true,
+        cell: row => {
+          if (isSectionSelectorRow(row)) {
+            const checked = userHasEntireSection(u, seccion)
+            return (
+              <input
+                type='checkbox'
+                checked={checked}
+                onChange={e =>
+                  toggleSectionForUser(u.id, seccion, e.target.checked)
+                }
+              />
+            )
+          }
+          const padreInactivo = row.padre && !u.permisos[row.padre]
+          return (
+            <input
+              type='checkbox'
+              checked={u.permisos[row.clave] || false}
+              disabled={padreInactivo}
+              onChange={() => togglePermisoUsuario(u.id, row.clave)}
+            />
+          )
+        },
+        ignoreRowClick: true,
+        button: true,
+      }))
+
+      return [...baseCols, ...userCols]
+    },
+    [
+      usuarios,
+      allUsersHavePermiso,
+      togglePermisoAll,
+      handleGuardar,
+      userHasEntireSection,
+      toggleSectionForUser,
+      togglePermisoUsuario,
+    ]
+  )
+
+  // ====== Componente expandible (subtabla por sección) ======
+  const ExpandedComponent = useCallback(
+    ({ data: seccion }) => {
+      const selectorSeccion = {
+        __tipo: 'SELECCION_SECCION',
+        id: `__sel_${seccion.nombre}`,
+      }
+      const rows = [selectorSeccion, ...seccion.permisos]
+      const childColumns = buildChildColumns(seccion)
+
+      return (
+        <div className='w-100 px-2 py-2'>
+          <DataTable
+            columns={childColumns}
+            data={rows}
+            dense
+            responsive
+            highlightOnHover
+            noHeader
+            pagination
+            paginationPerPage={10}
+            paginationRowsPerPageOptions={[10, 20, 50]}
+          />
+        </div>
+      )
+    },
+    [buildChildColumns]
+  )
+
+  // ====== SubHeader (buscador) ======
+  const SubHeader = useMemo(
+    () => (
+      <div className='d-flex flex-wrap gap-2 w-100 align-items-center'>
+        <div className='input-group' style={{ maxWidth: 360 }}>
+          <span className='input-group-text'>Buscar</span>
+          <input
+            type='text'
+            className='form-control'
+            placeholder='Sección o permiso…'
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
+        </div>
+      </div>
+    ),
+    [busqueda]
+  )
 
   return (
-    <div className='container mt-4'>
-      <h2 className='mb-4'>Control de Permisos</h2>
+    <div className='card'>
+      <div className='card-header d-flex align-items-end'></div>
 
-      <table className='table table-bordered text-center tabla-transpuesta'>
-        <thead>
-          <tr>
-            <th>Permisos</th>
-            {usuarios.map(usuario => (
-              <th key={usuario.id}>
-                <div className='usuario-header'>
-                  <strong>{usuario.username}</strong>
-                  <button
-                    className='btn-actualizar'
-                    disabled={!usuario.editado}
-                    onClick={() => handleGuardar(usuario.id)}
-                    title='Guardar cambios'
-                  >
-                    <BiSave size={20} />
-                  </button>
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {SECCIONES.map((seccion, idx) => (
-            <React.Fragment key={seccion.nombre}>
-              {/* Encabezado de sección (acordeón) */}
-              <tr className='bg-light'>
-                <td colSpan={usuarios.length + 1}>
-                  <button
-                    className='accordion-button collapsed seccion-toggle'
-                    type='button'
-                    data-bs-toggle='collapse'
-                    data-bs-target={`#collapse-${idx}`}
-                    aria-expanded='false'
-                  >
-                    <span className='me-2'>{seccion.icono}</span>{' '}
-                    {seccion.nombre}
-                  </button>
-                </td>
-              </tr>
-
-              {/* Fila de control por sección: "Seleccionar todo en la sección" por usuario */}
-              <tr className='collapse' id={`collapse-${idx}`}>
-                <td className='fw-bold text-start'>
-                  Seleccionar todo en sección
-                </td>
-                {usuarios.map(usuario => {
-                  const checked = userHasEntireSection(usuario, seccion)
-                  return (
-                    <td key={`all_${seccion.nombre}_${usuario.id}`}>
-                      <input
-                        type='checkbox'
-                        checked={checked}
-                        onChange={e =>
-                          toggleSectionForUser(
-                            usuario.id,
-                            seccion,
-                            e.target.checked
-                          )
-                        }
-                      />
-                    </td>
-                  )
-                })}
-              </tr>
-
-              {/* Filas de cada permiso dentro de la sección */}
-              {seccion.permisos.map(permiso => (
-                <tr
-                  key={permiso.clave}
-                  className='collapse'
-                  id={`collapse-${idx}`}
-                >
-                  <td
-                    className={
-                      permiso.padre ? 'ps-4 text-start' : 'fw-bold text-start'
-                    }
-                  >
-                    {/* Checkbox maestro para marcar este permiso en TODOS los usuarios */}
-                    <div className='d-flex align-items-center gap-2'>
-                      <span>{permiso.label}</span>
-                      <input
-                        type='checkbox'
-                        title='Aplicar a todos los usuarios'
-                        checked={allUsersHavePermiso(permiso.clave)}
-                        onChange={e =>
-                          togglePermisoAllUsers(permiso.clave, e.target.checked)
-                        }
-                      />
-                    </div>
-                  </td>
-
-                  {usuarios.map(usuario => {
-                    const padreInactivo =
-                      permiso.padre && !usuario.permisos[permiso.padre]
-                    return (
-                      <td key={usuario.id + permiso.clave}>
-                        <input
-                          type='checkbox'
-                          checked={usuario.permisos[permiso.clave] || false}
-                          onChange={() =>
-                            handleCheckboxChange(usuario.id, permiso.clave)
-                          }
-                          disabled={padreInactivo}
-                        />
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+      <div className='card-body'>
+        <DataTable
+          columns={parentColumns}
+          data={seccionesFiltradas}
+          pagination
+          paginationPerPage={10}
+          paginationRowsPerPageOptions={[10, 20, 50]}
+          highlightOnHover
+          dense
+          responsive
+          subHeader
+          subHeaderComponent={SubHeader}
+          persistTableHead
+          expandableRows
+          expandableRowsComponent={ExpandedComponent}
+          noDataComponent={
+            <div className='text-muted small py-3'>Sin datos.</div>
+          }
+        />
+      </div>
     </div>
   )
 }
