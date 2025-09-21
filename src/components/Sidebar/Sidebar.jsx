@@ -15,6 +15,7 @@ import {
   BiCog,
   BiBody,
   BiSolidUserVoice,
+  BiTimeFive,
 } from 'react-icons/bi'
 import AuthContext from '../../context/AuthContext'
 import { usePermisos } from '../../hooks/usePermisos'
@@ -169,9 +170,6 @@ const Sidebar = ({ onToggleCollapse }) => {
               </li>
             )}
 
-            {/* (Eliminado) Operaciones como ítem de nivel superior */}
-            {/* Antes estaba aquí el li de Operaciones */}
-
             {/* Control de Ingresos */}
             {tienePermiso('gestioniingresos') && (
               <li
@@ -187,6 +185,24 @@ const Sidebar = ({ onToggleCollapse }) => {
                     }`}
                   >
                     Control de Ingresos
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {/* Tiempos en PC */}
+            {tienePermiso('awTiemposEnPc') && (
+              <li
+                className={location.pathname === '/tiempos-pc' ? 'active' : ''}
+              >
+                <Link to='/tiempos-pc' onClick={handleLinkClick}>
+                  <BiTimeFive size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Tiempos en PC
                   </span>
                 </Link>
               </li>
@@ -227,6 +243,7 @@ const Sidebar = ({ onToggleCollapse }) => {
                 </Link>
               </li>
             )}
+
             {/* Tickets */}
             {tienePermiso('tickets') && (
               <li className={location.pathname === '/tickets' ? 'active' : ''}>

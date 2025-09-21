@@ -97,7 +97,7 @@ const FormLote = ({ onSuccess = () => {} }) => {
   }
 
   function sugerirSiguienteId(ids) {
-    const prefix = 'FW_'
+    const prefix = 'GEN_'
     const numeros = ids
       .filter(id => id.startsWith(prefix))
       .map(id => parseInt(id.replace(prefix, ''), 10))

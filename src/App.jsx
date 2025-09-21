@@ -18,6 +18,7 @@ import Terceros from './pages/Terceros/Terceros.jsx'
 import NoEncontrado from './pages/NoEncontrado'
 import ControlDeIngresos from './pages/ControlDeIngresos/ControlDeIngresos.jsx'
 import Tickets from './pages/Tickets/TicketsPage.jsx'
+import TiemposPc from './pages/TiemposPc/TiemposPc.jsx' // 👈 NUEVO
 
 function App() {
   return (
@@ -79,6 +80,14 @@ function AppRoutes() {
       <Route
         path='/tickets'
         element={<PrivateRoute permiso='tickets' element={<Tickets />} />}
+      />
+
+      {/* ✅ Tiempos en PC (protegida por awTiemposEnPc) */}
+      <Route
+        path='/tiempos-pc'
+        element={
+          <PrivateRoute permiso='awTiemposEnPc' element={<TiemposPc />} />
+        }
       />
 
       {/* Redirección inicial */}
