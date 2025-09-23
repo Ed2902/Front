@@ -15,7 +15,9 @@ function BadgePct({ value }) {
 }
 
 const safeNum = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
+const unique = arr => Array.from(new Set(arr))
 
+// % Operando = Operando / (Operando + Inactividad)
 const calcPctOperando = r => {
   const op = safeNum(r?.metrics?.seconds?.operando)
   const ina = safeNum(r?.metrics?.seconds?.inactividad_real)
@@ -24,8 +26,7 @@ const calcPctOperando = r => {
   return (op / denom) * 100
 }
 
-const unique = arr => Array.from(new Set(arr))
-
+// Conteos
 const countApps = r => {
   const apps = Array.isArray(r?.metrics?.top?.apps) ? r.metrics.top.apps : []
   const names = apps.map(a => String(a.app || '').toLowerCase()).filter(Boolean)
@@ -40,10 +41,23 @@ const countUrls = r => {
   return unique(domains).length
 }
 
-const countFiles = r => {
+// Misma lógica que "Documentos" del DetalleActividad (solo apps de documentos)
+const DOC_APPS = new Set([
+  'excel.exe',
+  'winword.exe',
+  'powerpnt.exe',
+  'acrord32.exe',
+  'pdf.exe',
+  'notepad.exe',
+  'photos.exe',
+])
+
+const countDocuments = r => {
   const apps = Array.isArray(r?.metrics?.top?.apps) ? r.metrics.top.apps : []
   const titles = []
   for (const a of apps) {
+    const exe = String(a?.app || '').toLowerCase()
+    if (!DOC_APPS.has(exe)) continue
     const ts = Array.isArray(a?.top_titles) ? a.top_titles : []
     for (const t of ts) {
       const s = String(t || '').trim()
@@ -151,9 +165,9 @@ export default function TablaUsuariosTiempos({
         right: true,
       },
       {
-        name: 'Archivos',
-        selector: r => countFiles(r),
-        width: '95px',
+        name: 'Documentos',
+        selector: r => countDocuments(r),
+        width: '115px',
         right: true,
       },
       // % Operando = Operando / (Operando + Inactividad)
