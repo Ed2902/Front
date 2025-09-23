@@ -5,15 +5,6 @@ import { Button } from 'react-bootstrap'
 import DetalleActividad from './DetalleActividad'
 
 // ===== Helpers =====
-const pad2 = n => String(n).padStart(2, '0')
-const toHMS = secFloat => {
-  const s = Math.max(0, Math.floor(Number(secFloat) || 0))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  return `${pad2(h)}:${pad2(m)}:${pad2(sec)}`
-}
-
 function BadgePct({ value }) {
   const pct = Number(value) || 0
   let variant = 'secondary'
@@ -82,36 +73,6 @@ export default function TablaUsuariosTiempos({
         cell: r => r.metrics?.human?.operando || '00:00:00',
       },
       {
-        name: 'Espera',
-        selector: r => r.metrics?.seconds?.espera ?? 0,
-        width: '100px',
-        right: true,
-        cell: r => r.metrics?.human?.espera || '00:00:00',
-      },
-      {
-        // Título en 2 líneas
-        name: (
-          <div className='d-flex flex-column lh-1 text-end'>
-            <span>Total</span>
-            <small className='text-muted'>en pantalla</small>
-          </div>
-        ),
-        width: '120px',
-        right: true,
-        selector: r => {
-          const op = r.metrics?.seconds?.operando || 0
-          const esp = r.metrics?.seconds?.espera || 0
-          return op + esp
-        },
-        cell: r => {
-          const op = r.metrics?.seconds?.operando || 0
-          const esp = r.metrics?.seconds?.espera || 0
-          return (
-            <span className='text-success fw-semibold'>{toHMS(op + esp)}</span>
-          )
-        },
-      },
-      {
         name: 'Inactividad',
         sortable: true,
         width: '120px',
@@ -137,7 +98,6 @@ export default function TablaUsuariosTiempos({
           </div>
         ),
       },
-
       {
         name: '% Operando',
         selector: r => r.metrics?.percent_of_total_observado?.operando ?? 0,
