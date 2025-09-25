@@ -12,8 +12,23 @@ const numberCO = (n, d = 2) =>
     maximumFractionDigits: d,
   })
 
-const isUnidad = u => (u || '').toLowerCase() === 'unidades'
-const isKiloUnit = u => /(kg|kilo)/i.test((u || '').toLowerCase())
+// Parser robusto para "es-CO" (e.g., "1.234,56" -> 1234.56)
+const toNumberCO = v => {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const s = v.trim().replace(/\s+/g, '').replace(/\./g, '').replace(/,/g, '.')
+    const n = parseFloat(s)
+    return Number.isNaN(n) ? 0 : n
+  }
+  const n = Number(v)
+  return Number.isNaN(n) ? 0 : n
+}
+
+// Toma el primer valor definido (no null/undefined/'')
+const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+
+const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
 
 const InventarioLote = () => {
   const [raw, setRaw] = useState([])
@@ -55,34 +70,59 @@ const InventarioLote = () => {
     for (const it of raw) {
       if (!puedeVerTipo(it?.Tipo)) continue
 
-      const loteId = it?.Id_lote ?? it?.id_lote ?? 'Sin Lote'
-      const unidad = it?.Unidad_de_medida ?? ''
-      const cantidad =
-        Number(it?.Cantidad_Inventario ?? it?.Cantidad) ||
-        Number(it?.Cantidad_Lote) ||
-        0
+      const loteId = pickFirstDefined(it?.Id_lote, it?.id_lote) ?? 'Sin Lote'
+      const unidad =
+        pickFirstDefined(
+          it?.Unidad_de_medida,
+          it?.Producto?.Unidad_de_medida
+        ) ?? ''
 
-      // kilos por fila (preferir PesoTotalKg; si no, reglas)
-      const pesoTotalFromBE = Number(it?.PesoTotalKg) || 0
-      const pu = it?.PesoUnitarioKg != null ? Number(it.PesoUnitarioKg) : null
+      // Cantidad (prioridad: Inventario -> Cantidad -> Cantidad_Lote)
+      const cantidadRaw = pickFirstDefined(
+        it?.Cantidad_Inventario,
+        it?.Cantidad,
+        it?.Cantidad_Lote
+      )
+      const cantidad = toNumberCO(cantidadRaw)
+
+      // kilos por fila (preferir PesoTotalKg; luego PU; si no, cantidad)
+      const pesoTotalFromBE = toNumberCO(it?.PesoTotalKg)
+      const pu = toNumberCO(it?.PesoUnitarioKg)
 
       let kilos = 0
-      if (pesoTotalFromBE > 0) kilos = pesoTotalFromBE
-      else if (isUnidad(unidad) && pu && pu > 0) kilos = cantidad * pu
-      else if (isKiloUnit(unidad)) kilos = cantidad
+      if (pesoTotalFromBE > 0) {
+        kilos = pesoTotalFromBE
+      } else if (pu > 0) {
+        kilos = cantidad * pu
+      } else {
+        kilos = cantidad
+      }
 
       const fila = {
-        id_producto: it?.Id_producto ?? it?.id_producto,
-        nombre_producto: it?.Nombre_Producto ?? it?.Producto?.Nombre ?? '',
+        id_producto: pickFirstDefined(it?.Id_producto, it?.id_producto),
+        nombre_producto:
+          pickFirstDefined(it?.Nombre_Producto, it?.Producto?.Nombre) ?? '',
         unidad,
         cantidad,
-        pesoUnitarioKg: isUnidad(unidad) && pu != null ? pu : null,
+        pesoUnitarioKg: pu > 0 ? pu : null,
         kilos,
         bodega: it?.id_bodega ?? '',
         ubicacion: it?.id_ubicacion ?? '',
-        fechaRaw: it?.Fecha_ultimo_registro ?? null,
-        fecha: it?.Fecha_ultimo_registro
-          ? new Date(it.Fecha_ultimo_registro).toLocaleDateString('es-CO')
+        fechaRaw:
+          pickFirstDefined(
+            it?.Fecha_ultimo_registro,
+            it?.Fecha_ultimo_registri
+          ) ?? null,
+        fecha: pickFirstDefined(
+          it?.Fecha_ultimo_registro,
+          it?.Fecha_ultimo_registri
+        )
+          ? new Date(
+              pickFirstDefined(
+                it?.Fecha_ultimo_registro,
+                it?.Fecha_ultimo_registri
+              )
+            ).toLocaleDateString('es-CO')
           : 'N/A',
       }
 
@@ -137,11 +177,11 @@ const InventarioLote = () => {
 
   // --- Totales globales (sobre lo filtrado)
   const totalUnidades = useMemo(
-    () => filtered.reduce((s, l) => s + (Number(l.totalUnidades) || 0), 0),
+    () => filtered.reduce((s, l) => s + toNumberCO(l.totalUnidades), 0),
     [filtered]
   )
   const totalKilos = useMemo(
-    () => filtered.reduce((s, l) => s + (Number(l.totalKilos) || 0), 0),
+    () => filtered.reduce((s, l) => s + toNumberCO(l.totalKilos), 0),
     [filtered]
   )
 
@@ -153,9 +193,9 @@ const InventarioLote = () => {
         Código: p.id_producto,
         Producto: p.nombre_producto,
         Unidad: p.unidad,
-        Cantidad: p.cantidad,
+        Cantidad: toNumberCO(p.cantidad),
         'Peso unitario (kg)': p.pesoUnitarioKg ?? '',
-        Kilos: p.kilos,
+        Kilos: toNumberCO(p.kilos),
         Bodega: p.bodega,
         Ubicación: p.ubicacion,
         'Último ingreso': p.fecha,
@@ -183,7 +223,7 @@ const InventarioLote = () => {
       name: 'Lote',
       selector: r => r.loteId,
       sortable: true,
-      width: '110px', // 👈 compacto (5–6 chars)
+      width: '110px',
     },
     {
       name: 'Registros',
@@ -199,8 +239,10 @@ const InventarioLote = () => {
       right: true,
       width: '150px',
       cell: r =>
-        Number(r.totalUnidades) > 0 ? (
-          <span className='text-end'>{numberCO(r.totalUnidades, 2)}</span>
+        toNumberCO(r.totalUnidades) > 0 ? (
+          <span className='text-end'>
+            {numberCO(toNumberCO(r.totalUnidades), 2)}
+          </span>
         ) : (
           <span className='text-muted'>—</span>
         ),
@@ -213,7 +255,7 @@ const InventarioLote = () => {
       width: '150px',
       cell: r => (
         <span className='fw-semibold text-end'>
-          {numberCO(r.totalKilos, 2)}
+          {numberCO(toNumberCO(r.totalKilos), 2)}
         </span>
       ),
     },
@@ -251,7 +293,9 @@ const InventarioLote = () => {
       sortable: true,
       right: true,
       width: '130px',
-      cell: r => <span className='text-end'>{numberCO(r.cantidad, 2)}</span>,
+      cell: r => (
+        <span className='text-end'>{numberCO(toNumberCO(r.cantidad), 2)}</span>
+      ),
     },
     {
       name: 'Peso unit. (kg)',
@@ -261,7 +305,9 @@ const InventarioLote = () => {
       width: '150px',
       cell: r =>
         r.pesoUnitarioKg != null ? (
-          <span className='text-end'>{numberCO(r.pesoUnitarioKg, 2)}</span>
+          <span className='text-end'>
+            {numberCO(toNumberCO(r.pesoUnitarioKg), 2)}
+          </span>
         ) : (
           <span className='text-muted'>—</span>
         ),
@@ -273,7 +319,9 @@ const InventarioLote = () => {
       right: true,
       width: '140px',
       cell: r => (
-        <span className='fw-semibold text-end'>{numberCO(r.kilos, 2)}</span>
+        <span className='fw-semibold text-end'>
+          {numberCO(toNumberCO(r.kilos), 2)}
+        </span>
       ),
     },
     { name: 'Bodega', selector: r => r.bodega, sortable: true, width: '110px' },

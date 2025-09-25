@@ -12,6 +12,26 @@ const numberCO = (n, d = 2) =>
     maximumFractionDigits: d,
   })
 
+// Parser robusto "es-CO"
+const toNumberCO = v => {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const s = v.trim().replace(/\s+/g, '').replace(/\./g, '').replace(/,/g, '.')
+    const n = parseFloat(s)
+    return Number.isNaN(n) ? 0 : n
+  }
+  const n = Number(v)
+  return Number.isNaN(n) ? 0 : n
+}
+
+// Primer valor definido (no null/undefined/'')
+const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+
+// Detección de unidad
+const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
+const isKg = u => /\b(?:kg|kilo|kilos)\b/i.test(String(u || '').trim())
+
 const InventarioPorTercero = () => {
   const [raw, setRaw] = useState([])
   const [loading, setLoading] = useState(false)
@@ -46,43 +66,106 @@ const InventarioPorTercero = () => {
     }
   }, [])
 
-  // Agrupar por tercero (Cliente o Proveedor) y calcular volúmenes
+  // Agrupar por tercero (Cliente o Proveedor) y calcular volúmenes + kilos
   const terceros = useMemo(() => {
     const map = new Map()
 
     for (const it of raw) {
-      const tipo = it?.Producto?.Tipo
+      const tipo = pickFirstDefined(it?.Producto?.Tipo, it?.Tipo)
       if (!puedeVerTipo(tipo)) continue
 
-      const cantidad = Number(it?.Cantidad) || 0
+      // Unidad referencial del producto (para decidir regla de kilos)
+      const unidad =
+        pickFirstDefined(
+          it?.Producto?.Unidad_de_medida,
+          it?.Unidad_de_medida
+        ) ?? ''
+
+      // Cantidad (prioridad inventario -> cantidad -> cantidad del lote)
+      const cantidadRaw = pickFirstDefined(
+        it?.Cantidad_Inventario,
+        it?.Cantidad,
+        it?.Cantidad_Lote
+      )
+      const cantidad = toNumberCO(cantidadRaw)
       if (cantidad <= 0) continue
 
       // Nombre del tercero (cliente o proveedor)
       const tercero =
-        it?.LoteProducto?.Cliente?.Nombre ||
-        it?.LoteProducto?.Proveedor?.Nombre ||
-        'Desconocido'
+        pickFirstDefined(
+          it?.LoteProducto?.Cliente?.Nombre,
+          it?.LoteProducto?.Proveedor?.Nombre
+        ) ?? 'Desconocido'
 
-      // Volumen: (Alto * Ancho * Largo) / 1_000_000 => m³
-      const alto = Number(it?.Producto?.Alto) || 0
-      const ancho = Number(it?.Producto?.Ancho) || 0
-      const largo = Number(it?.Producto?.Largo) || 0
+      // Dimensiones (cm) -> m³
+      const alto = toNumberCO(it?.Producto?.Alto)
+      const ancho = toNumberCO(it?.Producto?.Ancho)
+      const largo = toNumberCO(it?.Producto?.Largo)
       const volumenUnitarioM3 = (alto * ancho * largo) / 1_000_000
       const volumenTotalM3 = volumenUnitarioM3 * cantidad
       const volumenTotalCm3 = volumenTotalM3 * 1_000_000
 
+      // Peso total y PU: probar múltiples rutas/campos
+      const pesoTotalFromBE = toNumberCO(
+        pickFirstDefined(
+          it?.PesoTotalKg,
+          it?.Peso_total_kg,
+          it?.PesoTotal,
+          it?.total_kg
+        )
+      )
+
+      const pu = toNumberCO(
+        pickFirstDefined(
+          it?.PesoUnitarioKg,
+          it?.Producto?.PesoUnitarioKg,
+          it?.LoteProducto?.PesoUnitarioKg,
+          it?.Peso_unitario_kg,
+          it?.Peso_unitario,
+          it?.PU_kg // por si hay alias
+        )
+      )
+
+      // Regla de kilos por ítem:
+      // 1) si PesoTotalKg>0 => usarlo
+      // 2) si PU>0 y unidad es "unidades" => cantidad*PU
+      // 3) si unidad es kilo => kilos=cantidad
+      // 4) si no, 0
+      let kilos = 0
+      if (pesoTotalFromBE > 0) {
+        kilos = pesoTotalFromBE
+      } else if (pu > 0 && isUnidad(unidad)) {
+        kilos = cantidad * pu
+      } else if (isKg(unidad)) {
+        kilos = cantidad
+      } else {
+        kilos = 0
+      }
+
+      const fechaRaw = pickFirstDefined(
+        it?.Fecha_ultimo_registro,
+        it?.Fecha_ultimo_registri
+      )
+
       const detalle = {
-        id_producto: it?.Producto?.Id_producto || it?.id_producto,
-        nombre_producto: it?.Producto?.Nombre || 'Desconocido',
-        unidad: it?.Producto?.Unidad_de_medida || '',
+        id_producto: pickFirstDefined(
+          it?.Producto?.Id_producto,
+          it?.id_producto
+        ),
+        nombre_producto:
+          pickFirstDefined(it?.Producto?.Nombre, it?.Nombre_Producto) ??
+          'Desconocido',
+        unidad,
         cantidad,
+        kilos,
         volumen_m3: volumenTotalM3,
         volumen_cm3: volumenTotalCm3,
-        bodega: it?.Bodega?.nombre || it?.id_bodega || '',
-        ubicacion: it?.UbicacionBodega?.nombre || it?.id_ubicacion || '',
-        fechaRaw: it?.Fecha_ultimo_registri || null,
-        fecha: it?.Fecha_ultimo_registri
-          ? new Date(it.Fecha_ultimo_registri).toLocaleDateString('es-CO')
+        bodega: pickFirstDefined(it?.Bodega?.nombre, it?.id_bodega) ?? '',
+        ubicacion:
+          pickFirstDefined(it?.UbicacionBodega?.nombre, it?.id_ubicacion) ?? '',
+        fechaRaw,
+        fecha: fechaRaw
+          ? new Date(fechaRaw).toLocaleDateString('es-CO')
           : 'N/A',
       }
 
@@ -90,22 +173,24 @@ const InventarioPorTercero = () => {
         map.set(tercero, {
           tercero,
           items: [],
+          totalCantidad: 0,
+          totalKilos: 0,
           totalVolumenM3: 0,
           totalVolumenCm3: 0,
-          totalCantidad: 0,
           ultimoIngreso: null,
         })
       }
       const acc = map.get(tercero)
       acc.items.push(detalle)
+      acc.totalCantidad += cantidad
+      acc.totalKilos += kilos
       acc.totalVolumenM3 += volumenTotalM3
       acc.totalVolumenCm3 += volumenTotalCm3
-      acc.totalCantidad += cantidad
 
-      if (detalle.fechaRaw) {
+      if (fechaRaw) {
         const cur = acc.ultimoIngreso ? new Date(acc.ultimoIngreso) : null
-        const neu = new Date(detalle.fechaRaw)
-        if (!cur || neu > cur) acc.ultimoIngreso = detalle.fechaRaw
+        const neu = new Date(fechaRaw)
+        if (!cur || neu > cur) acc.ultimoIngreso = fechaRaw
       }
     }
 
@@ -141,11 +226,15 @@ const InventarioPorTercero = () => {
 
   // Totales globales (sobre lo filtrado)
   const totalCantidadGlobal = useMemo(
-    () => filtered.reduce((s, t) => s + (Number(t.totalCantidad) || 0), 0),
+    () => filtered.reduce((s, t) => s + toNumberCO(t.totalCantidad), 0),
+    [filtered]
+  )
+  const totalKilosGlobal = useMemo(
+    () => filtered.reduce((s, t) => s + toNumberCO(t.totalKilos), 0),
     [filtered]
   )
   const totalVolumenM3Global = useMemo(
-    () => filtered.reduce((s, t) => s + (Number(t.totalVolumenM3) || 0), 0),
+    () => filtered.reduce((s, t) => s + toNumberCO(t.totalVolumenM3), 0),
     [filtered]
   )
 
@@ -157,9 +246,10 @@ const InventarioPorTercero = () => {
         Código: p.id_producto,
         Producto: p.nombre_producto,
         Unidad: p.unidad,
-        Cantidad: p.cantidad,
-        'Volumen (m³)': Number(p.volumen_m3 || 0),
-        'Volumen (cm³)': Math.round(Number(p.volumen_cm3 || 0)),
+        Cantidad: toNumberCO(p.cantidad),
+        'Kilos (kg)': toNumberCO(p.kilos),
+        'Volumen (m³)': toNumberCO(p.volumen_m3),
+        'Volumen (cm³)': Math.round(toNumberCO(p.volumen_cm3)),
         Bodega: p.bodega,
         Ubicación: p.ubicacion,
         'Último ingreso': p.fecha,
@@ -172,6 +262,7 @@ const InventarioPorTercero = () => {
       [
         'Totales filtrados',
         `Cantidad=${numberCO(totalCantidadGlobal, 2)}`,
+        `Kilos=${numberCO(totalKilosGlobal, 2)}`,
         `Volumen m³=${numberCO(totalVolumenM3Global, 5)}`,
       ],
       [],
@@ -206,7 +297,21 @@ const InventarioPorTercero = () => {
       right: true,
       width: '150px',
       cell: r => (
-        <span className='text-end'>{numberCO(r.totalCantidad, 2)}</span>
+        <span className='text-end'>
+          {numberCO(toNumberCO(r.totalCantidad), 2)}
+        </span>
+      ),
+    },
+    {
+      name: 'Kilos Totales (kg)',
+      selector: r => r.totalKilos,
+      sortable: true,
+      right: true,
+      width: '170px',
+      cell: r => (
+        <span className='fw-semibold text-end'>
+          {numberCO(toNumberCO(r.totalKilos), 2)}
+        </span>
       ),
     },
     {
@@ -217,7 +322,7 @@ const InventarioPorTercero = () => {
       width: '180px',
       cell: r => (
         <span className='fw-semibold text-end'>
-          {numberCO(r.totalVolumenM3, 5)}
+          {numberCO(toNumberCO(r.totalVolumenM3), 5)}
         </span>
       ),
     },
@@ -255,7 +360,21 @@ const InventarioPorTercero = () => {
       sortable: true,
       right: true,
       width: '130px',
-      cell: r => <span className='text-end'>{numberCO(r.cantidad, 2)}</span>,
+      cell: r => (
+        <span className='text-end'>{numberCO(toNumberCO(r.cantidad), 2)}</span>
+      ),
+    },
+    {
+      name: 'Kilos (kg)',
+      selector: r => r.kilos,
+      sortable: true,
+      right: true,
+      width: '140px',
+      cell: r => (
+        <span className='fw-semibold text-end'>
+          {numberCO(toNumberCO(r.kilos), 2)}
+        </span>
+      ),
     },
     {
       name: 'Volumen (m³)',
@@ -263,7 +382,11 @@ const InventarioPorTercero = () => {
       sortable: true,
       right: true,
       width: '160px',
-      cell: r => <span className='text-end'>{numberCO(r.volumen_m3, 5)}</span>,
+      cell: r => (
+        <span className='text-end'>
+          {numberCO(toNumberCO(r.volumen_m3), 5)}
+        </span>
+      ),
     },
     {
       name: 'Volumen (cm³)',
@@ -273,7 +396,7 @@ const InventarioPorTercero = () => {
       width: '160px',
       cell: r => (
         <span className='text-end'>
-          {Number(r.volumen_cm3 || 0).toLocaleString('es-CO')}
+          {Math.round(toNumberCO(r.volumen_cm3)).toLocaleString('es-CO')}
         </span>
       ),
     },
@@ -339,6 +462,8 @@ const InventarioPorTercero = () => {
         <div className='text-muted small'>
           <strong>Total Cantidad:</strong> {numberCO(totalCantidadGlobal, 2)}
           {'  ·  '}
+          <strong>Total Kilos:</strong> {numberCO(totalKilosGlobal, 2)}
+          {'  ·  '}
           <strong>Total Volumen (m³):</strong>{' '}
           {numberCO(totalVolumenM3Global, 5)}
         </div>
@@ -359,7 +484,7 @@ const InventarioPorTercero = () => {
         <div className='me-auto'>
           <strong>Inventario por Tercero</strong>
           <div className='text-muted small'>
-            Agrupa por Cliente o Proveedor y calcula volumen total ocupado.
+            Agrupa por Cliente o Proveedor y calcula volumen total y kilos.
           </div>
         </div>
       </div>

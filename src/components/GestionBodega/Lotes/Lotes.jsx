@@ -1,16 +1,18 @@
+// src/components/GestionBodega/Lotes/Lotes.jsx
 import { useEffect, useState, useMemo } from 'react'
 import Modal from 'react-modal'
 import {
   getLotes,
   getLotesDisponibles,
   getProductosDisponibles,
-} from './Lotes_service.js' // 👈 import catálogo
+} from './Lotes_service.js'
 import EditarRegistro from './EditarRegistro'
 import { utils, writeFile } from 'xlsx'
 import FormLote from './FormLote'
 import './Lotes.css'
 import { FaFileExcel } from 'react-icons/fa'
 import { usePermisos } from '../../../hooks/usePermisos'
+import FormatoEquivalenteModal from './FormatoEquivalenteModal'
 
 Modal.setAppElement('#root')
 
@@ -19,25 +21,31 @@ const Lotes = () => {
   const [lotesComentarios, setLotesComentarios] = useState({})
   const [loading, setLoading] = useState(true)
 
+  // Modales
   const [isAgregarModalOpen, setIsAgregarModalOpen] = useState(false)
-  // Removed unused state: isEditarModalOpen, loteSeleccionado
-
   const [isEditarRegistroOpen, setIsEditarRegistroOpen] = useState(false)
   const [registroAEditar, setRegistroAEditar] = useState(null)
 
+  // Modal Formato equivalente
+  const [isFormatoModalOpen, setIsFormatoModalOpen] = useState(false)
+  const [loteTargetId, setLoteTargetId] = useState(null)
+  const [loteTargetRegs, setLoteTargetRegs] = useState([])
+
   const [globalFilter, setGlobalFilter] = useState('')
 
-  // 👇 catálogo productos en mapa id->nombre
+  // Catálogo productos id -> nombre
   const [productNameById, setProductNameById] = useState({})
 
   const { tienePermiso } = usePermisos()
   const permisoLotesProveedor = tienePermiso('lotesProveedor')
   const permisoLotesCliente = tienePermiso('lotesCliente')
+  const permisoFormatoEquivalente = tienePermiso('formatoEquivalente')
 
   const isNoAplica = id =>
     String(id || '')
       .trim()
       .toLowerCase() === 'no aplica'
+
   const getIdNum = id => {
     const s = String(id || '')
     const matches = s.match(/\d+/g)
@@ -48,7 +56,7 @@ const Lotes = () => {
   useEffect(() => {
     if (permisoLotesProveedor || permisoLotesCliente) {
       fetchLotes()
-      fetchProductoMap() // 👈 cargar nombres
+      fetchProductoMap()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permisoLotesProveedor, permisoLotesCliente])
@@ -56,7 +64,6 @@ const Lotes = () => {
   const fetchProductoMap = async () => {
     try {
       const data = await getProductosDisponibles()
-      // data: [{ Id_producto, Nombre, ... }]
       const map = Object.fromEntries(
         (data || []).map(p => [String(p.Id_producto), p.Nombre])
       )
@@ -160,7 +167,7 @@ const Lotes = () => {
       Lote: r.id_lote,
       Producto: `${r.id_producto} — ${
         productNameById[String(r.id_producto)] || r.Nombre || ''
-      }`, // 👈 id + nombre
+      }`,
       Cantidad: r.Cantidad,
       'Peso x Unidad (Kg)':
         r.PesoUnitarioKg == null ? '' : Number(r.PesoUnitarioKg),
@@ -185,6 +192,19 @@ const Lotes = () => {
     setIsEditarRegistroOpen(false)
   }
 
+  // Abrir / cerrar Formato equivalente
+  const openFormatoModal = (idLote, regsOrdenados) => {
+    if (!permisoFormatoEquivalente) return
+    setLoteTargetId(idLote)
+    setLoteTargetRegs(regsOrdenados)
+    setIsFormatoModalOpen(true)
+  }
+  const closeFormatoModal = () => {
+    setIsFormatoModalOpen(false)
+    setLoteTargetId(null)
+    setLoteTargetRegs([])
+  }
+
   const rowKey = (r, i) =>
     r.id_lote_producto ||
     r.Id_lote_producto ||
@@ -193,7 +213,7 @@ const Lotes = () => {
 
   return (
     <>
-      {/* Modales */}
+      {/* Modal: Agregar Lote */}
       <Modal
         isOpen={isAgregarModalOpen}
         onRequestClose={() => setIsAgregarModalOpen(false)}
@@ -210,6 +230,7 @@ const Lotes = () => {
         />
       </Modal>
 
+      {/* Modal: Editar registro */}
       <Modal
         isOpen={isEditarRegistroOpen}
         onRequestClose={closeEditarRegistro}
@@ -229,6 +250,17 @@ const Lotes = () => {
           />
         )}
       </Modal>
+
+      {/* Modal: Formato equivalente (componente real) */}
+      {permisoFormatoEquivalente && (
+        <FormatoEquivalenteModal
+          isOpen={isFormatoModalOpen}
+          onClose={closeFormatoModal}
+          idLote={loteTargetId}
+          registros={loteTargetRegs}
+          productNameById={productNameById}
+        />
+      )}
 
       {/* Toolbar */}
       <div className='lotes-container container mt-4'>
@@ -272,6 +304,11 @@ const Lotes = () => {
               ).toLocaleString()
               const comentario = lotesComentarios[idLote] || 'Sin comentarios'
 
+              const regsOrdenados = [...registros].sort(
+                (a, b) =>
+                  new Date(a.Fecha_registro) - new Date(b.Fecha_registro)
+              )
+
               return (
                 <div className='accordion-item' key={idLote}>
                   <h2 className='accordion-header' id={`heading-${index}`}>
@@ -304,6 +341,21 @@ const Lotes = () => {
                     data-bs-parent='#lotesAccordion'
                   >
                     <div className='accordion-body'>
+                      {/* Botón Formato equivalente si tiene permiso */}
+                      {permisoFormatoEquivalente && (
+                        <div className='d-flex justify-content-end mb-2'>
+                          <button
+                            type='button'
+                            className='btn btn-outline-primary btn-sm'
+                            onClick={() =>
+                              openFormatoModal(idLote, regsOrdenados)
+                            }
+                          >
+                            Formato equivalente
+                          </button>
+                        </div>
+                      )}
+
                       <table className='table table-bordered table-sm text-center align-middle'>
                         <thead>
                           <tr>
@@ -316,73 +368,64 @@ const Lotes = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {[...registros]
-                            .sort(
-                              (a, b) =>
-                                new Date(a.Fecha_registro) -
-                                new Date(b.Fecha_registro)
+                          {regsOrdenados.map((r, i) => {
+                            const pTotal = pesoTotal(r)
+                            const terceroBadge = r.Proveedor?.Nombre ? (
+                              <span className='badge bg-warning text-dark'>
+                                Proveedor: {r.Proveedor.Nombre}
+                              </span>
+                            ) : r.Cliente?.Nombre ? (
+                              <span className='badge bg-primary'>
+                                Cliente: {r.Cliente.Nombre}
+                              </span>
+                            ) : (
+                              'N/A'
                             )
-                            .map((r, i) => {
-                              const pTotal = pesoTotal(r)
-                              const terceroBadge = r.Proveedor?.Nombre ? (
-                                <span className='badge bg-warning text-dark'>
-                                  Proveedor: {r.Proveedor.Nombre}
-                                </span>
-                              ) : r.Cliente?.Nombre ? (
-                                <span className='badge bg-primary'>
-                                  Cliente: {r.Cliente.Nombre}
-                                </span>
-                              ) : (
-                                'N/A'
-                              )
-                              const nombre =
-                                productNameById[String(r.id_producto)] ||
-                                r.Nombre ||
-                                ''
-                              return (
-                                <tr key={rowKey(r, i)}>
-                                  <td className='text-break'>
-                                    <div className='text-start'>
-                                      <div className='fw-semibold'>
-                                        {r.id_producto}
-                                      </div>
-                                      <div className='text-muted small'>
-                                        {nombre}
-                                      </div>{' '}
-                                      {/* 👈 nombre debajo */}
+                            const nombre =
+                              productNameById[String(r.id_producto)] ||
+                              r.Nombre ||
+                              ''
+                            return (
+                              <tr key={rowKey(r, i)}>
+                                <td className='text-break'>
+                                  <div className='text-start'>
+                                    <div className='fw-semibold'>
+                                      {r.id_producto}
                                     </div>
-                                  </td>
-                                  <td>{formatNum(r.Cantidad, 2)}</td>
-                                  <td>
-                                    {r.PesoUnitarioKg == null ? (
-                                      <span className='badge text-bg-secondary'>
-                                        Sin peso
-                                      </span>
-                                    ) : (
-                                      <span className='badge text-bg-success'>
-                                        {formatNum(r.PesoUnitarioKg, 3)}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td>
-                                    {pTotal == null
-                                      ? '—'
-                                      : formatNum(pTotal, 3)}
-                                  </td>
-                                  <td>{terceroBadge}</td>
-                                  <td className='text-nowrap'>
-                                    <button
-                                      type='button'
-                                      className='btn btn-outline-secondary btn-sm'
-                                      onClick={() => openEditarRegistro(r)}
-                                      title={`Editar ${r.id_producto}`}
-                                    >
-                                      Editar
-                                    </button>
-                                  </td>
-                                </tr>
-                              )
-                            })}
+                                    <div className='text-muted small'>
+                                      {nombre}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>{formatNum(r.Cantidad, 2)}</td>
+                                <td>
+                                  {r.PesoUnitarioKg == null ? (
+                                    <span className='badge text-bg-secondary'>
+                                      Sin peso
+                                    </span>
+                                  ) : (
+                                    <span className='badge text-bg-success'>
+                                      {formatNum(r.PesoUnitarioKg, 3)}
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  {pTotal == null ? '—' : formatNum(pTotal, 3)}
+                                </td>
+                                <td>{terceroBadge}</td>
+                                <td className='text-nowrap'>
+                                  <button
+                                    type='button'
+                                    className='btn btn-outline-secondary btn-sm'
+                                    onClick={() => openEditarRegistro(r)}
+                                    title={`Editar ${r.id_producto}`}
+                                  >
+                                    Editar
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
