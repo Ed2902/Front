@@ -16,6 +16,7 @@ import {
   BiBody,
   BiSolidUserVoice,
   BiTimeFive,
+  BiDollar, // 👈 icono para Financiera
 } from 'react-icons/bi'
 import AuthContext from '../../context/AuthContext'
 import { usePermisos } from '../../hooks/usePermisos'
@@ -104,7 +105,7 @@ const Sidebar = ({ onToggleCollapse }) => {
         <div className='sidebar-links'>
           <h6>Menú</h6>
           <ul>
-            {/* 🏠 Inicio (/home) */}
+            {/* 📰 News (/home) */}
             <li className={location.pathname === '/home' ? 'active' : ''}>
               <Link to='/home' onClick={handleLinkClick}>
                 <BiSolidUserVoice size={20} />
@@ -203,6 +204,24 @@ const Sidebar = ({ onToggleCollapse }) => {
                     }`}
                   >
                     Tiempos en PC
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {/* ✅ Financiera (debajo de Tiempos en PC) */}
+            {tienePermiso('financiera') && (
+              <li
+                className={location.pathname === '/financiera' ? 'active' : ''}
+              >
+                <Link to='/financiera' onClick={handleLinkClick}>
+                  <BiDollar size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Financiera
                   </span>
                 </Link>
               </li>

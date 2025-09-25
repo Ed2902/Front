@@ -18,7 +18,8 @@ import Terceros from './pages/Terceros/Terceros.jsx'
 import NoEncontrado from './pages/NoEncontrado'
 import ControlDeIngresos from './pages/ControlDeIngresos/ControlDeIngresos.jsx'
 import Tickets from './pages/Tickets/TicketsPage.jsx'
-import TiemposPc from './pages/TiemposPc/TiemposPc.jsx' // 👈 NUEVO
+import TiemposPc from './pages/TiemposPc/TiemposPc.jsx'
+import Financiera from './pages/Financiera/Financiera.jsx'
 
 function App() {
   return (
@@ -88,6 +89,12 @@ function AppRoutes() {
         element={
           <PrivateRoute permiso='awTiemposEnPc' element={<TiemposPc />} />
         }
+      />
+
+      {/* ✅ Financiera (protegida por 'financiera') */}
+      <Route
+        path='/financiera'
+        element={<PrivateRoute permiso='financiera' element={<Financiera />} />}
       />
 
       {/* Redirección inicial */}

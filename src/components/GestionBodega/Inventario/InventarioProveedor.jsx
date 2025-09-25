@@ -10,8 +10,23 @@ const numberCO = (n, d = 2) =>
     maximumFractionDigits: d,
   })
 
-const isUnidad = u => (u || '').toLowerCase() === 'unidades'
-const isKiloUnit = u => /(kg|kilo)/i.test((u || '').toLowerCase())
+// Parser robusto para "es-CO" (e.g., "1.234,56" -> 1234.56)
+const toNumberCO = v => {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const s = v.trim().replace(/\s+/g, '').replace(/\./g, '').replace(/,/g, '.')
+    const n = parseFloat(s)
+    return Number.isNaN(n) ? 0 : n
+  }
+  const n = Number(v)
+  return Number.isNaN(n) ? 0 : n
+}
+
+// Toma el primer valor definido (no null/undefined/'')
+const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+
+const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
 
 const InventarioProveedor = () => {
   const [rows, setRows] = useState([]) // filas consolidadas por proveedor+producto
@@ -32,40 +47,49 @@ const InventarioProveedor = () => {
         // Consolidar por (proveedor, producto)
         const map = new Map()
         for (const it of arr) {
-          const provId = it?.Id_proveedor ?? it?.id_proveedor ?? 'SIN_PROV'
+          const provId =
+            pickFirstDefined(it?.Id_proveedor, it?.id_proveedor) ?? 'SIN_PROV'
           const provName =
-            it?.Nombre_Proveedor ?? it?.Proveedor?.Nombre ?? 'Sin proveedor'
-          const prodId = it?.Id_producto ?? it?.id_producto
+            pickFirstDefined(it?.Nombre_Proveedor, it?.Proveedor?.Nombre) ??
+            'Sin proveedor'
+          const prodId = pickFirstDefined(it?.Id_producto, it?.id_producto)
           if (!prodId) continue
 
-          const prodName = it?.Nombre_Producto ?? it?.Producto?.Nombre ?? ''
+          const prodName =
+            pickFirstDefined(it?.Nombre_Producto, it?.Producto?.Nombre) ?? ''
           const unidad =
-            it?.Unidad_de_medida ?? it?.Producto?.Unidad_de_medida ?? ''
-          const loteId = it?.Id_lote ?? it?.id_lote ?? null
+            pickFirstDefined(
+              it?.Unidad_de_medida,
+              it?.Producto?.Unidad_de_medida
+            ) ?? ''
+          const loteId = pickFirstDefined(it?.Id_lote, it?.id_lote) ?? null
           const fechaUlt =
-            it?.Fecha_ultimo_registro ?? it?.Fecha_ultimo_registri ?? null
+            pickFirstDefined(
+              it?.Fecha_ultimo_registro,
+              it?.Fecha_ultimo_registri
+            ) ?? null
 
-          // Cantidad fila (prefiere inventario; fallback lote)
-          const cantidadFila =
-            Number(it?.Cantidad_Inventario ?? it?.Cantidad) ||
-            Number(it?.Cantidad_Lote) ||
-            0
+          // Cantidad fila (prioridad: Inventario -> Cantidad -> Cantidad_Lote)
+          const cantidadRaw = pickFirstDefined(
+            it?.Cantidad_Inventario,
+            it?.Cantidad,
+            it?.Cantidad_Lote
+          )
+          const cantidadFila = toNumberCO(cantidadRaw)
 
           // Kilos por fila:
-          //  - Usa PesoTotalKg si viene (>0)
-          //  - Si unidad = unidades y hay PU -> cantidad * PU
-          //  - Si unidad es kilos -> cantidad
-          //  - Si no, 0
-          let kilosFila = 0
-          const pesoTotalFromBE = Number(it?.PesoTotalKg) || 0
-          const pu =
-            it?.PesoUnitarioKg != null ? Number(it.PesoUnitarioKg) : null
+          // 1) Usa PesoTotalKg si viene (>0)
+          // 2) Si hay PU (>0): cantidad * PU
+          // 3) Si no: cantidad
+          const pesoTotalFromBE = toNumberCO(it?.PesoTotalKg)
+          const pu = toNumberCO(it?.PesoUnitarioKg)
 
+          let kilosFila = 0
           if (pesoTotalFromBE > 0) {
             kilosFila = pesoTotalFromBE
-          } else if (isUnidad(unidad) && pu && pu > 0) {
+          } else if (pu > 0) {
             kilosFila = cantidadFila * pu
-          } else if (isKiloUnit(unidad)) {
+          } else {
             kilosFila = cantidadFila
           }
 
@@ -101,9 +125,9 @@ const InventarioProveedor = () => {
 
         const out = Array.from(map.values()).map(r => ({
           ...r,
-          cantidad_total: Number(r.cantidad_total) || 0,
-          unidades_total: Number(r.unidades_total) || 0,
-          kilos_total: Number(r.kilos_total) || 0,
+          cantidad_total: toNumberCO(r.cantidad_total),
+          unidades_total: toNumberCO(r.unidades_total),
+          kilos_total: toNumberCO(r.kilos_total),
           lotes_count: r.lotes.size,
           ultimo_ingreso_fmt: r.ultimo_ingreso
             ? new Date(r.ultimo_ingreso).toLocaleDateString('es-CO')
@@ -143,15 +167,15 @@ const InventarioProveedor = () => {
 
   // Totales
   const totalCantidad = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.cantidad_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.cantidad_total), 0),
     [filtered]
   )
   const totalUnidades = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.unidades_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.unidades_total), 0),
     [filtered]
   )
   const totalKilos = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.kilos_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.kilos_total), 0),
     [filtered]
   )
 
@@ -177,9 +201,9 @@ const InventarioProveedor = () => {
         'Código Producto': r.id_producto,
         'Nombre Producto': r.nombre_producto,
         'Unidad (ref.)': r.unidad_referencial,
-        'Cantidad Total': r.cantidad_total,
-        'Unidades (agregadas)': r.unidades_total,
-        'Kilos Totales': r.kilos_total,
+        'Cantidad Total': toNumberCO(r.cantidad_total),
+        'Unidades (agregadas)': toNumberCO(r.unidades_total),
+        'Kilos Totales': toNumberCO(r.kilos_total),
         'N° Lotes': r.lotes_count,
         'Último ingreso': r.ultimo_ingreso_fmt,
       })),
@@ -226,7 +250,9 @@ const InventarioProveedor = () => {
         right: true,
         width: '150px',
         cell: r => (
-          <span className='text-end'>{numberCO(r.cantidad_total, 2)}</span>
+          <span className='text-end'>
+            {numberCO(toNumberCO(r.cantidad_total), 2)}
+          </span>
         ),
       },
       {
@@ -236,9 +262,9 @@ const InventarioProveedor = () => {
         right: true,
         width: '170px',
         cell: r =>
-          Number(r.unidades_total) > 0 ? (
+          toNumberCO(r.unidades_total) > 0 ? (
             <span className='fw-semibold text-end'>
-              {numberCO(r.unidades_total, 2)}
+              {numberCO(toNumberCO(r.unidades_total), 2)}
             </span>
           ) : (
             <span className='text-muted'>—</span>
@@ -252,7 +278,7 @@ const InventarioProveedor = () => {
         width: '160px',
         cell: r => (
           <span className='fw-semibold text-end'>
-            {numberCO(r.kilos_total, 2)}
+            {numberCO(toNumberCO(r.kilos_total), 2)}
           </span>
         ),
       },

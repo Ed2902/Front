@@ -5,14 +5,30 @@ import { utils, writeFile } from 'xlsx'
 import { getInventarioResumen } from './inventario_service'
 import { usePermisos } from '../../../hooks/usePermisos'
 
+// Formateo local
 const numberCO = (n, d = 2) =>
   (Number(n) || 0).toLocaleString('es-CO', {
     minimumFractionDigits: d,
     maximumFractionDigits: d,
   })
 
-const isUnidad = u => (u || '').toLowerCase() === 'unidades'
-const isKiloUnit = u => /(kg|kilo)/i.test((u || '').toLowerCase())
+// Parser robusto para "es-CO" (e.g., "1.234,56" -> 1234.56)
+const toNumberCO = v => {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const s = v.trim().replace(/\s+/g, '').replace(/\./g, '').replace(/,/g, '.')
+    const n = parseFloat(s)
+    return Number.isNaN(n) ? 0 : n
+  }
+  const n = Number(v)
+  return Number.isNaN(n) ? 0 : n
+}
+
+// Toma el primer valor definido (no null/undefined/'')
+const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+
+const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
 
 const InventarioConsolidadoRS = () => {
   const [rows, setRows] = useState([]) // filas consolidadas por producto (solo RS)
@@ -32,8 +48,13 @@ const InventarioConsolidadoRS = () => {
         const data = await getInventarioResumen()
         const arr = Array.isArray(data) ? data : []
 
-        // 1) SOLO RS
-        const onlyRS = arr.filter(it => (it?.Tipo ?? '').toUpperCase() === 'RS')
+        // 1) SOLO RS (lee Tipo en raíz o dentro de Producto)
+        const onlyRS = arr.filter(it => {
+          const tipo = (it?.Tipo ?? it?.Producto?.Tipo ?? '')
+            .toString()
+            .toUpperCase()
+          return tipo === 'RS'
+        })
 
         // 2) Consolidar por Id_producto
         const map = new Map()
@@ -47,34 +68,37 @@ const InventarioConsolidadoRS = () => {
           const fechaUlt =
             it?.Fecha_ultimo_registro ?? it?.Fecha_ultimo_registri ?? null
 
-          // Cantidad de la fila (preferir inventario; fallback lote)
-          const cantidadFila =
-            Number(it?.Cantidad_Inventario ?? it?.Cantidad) ||
-            Number(it?.Cantidad_Lote) ||
-            0
+          // Cantidad de la fila (prioridad: Inventario -> Cantidad -> Cantidad_Lote)
+          const cantidadRaw = pickFirstDefined(
+            it?.Cantidad_Inventario,
+            it?.Cantidad,
+            it?.Cantidad_Lote
+          )
+          const cantidadFila = toNumberCO(cantidadRaw)
 
-          // Kilos por fila
-          const pu =
-            it?.PesoUnitarioKg != null ? Number(it.PesoUnitarioKg) : null
-          let kilosFila = 0
-          if (isUnidad(unidad) && pu && pu > 0) kilosFila = cantidadFila * pu
-          else if (isKiloUnit(unidad)) kilosFila = cantidadFila
+          // Peso unitario
+          const pu = toNumberCO(it?.PesoUnitarioKg)
+
+          // *** Regla de kilos por fila ***
+          // - Si PU > 0 => kilos = cantidad * PU
+          // - Si PU no válido/0/null => kilos = cantidad
+          const kilosFila = pu > 0 ? cantidadFila * pu : cantidadFila
 
           if (!map.has(id)) {
             map.set(id, {
               id_producto: id,
               nombre_producto: nombre,
               unidad_referencial: unidad, // informativo
-              cantidad_total: 0, // suma de cantidades crudas (puede mezclar)
-              unidades_total: 0, // 👈 suma SÓLO donde unidad=unidades
-              kilos_total: 0, // suma de kilos calculados/ya en kg
+              cantidad_total: 0, // suma de cantidades crudas
+              unidades_total: 0, // suma donde la unidad es "unidades"
+              kilos_total: 0, // suma de kilos calculados
               ultimo_ingreso: fechaUlt,
             })
           }
           const acc = map.get(id)
           acc.cantidad_total += cantidadFila
           acc.kilos_total += kilosFila
-          if (isUnidad(unidad)) acc.unidades_total += cantidadFila // 👈 indicador de unidades
+          if (isUnidad(unidad)) acc.unidades_total += cantidadFila
 
           // último ingreso más reciente
           if (fechaUlt) {
@@ -86,9 +110,9 @@ const InventarioConsolidadoRS = () => {
 
         const out = Array.from(map.values()).map(r => ({
           ...r,
-          cantidad_total: Number(r.cantidad_total) || 0,
-          unidades_total: Number(r.unidades_total) || 0,
-          kilos_total: Number(r.kilos_total) || 0,
+          cantidad_total: toNumberCO(r.cantidad_total),
+          unidades_total: toNumberCO(r.unidades_total),
+          kilos_total: toNumberCO(r.kilos_total),
           ultimo_ingreso_fmt: r.ultimo_ingreso
             ? new Date(r.ultimo_ingreso).toLocaleDateString('es-CO')
             : 'N/A',
@@ -127,15 +151,15 @@ const InventarioConsolidadoRS = () => {
 
   // Totales
   const totalCant = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.cantidad_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.cantidad_total), 0),
     [filtered]
   )
   const totalKg = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.kilos_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.kilos_total), 0),
     [filtered]
   )
   const totalUnidades = useMemo(
-    () => filtered.reduce((s, r) => s + (Number(r.unidades_total) || 0), 0),
+    () => filtered.reduce((s, r) => s + toNumberCO(r.unidades_total), 0),
     [filtered]
   )
 
@@ -159,9 +183,9 @@ const InventarioConsolidadoRS = () => {
       filtered.map(r => ({
         'Código Producto': r.id_producto,
         'Nombre Producto': r.nombre_producto,
-        'Cantidad Total': r.cantidad_total,
-        'Unidades (agregadas)': r.unidades_total, // 👈 nuevo en export
-        'Kilos Totales': r.kilos_total,
+        'Cantidad Total': toNumberCO(r.cantidad_total),
+        'Unidades (agregadas)': toNumberCO(r.unidades_total),
+        'Kilos Totales': toNumberCO(r.kilos_total),
         'Último ingreso': r.ultimo_ingreso_fmt,
       })),
       { origin: -1 }
@@ -194,7 +218,9 @@ const InventarioConsolidadoRS = () => {
         right: true,
         width: '150px',
         cell: r => (
-          <span className='text-end'>{numberCO(r.cantidad_total, 2)}</span>
+          <span className='text-end'>
+            {numberCO(toNumberCO(r.cantidad_total), 2)}
+          </span>
         ),
       },
       {
@@ -204,9 +230,9 @@ const InventarioConsolidadoRS = () => {
         right: true,
         width: '170px',
         cell: r =>
-          Number(r.unidades_total) > 0 ? (
+          toNumberCO(r.unidades_total) > 0 ? (
             <span className='fw-semibold text-end'>
-              {numberCO(r.unidades_total, 2)}
+              {numberCO(toNumberCO(r.unidades_total), 2)}
             </span>
           ) : (
             <span className='text-muted'>—</span>
@@ -220,7 +246,7 @@ const InventarioConsolidadoRS = () => {
         width: '160px',
         cell: r => (
           <span className='fw-semibold text-end'>
-            {numberCO(r.kilos_total, 2)}
+            {numberCO(toNumberCO(r.kilos_total), 2)}
           </span>
         ),
       },
@@ -262,9 +288,7 @@ const InventarioConsolidadoRS = () => {
 
       <div className='ms-auto d-flex align-items-center gap-3'>
         <div className='text-muted small'>
-          {'  ·  '}
           <strong>Total Unidades:</strong> {numberCO(totalUnidades, 2)}
-          {'  ·  '}
           {'  ·  '}
           <strong>Total Kilos:</strong> {numberCO(totalKg, 2)}
         </div>

@@ -41,6 +41,12 @@ const SECCIONES = [
         padre: 'gestionBodega',
       },
       { clave: 'lotesCliente', label: 'Lotes Cliente', padre: 'gestionBodega' },
+      // ✅ Permiso nuevo
+      {
+        clave: 'formatoEquivalente',
+        label: 'Formato equivalente',
+        padre: 'gestionBodega',
+      },
     ],
   },
   {
@@ -120,6 +126,14 @@ const SECCIONES = [
       { clave: 'soporteTicket', label: 'Soporte Ticket', padre: 'tickets' },
     ],
   },
+  // ✅ Nueva sección/pilar: Financiera (con “Acceso general”)
+  {
+    nombre: 'Financiera',
+    icono: <BiBuilding />,
+    permisos: [
+      { clave: 'financiera', label: 'Acceso general' }, // pilar propio
+    ],
+  },
 ]
 
 // Lista plana de permisos para defaults
@@ -135,7 +149,6 @@ const ListaUsuarios = () => {
       try {
         const data = await obtenerUsuarios()
         const formateados = data.map(usuario => {
-          // defaults = false para todos los permisos conocidos
           const base = Object.fromEntries(PERMISOS_PLANOS.map(k => [k, false]))
           let guardados = {}
           try {
@@ -199,10 +212,8 @@ const ListaUsuarios = () => {
   )
 
   const userHasEntireSection = useCallback(
-    (usuario, seccion) => {
-      const keys = getSectionKeys(seccion)
-      return keys.every(k => !!usuario.permisos[k])
-    },
+    (usuario, seccion) =>
+      getSectionKeys(seccion).every(k => !!usuario.permisos[k]),
     [getSectionKeys]
   )
 
@@ -263,7 +274,7 @@ const ListaUsuarios = () => {
         selector: r => r.nombre,
         sortable: true,
         grow: 2,
-        minWidth: '280px', // más espacio a la primera columna
+        minWidth: '280px',
         cell: r => (
           <div className='d-flex align-items-center gap-2'>
             <span>{r.icono}</span>
@@ -314,9 +325,8 @@ const ListaUsuarios = () => {
           width: '120px',
           right: true,
           cell: row => {
-            if (isSectionSelectorRow(row)) {
+            if (isSectionSelectorRow(row))
               return <span className='text-muted'>—</span>
-            }
             return (
               <input
                 type='checkbox'
@@ -338,8 +348,8 @@ const ListaUsuarios = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              rowGap: '12px', // más espacio entre nombre y botón
-              minWidth: '120px', // evita que se pegue a la izquierda
+              rowGap: '12px',
+              minWidth: '120px',
             }}
           >
             <strong style={{ lineHeight: 1.1, textAlign: 'center' }}>
@@ -356,7 +366,7 @@ const ListaUsuarios = () => {
             </button>
           </div>
         ),
-        width: '160px', // más aire para el header de usuario
+        width: '160px',
         right: true,
         cell: row => {
           if (isSectionSelectorRow(row)) {
@@ -417,9 +427,8 @@ const ListaUsuarios = () => {
             responsive
             highlightOnHover
             noHeader
-            pagination
-            paginationPerPage={10}
-            paginationRowsPerPageOptions={[10, 20, 50]}
+            // 👇 Sin paginación para que se vea todo
+            pagination={false}
           />
         </div>
       )
