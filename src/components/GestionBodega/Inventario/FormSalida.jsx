@@ -1,19 +1,37 @@
 // src/components/Inventario/Salidas/FormSalidaLotes.jsx
+
 import { useForm } from 'react-hook-form'
-import { useEffect, useState, useContext, useRef } from 'react'
+import { useEffect, useMemo, useState, useContext, useRef } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
 import AuthContext from '../../../context/AuthContext'
 import {
-  getLoteProducto,
-  getBodegas,
-  getUbicaciones,
   getOperaciones,
   crearSalida,
-  getInventarioPorLoteYProducto,
+  crearDocumentoSalida, // se usa al final de procesarSalidas
 } from './salida_service'
+import { getInventarioResumen } from './inventario_service'
 import Webcam from 'react-webcam'
 
+// ===== Helpers
+const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+const toNumberCO = v => {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  if (typeof v === 'string') {
+    const s = v.trim().replace(/\s+/g, '').replace(/\./g, '').replace(/,/g, '.')
+    const n = parseFloat(s)
+    return Number.isNaN(n) ? 0 : n
+  }
+  const n = Number(v)
+  return Number.isNaN(n) ? 0 : n
+}
 const numeroDeOP = id => Number(String(id || '').replace(/^OP/i, '')) || 0
+const sortLotesDesc = (a, b) => {
+  const na = parseInt((String(a).match(/\d+$/) || [0])[0], 10)
+  const nb = parseInt((String(b).match(/\d+$/) || [0])[0], 10)
+  if (nb !== na) return nb - na
+  return String(b).localeCompare(String(a))
+}
 
 const FormSalidaLotes = ({ onSuccess }) => {
   const { user } = useContext(AuthContext)
@@ -35,28 +53,20 @@ const FormSalidaLotes = ({ onSuccess }) => {
     formState: { errors: errorsItem },
   } = useForm()
 
-  // Catálogos
-  const [lotes, setLotes] = useState([])
-  const [bodegas, setBodegas] = useState([])
-  const [ubicaciones, setUbicaciones] = useState([])
+  // ===== Catálogos
+  const [invResumen, setInvResumen] = useState([])
   const [operaciones, setOperaciones] = useState([])
 
-  // Estado ítem
+  // ===== Estado del editor de ítem
   const [idLoteItem, setIdLoteItem] = useState('')
-  const [inventarioItem, setInventarioItem] = useState(null)
-  const [cantidadDisponibleItem, setCantidadDisponibleItem] = useState(null)
-  const [bodegaItem, setBodegaItem] = useState('')
-  const [ubicacionItem, setUbicacionItem] = useState('')
+  const productoItem = watchItem('id_producto_item')
 
-  const productosFiltradosItem = lotes
-    .filter(l => l.id_lote === idLoteItem)
-    .map(l => l.id_producto)
-  const ubicacionesDeBodegaItem = ubicaciones.filter(
-    u => u.id_bodega === (bodegaItem || '')
-  )
+  // Opciones de Bodega/Ubicación con stock para el lote+producto
+  const [invOpciones, setInvOpciones] = useState([])
+  const [opcionSeleccionadaKey, setOpcionSeleccionadaKey] = useState('')
+  const [cantidadDisponibleItem, setCantidadDisponibleItem] = useState(null)
 
   // Carrito
-  // { id_lote, id_producto, cantidad, id_bodega_origen, id_ubicacion_origen, evidenciaFile?, evidenciaName? }
   const [items, setItems] = useState([])
 
   // Cámara por ítem
@@ -77,20 +87,18 @@ const FormSalidaLotes = ({ onSuccess }) => {
   const [procesando, setProcesando] = useState(false)
   const [progreso, setProgreso] = useState([])
 
-  // Carga inicial
+  // PDF generado
+  const [docGenerado, setDocGenerado] = useState(null) // { id, url }
+
+  // ===== Carga inicial
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [lotesData, bodegasData, ubicacionesData, operacionesData] =
-          await Promise.all([
-            getLoteProducto(),
-            getBodegas(),
-            getUbicaciones(),
-            getOperaciones(),
-          ])
-        setLotes(lotesData)
-        setBodegas(bodegasData)
-        setUbicaciones(ubicacionesData)
+        const [resumenData, operacionesData] = await Promise.all([
+          getInventarioResumen(),
+          getOperaciones(),
+        ])
+        setInvResumen(Array.isArray(resumenData) ? resumenData : [])
         const ordenadas = (operacionesData || [])
           .filter(op => !!op?.id_operacion)
           .sort(
@@ -104,41 +112,109 @@ const FormSalidaLotes = ({ onSuccess }) => {
     fetchData()
   }, [])
 
-  // Inventario del ítem -> autocompletar Bodega/Ubi
-  const productoItem = watchItem('id_producto_item')
-  useEffect(() => {
-    const run = async () => {
-      if (!idLoteItem || !productoItem) {
-        setInventarioItem(null)
-        setCantidadDisponibleItem(null)
-        setBodegaItem('')
-        setUbicacionItem('')
-        return
-      }
-      try {
-        const inv = await getInventarioPorLoteYProducto(
-          idLoteItem,
-          productoItem
-        )
-        setInventarioItem(inv || null)
-        setCantidadDisponibleItem(inv?.Cantidad ?? null)
-        const autoBodega = inv?.Bodega?.id_bodega || inv?.id_bodega || ''
-        const autoUbi =
-          inv?.UbicacionBodega?.id_ubicacion || inv?.id_ubicacion || ''
-        setBodegaItem(autoBodega || '')
-        setUbicacionItem(autoUbi || '')
-      } catch (e) {
-        console.error('Error inventario item', e)
-        setInventarioItem(null)
-        setCantidadDisponibleItem(null)
-        setBodegaItem('')
-        setUbicacionItem('')
-      }
-    }
-    run()
-  }, [idLoteItem, productoItem])
+  // ===== Lotes únicos ordenados desc
+  const lotesDisponibles = useMemo(() => {
+    const set = new Set(
+      invResumen
+        .map(r => pickFirstDefined(r?.Id_lote, r?.id_lote))
+        .filter(Boolean)
+    )
+    return Array.from(set).sort(sortLotesDesc)
+  }, [invResumen])
 
-  // Firmas
+  // ===== Productos por lote
+  const productosDisponibles = useMemo(() => {
+    if (!idLoteItem) return []
+    const map = new Map()
+    invResumen.forEach(r => {
+      const id_lote = pickFirstDefined(r?.Id_lote, r?.id_lote)
+      if (id_lote !== idLoteItem) return
+      const id_producto = pickFirstDefined(r?.Id_producto, r?.id_producto)
+      if (!id_producto) return
+      const nombre =
+        pickFirstDefined(r?.Nombre_Producto, r?.Producto?.Nombre) || id_producto
+      if (!map.has(id_producto)) map.set(id_producto, nombre)
+    })
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
+  }, [invResumen, idLoteItem])
+
+  // ===== Opciones de Bodega/Ubicación con stock
+  useEffect(() => {
+    setInvOpciones([])
+    setOpcionSeleccionadaKey('')
+    setCantidadDisponibleItem(null)
+
+    if (!idLoteItem || !productoItem) return
+
+    const rows = invResumen.filter(r => {
+      const id_lote = pickFirstDefined(r?.Id_lote, r?.id_lote)
+      const id_prod = pickFirstDefined(r?.Id_producto, r?.id_producto)
+      return id_lote === idLoteItem && id_prod === productoItem
+    })
+
+    const map = new Map()
+    rows.forEach(r => {
+      const id_bodega =
+        pickFirstDefined(
+          r?.id_bodega,
+          r?.Id_bodega,
+          r?.Bodega?.Id,
+          r?.BodegaId
+        ) || ''
+      const bodegaNombre =
+        pickFirstDefined(r?.Bodega?.Nombre, r?.BodegaNombre, r?.Bodega) || ''
+      const id_ubicacion =
+        pickFirstDefined(
+          r?.id_ubicacion,
+          r?.Id_ubicacion,
+          r?.Ubicacion?.Id,
+          r?.UbicacionId
+        ) || ''
+      const ubicacionNombre =
+        pickFirstDefined(
+          r?.Ubicacion?.Nombre,
+          r?.UbicacionNombre,
+          r?.Ubicacion,
+          r?.ubicacion
+        ) || ''
+      const cantidad = toNumberCO(
+        pickFirstDefined(
+          r?.Cantidad_Inventario,
+          r?.Cantidad,
+          r?.Cantidad_Lote,
+          0
+        )
+      )
+      const key = `${id_bodega}|${id_ubicacion}`
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          id_bodega,
+          bodegaNombre,
+          id_ubicacion,
+          ubicacionNombre,
+          cantidad: 0,
+        })
+      }
+      map.get(key).cantidad += cantidad
+    })
+
+    const opciones = Array.from(map.values())
+      .filter(
+        op => (op.id_bodega || op.id_ubicacion) && toNumberCO(op.cantidad) > 0
+      )
+      .sort((a, b) => toNumberCO(b.cantidad) - toNumberCO(a.cantidad))
+
+    setInvOpciones(opciones)
+    if (opciones.length === 1) {
+      setOpcionSeleccionadaKey(opciones[0].key)
+      setCantidadDisponibleItem(toNumberCO(opciones[0].cantidad))
+    }
+  }, [idLoteItem, productoItem, invResumen])
+
+  // ===== Firmas
   const guardarFirma = tipo => {
     const canvas = firmaRefs[tipo].current
     if (!canvas || canvas.isEmpty()) return alert('Firma vacía')
@@ -148,7 +224,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
   }
   const limpiarFirma = tipo => firmaRefs[tipo].current?.clear()
 
-  // Evidencia por ítem
+  // ===== Evidencia por ítem
   const onFileForItem = (idx, file) => {
     setItems(prev => {
       const copy = [...prev]
@@ -170,89 +246,94 @@ const FormSalidaLotes = ({ onSuccess }) => {
         const file = new File(
           [blob],
           `foto-item-${cameraIndex}-${Date.now()}.jpg`,
-          { type: 'image/jpeg' }
+          {
+            type: 'image/jpeg',
+          }
         )
         onFileForItem(cameraIndex, file)
         setCameraIndex(null)
       })
   }
 
-  // Evitar submit al presionar Enter dentro del editor de ítems
+  // Evitar submit con Enter dentro del editor de ítems
   const preventEnterSubmit = e => {
     if (e.key === 'Enter') e.preventDefault()
   }
 
-  // Agregar ítem
+  // ===== Agregar ítem
   const onAddItem = handleSubmitItem(
     ({ id_lote_item, id_producto_item, cantidad_item }) => {
       const cant = Number(cantidad_item)
       if (!id_lote_item || !id_producto_item || !cant || cant <= 0) return
 
-      const mismaBodegaDetectada =
-        !inventarioItem?.Bodega?.id_bodega ||
-        bodegaItem === inventarioItem?.Bodega?.id_bodega
-      const mismaUbiDetectada =
-        !inventarioItem?.UbicacionBodega?.id_ubicacion ||
-        ubicacionItem === inventarioItem?.UbicacionBodega?.id_ubicacion
-
-      if (mismaBodegaDetectada && mismaUbiDetectada) {
-        if (cantidadDisponibleItem != null && cant > cantidadDisponibleItem) {
-          setStatusMessage({
-            type: 'error',
-            text: `No hay suficiente inventario para ${id_lote_item}/${id_producto_item} (máx: ${cantidadDisponibleItem})`,
-          })
-          setTimeout(() => setStatusMessage(null), 2500)
-          return
-        }
-      } else {
+      const op = invOpciones.find(o => o.key === opcionSeleccionadaKey)
+      if (!op) {
         setStatusMessage({
           type: 'error',
-          text: 'Stock exacto solo validado en la ubicación detectada. Verifica al cambiar bodega/ubicación.',
+          text: 'Selecciona Bodega/Ubicación.',
+        })
+        setTimeout(() => setStatusMessage(null), 2000)
+        return
+      }
+
+      if (cantidadDisponibleItem != null && cant > cantidadDisponibleItem) {
+        setStatusMessage({
+          type: 'error',
+          text: `No hay suficiente inventario en la ubicación seleccionada (máx: ${cantidadDisponibleItem}).`,
         })
         setTimeout(() => setStatusMessage(null), 2500)
+        return
       }
+
+      const prodNombre =
+        productosDisponibles.find(p => p.id === id_producto_item)?.name ||
+        id_producto_item
 
       const nuevo = {
         id_lote: id_lote_item,
-        id_producto: id_producto_item,
+        id_producto: id_producto_item, // enviar solo código
         cantidad: cant,
-        id_bodega_origen: bodegaItem || '',
-        id_ubicacion_origen: ubicacionItem || '',
+        id_bodega_origen: op.id_bodega || '',
+        id_ubicacion_origen: op.id_ubicacion || '',
         evidenciaFile: null,
         evidenciaName: '',
+        // solo visual
+        nombre_producto_view: prodNombre,
+        bodega_nombre_view: op.bodegaNombre || op.id_bodega || '',
+        ubicacion_nombre_view: op.ubicacionNombre || op.id_ubicacion || '',
       }
 
-      // Unificar si coincide Lote+Producto+Bodega+Ubicación
-      const idx = items.findIndex(
-        it =>
-          it.id_lote === nuevo.id_lote &&
-          it.id_producto === nuevo.id_producto &&
-          it.id_bodega_origen === nuevo.id_bodega_origen &&
-          it.id_ubicacion_origen === nuevo.id_ubicacion_origen
-      )
-      if (idx >= 0) {
-        const copy = [...items]
-        copy[idx] = { ...copy[idx], cantidad: copy[idx].cantidad + cant }
-        setItems(copy)
-      } else {
-        setItems(prev => [...prev, nuevo])
-      }
+      // Unificar por Lote+Producto+Bodega+Ubicación
+      setItems(prev => {
+        const idx = prev.findIndex(
+          it =>
+            it.id_lote === nuevo.id_lote &&
+            it.id_producto === nuevo.id_producto &&
+            it.id_bodega_origen === nuevo.id_bodega_origen &&
+            it.id_ubicacion_origen === nuevo.id_ubicacion_origen
+        )
+        if (idx >= 0) {
+          const copy = [...prev]
+          copy[idx] = { ...copy[idx], cantidad: copy[idx].cantidad + cant }
+          return copy
+        }
+        return [...prev, nuevo]
+      })
 
-      // 🔹 Limpiar SOLO el sub-form (NO reset global)
+      // Limpiar sub-form
       setValueItem('id_lote_item', '')
       setValueItem('id_producto_item', '')
       setValueItem('cantidad_item', '')
       setIdLoteItem('')
-      setInventarioItem(null)
+      setInvOpciones([])
+      setOpcionSeleccionadaKey('')
       setCantidadDisponibleItem(null)
-      setBodegaItem('')
-      setUbicacionItem('')
     }
   )
 
-  const removeItem = i => setItems(prev => prev.filter((_, idx) => idx !== i))
+  const removeItem = idx => setItems(prev => prev.filter((_, i) => i !== idx))
 
-  // Procesar (1x1)
+  // ===== Procesar todo (incluye generar PDF)
   const allItemsHaveEvidence =
     items.length > 0 && items.every(it => !!it.evidenciaFile)
 
@@ -279,21 +360,22 @@ const FormSalidaLotes = ({ onSuccess }) => {
     }))
     setProgreso(resultados)
 
+    // Procesar salidas ítem por ítem
     for (let i = 0; i < items.length; i++) {
       const it = items[i]
       const formData = new FormData()
       formData.append('id_lote', it.id_lote)
       formData.append('id_producto', it.id_producto)
-      formData.append('operacion', data.operacion) // global
+      formData.append('operacion', data.operacion || '')
       formData.append('cantidad', String(it.cantidad))
-      formData.append('comentario', data.comentario || '') // global
+      formData.append('comentario', data.comentario || '')
       formData.append('id_personal', user?.personal?.id_personal || '')
       formData.append('id_bodega_origen', it.id_bodega_origen)
       formData.append('id_ubicacion_origen', it.id_ubicacion_origen)
       formData.append('evidencia', it.evidenciaFile)
-      formData.append('firma_autorizador', firmas.autorizador || '') // global
-      formData.append('firma_conductor', firmas.conductor || '') // global
-      formData.append('firma_receptor', firmas.receptor || '') // global
+      formData.append('firma_autorizador', firmas.autorizador || '')
+      formData.append('firma_conductor', firmas.conductor || '')
+      formData.append('firma_receptor', firmas.receptor || '')
 
       try {
         await crearSalida(formData)
@@ -306,27 +388,100 @@ const FormSalidaLotes = ({ onSuccess }) => {
           mensaje: e?.response?.data?.message || e?.message || 'Error',
         }
         setProgreso([...resultados])
-        // si prefieres detener aquí: break
+      }
+    }
+
+    const huboError = resultados.some(p => p.estado === 'error')
+
+    // Si todo salió OK, generamos el PDF MASIVO AQUÍ MISMO
+    if (!huboError) {
+      try {
+        setStatusMessage({ type: 'success', text: 'Generando documento…' })
+
+        // Tomamos un snapshot de items antes de limpiar
+        const itemsSnapshot = items.map(it => ({ ...it }))
+
+        // Construimos payload esperado por /documentos-salida
+        const lotes = Array.from(
+          new Set(itemsSnapshot.map(it => String(it.id_lote)))
+        )
+        const productos = Array.from(
+          new Set(itemsSnapshot.map(it => String(it.id_producto)))
+        )
+
+        const payload = {
+          // el controller ya mapea comentario_global/comentario a metadata.comentario
+          comentario_global: data.comentario || '',
+          operacion: data.operacion || '',
+          firmas: {
+            autorizador: firmas.autorizador || null,
+            conductor: firmas.conductor || null,
+            receptor: firmas.receptor || null,
+          },
+          creado_por: user?.id_usuario || user?.personal?.id_personal || null,
+          lotes,
+          productos,
+          items: itemsSnapshot.map(it => ({
+            id_lote: String(it.id_lote),
+            id_producto: String(it.id_producto),
+            cantidad: Number(it.cantidad) || 0,
+            id_bodega_origen: it.id_bodega_origen || null,
+            id_ubicacion_origen: it.id_ubicacion_origen || null,
+            // Solo visuales para PDF (si el backend los ignora, no pasa nada)
+            producto_nombre: it.nombre_producto_view || null,
+            bodega_origen_nombre: it.bodega_nombre_view || null,
+            ubicacion_origen_nombre: it.ubicacion_nombre_view || null,
+          })),
+        }
+
+        const resp = await crearDocumentoSalida(payload)
+        // Estructuras posibles: { id_documento, ruta_pdf, ... } o { downloadUrl, ... }
+        const idDoc = resp?.id_documento
+        const downloadUrl =
+          resp?.downloadUrl ||
+          (idDoc ? `/api/documentos-salida/${idDoc}/download` : null)
+
+        if (idDoc && downloadUrl) {
+          setDocGenerado({ id: idDoc, url: downloadUrl })
+          setStatusMessage({ type: 'success', text: 'Documento generado.' })
+        } else {
+          setStatusMessage({
+            type: 'error',
+            text: 'Documento creado, pero no se pudo construir el enlace de descarga.',
+          })
+        }
+      } catch (e) {
+        setStatusMessage({
+          type: 'error',
+          text:
+            e?.response?.data?.message ||
+            e?.message ||
+            'No se pudo generar el documento.',
+        })
       }
     }
 
     setProcesando(false)
-    setStatusMessage({ type: 'success', text: 'Proceso finalizado.' })
 
-    const huboError = resultados.some(p => p.estado === 'error')
+    // Limpieza de formulario y carrito (conservamos el enlace del PDF si existe)
     if (!huboError) {
-      reset() // limpia globales
-      setItems([]) // limpia ítems
-      setInventarioItem(null)
+      reset()
+      setItems([])
+      setInvOpciones([])
+      setOpcionSeleccionadaKey('')
       setCantidadDisponibleItem(null)
-      setBodegaItem('')
-      setUbicacionItem('')
       setFirmas({})
+      setProgreso([])
+      // onSuccess después de un respiro para que alcance a mostrarse el estado
       setTimeout(() => {
         setStatusMessage(null)
         onSuccess && onSuccess()
       }, 1200)
     } else {
+      setStatusMessage({
+        type: 'error',
+        text: 'Proceso finalizado con errores.',
+      })
       setTimeout(() => setStatusMessage(null), 2500)
     }
   }
@@ -365,6 +520,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
                 errors.operacion ? 'is-invalid' : ''
               }`}
               {...register('operacion')}
+              name='operacion'
             >
               <option value=''>Selecciona una operación</option>
               {operaciones.map(op => (
@@ -387,6 +543,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
               }`}
               placeholder='Notas u observaciones…'
               {...register('comentario', { required: true })}
+              name='comentario'
             />
             {errors.comentario && (
               <div className='invalid-feedback'>Campo requerido</div>
@@ -401,6 +558,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
           </div>
 
           <div className='row g-2 align-items-end'>
+            {/* Lote */}
             <div className='col-md-3'>
               <label className='form-label mb-1'>Lote</label>
               <select
@@ -413,16 +571,16 @@ const FormSalidaLotes = ({ onSuccess }) => {
                   setIdLoteItem(v)
                   setValueItem('id_lote_item', v)
                   setValueItem('id_producto_item', '')
-                  setInventarioItem(null)
+                  setInvOpciones([])
+                  setOpcionSeleccionadaKey('')
                   setCantidadDisponibleItem(null)
-                  setBodegaItem('')
-                  setUbicacionItem('')
                 }}
+                value={idLoteItem}
               >
                 <option value=''>Selecciona un lote</option>
-                {lotes.map(l => (
-                  <option key={l.id_lote_producto} value={l.id_lote}>
-                    {l.id_lote}
+                {lotesDisponibles.map(lote => (
+                  <option key={lote} value={lote}>
+                    {lote}
                   </option>
                 ))}
               </select>
@@ -431,7 +589,8 @@ const FormSalidaLotes = ({ onSuccess }) => {
               )}
             </div>
 
-            <div className='col-md-3'>
+            {/* Producto */}
+            <div className='col-md-4'>
               <label className='form-label mb-1'>Producto</label>
               <select
                 className={`form-select form-select-sm ${
@@ -440,9 +599,9 @@ const FormSalidaLotes = ({ onSuccess }) => {
                 {...registerItem('id_producto_item', { required: true })}
               >
                 <option value=''>Selecciona un producto</option>
-                {productosFiltradosItem.map((p, idx) => (
-                  <option key={idx} value={p}>
-                    {p}
+                {productosDisponibles.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.id})
                   </option>
                 ))}
               </select>
@@ -451,6 +610,37 @@ const FormSalidaLotes = ({ onSuccess }) => {
               )}
             </div>
 
+            {/* Bodega / Ubicación */}
+            <div className='col-md-3'>
+              <label className='form-label mb-1'>Bodega / Ubicación</label>
+              <select
+                className='form-select form-select-sm'
+                value={opcionSeleccionadaKey}
+                onChange={e => {
+                  const k = e.target.value
+                  setOpcionSeleccionadaKey(k)
+                  const op = invOpciones.find(o => o.key === k)
+                  setCantidadDisponibleItem(op ? toNumberCO(op.cantidad) : null)
+                }}
+                disabled={invOpciones.length === 0}
+              >
+                <option value=''>
+                  {invOpciones.length
+                    ? 'Selecciona ubicación'
+                    : 'Sin ubicaciones con stock'}
+                </option>
+                {invOpciones.map(op => (
+                  <option key={op.key} value={op.key}>
+                    {op.bodegaNombre || op.id_bodega || '—'} →{' '}
+                    {op.ubicacionNombre || op.id_ubicacion || '—'}
+                    {' — Cant: '}
+                    {toNumberCO(op.cantidad)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cantidad */}
             <div className='col-md-2'>
               <label className='form-label mb-1'>Cantidad</label>
               <input
@@ -465,7 +655,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
                   validate: v =>
                     cantidadDisponibleItem == null ||
                     Number(v) <= cantidadDisponibleItem ||
-                    `Máximo disponible: ${cantidadDisponibleItem}`,
+                    `Máximo disponible en la ubicación: ${cantidadDisponibleItem}`,
                 })}
               />
               {errorsItem.cantidad_item && (
@@ -475,57 +665,29 @@ const FormSalidaLotes = ({ onSuccess }) => {
               )}
             </div>
 
-            <div className='col-md-2'>
-              <label className='form-label mb-1'>Bodega (ítem)</label>
-              <select
-                className='form-select form-select-sm'
-                value={bodegaItem}
-                onChange={e => {
-                  setBodegaItem(e.target.value)
-                  setUbicacionItem('')
-                }}
-              >
-                <option value=''>Selecciona bodega</option>
-                {bodegas.map(b => (
-                  <option key={b.id_bodega} value={b.id_bodega}>
-                    {b.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className='col-md-2'>
-              <label className='form-label mb-1'>Ubicación (ítem)</label>
-              <select
-                className='form-select form-select-sm'
-                value={ubicacionItem}
-                onChange={e => setUbicacionItem(e.target.value)}
-              >
-                <option value=''>Selecciona ubicación</option>
-                {ubicacionesDeBodegaItem.map(u => (
-                  <option key={u.id_ubicacion} value={u.id_ubicacion}>
-                    {u.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className='col-md-12'>
-              {inventarioItem ? (
-                <div className='alert alert-info py-2 mb-0 mt-2'>
-                  Detectado: Bodega{' '}
-                  <strong>{inventarioItem?.Bodega?.nombre}</strong> · Ubicación{' '}
-                  <strong>{inventarioItem?.UbicacionBodega?.nombre}</strong> ·
-                  Cantidad <strong>{inventarioItem?.Cantidad}</strong>
-                  <div className='small text-muted mt-1'>
-                    Puedes cambiar bodega/ubicación para este ítem si lo
-                    requieres.
-                  </div>
+            {/* Info ubicaciones */}
+            <div className='col-12 mt-2'>
+              {invOpciones.length > 0 ? (
+                <div className='alert alert-info py-2 mb-0'>
+                  Ubicaciones disponibles para el producto seleccionado:
+                  <ul className='mb-0 mt-1'>
+                    {invOpciones.map(op => (
+                      <li key={`info-${op.key}`}>
+                        <strong>
+                          {op.bodegaNombre || op.id_bodega || '—'}
+                        </strong>{' '}
+                        ·{' '}
+                        <strong>
+                          {op.ubicacionNombre || op.id_ubicacion || '—'}
+                        </strong>{' '}
+                        — Cant: <strong>{toNumberCO(op.cantidad)}</strong>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : (
-                <div className='form-text mt-2'>
-                  Selecciona lote y producto para ver inventario y autocompletar
-                  bodega/ubicación.
+                <div className='form-text'>
+                  Selecciona lote y producto para ver ubicaciones con stock.
                 </div>
               )}
             </div>
@@ -548,14 +710,26 @@ const FormSalidaLotes = ({ onSuccess }) => {
             <span className='small text-muted'>
               Ítems a procesar: <strong>{items.length}</strong>
             </span>
-            <button
-              type='button'
-              className='btn btn-outline-danger btn-sm'
-              disabled={!items.length || procesando}
-              onClick={() => setItems([])}
-            >
-              Vaciar lista
-            </button>
+            <div className='d-flex gap-2'>
+              {docGenerado?.url && (
+                <a
+                  className='btn btn-outline-success btn-sm'
+                  href={docGenerado.url}
+                  target='_blank'
+                  rel='noreferrer'
+                >
+                  Descargar documento
+                </a>
+              )}
+              <button
+                type='button'
+                className='btn btn-outline-danger btn-sm'
+                disabled={!items.length || procesando}
+                onClick={() => setItems([])}
+              >
+                Vaciar lista
+              </button>
+            </div>
           </div>
 
           <div className='table-responsive'>
@@ -586,18 +760,17 @@ const FormSalidaLotes = ({ onSuccess }) => {
                     >
                       <td>{idx + 1}</td>
                       <td>{it.id_lote}</td>
-                      <td>{it.id_producto}</td>
+                      <td>
+                        {it.nombre_producto_view
+                          ? `${it.nombre_producto_view} (${it.id_producto})`
+                          : it.id_producto}
+                      </td>
                       <td className='text-end'>{it.cantidad}</td>
                       <td>
-                        {bodegas.find(b => b.id_bodega === it.id_bodega_origen)
-                          ?.nombre ||
-                          it.id_bodega_origen ||
-                          '-'}
+                        {it.bodega_nombre_view || it.id_bodega_origen || '-'}
                       </td>
                       <td>
-                        {ubicaciones.find(
-                          u => u.id_ubicacion === it.id_ubicacion_origen
-                        )?.nombre ||
+                        {it.ubicacion_nombre_view ||
                           it.id_ubicacion_origen ||
                           '-'}
                       </td>
@@ -791,8 +964,9 @@ const FormSalidaLotes = ({ onSuccess }) => {
           </div>
         )}
 
-        {/* Submit */}
-        <div className='d-flex justify-content-end mt-3'>
+        {/* Acciones */}
+        <div className='d-flex justify-content-end gap-2 mt-3'>
+          {/* Eliminamos el botón de "Generar documento (PDF)". Todo sale con Submit */}
           <button
             type='submit'
             className='btn btn-primary btn-sm'

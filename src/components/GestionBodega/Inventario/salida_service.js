@@ -65,3 +65,47 @@ export const crearSalida = async formData => {
   })
   return response.data
 }
+
+// ===== Documentos de Salida (PDF resumen de salidas masivas) =====
+// IMPORTANTE: estos endpoints NO alteran inventario ni historial;
+// solo generan/listan/obtienen/descargan el documento PDF “resumen”.
+
+export const crearDocumentoSalida = async payload => {
+  // payload: { lotes: [...], productos: [...], items: [...], comentarios, firmas, ... }
+  const token = getAuthToken()
+  const response = await api.post('/documentos-salida', payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const listarDocumentosSalida = async (params = {}) => {
+  // params opcionales: { desde, hasta, creado_por, limit, offset }
+  const token = getAuthToken()
+  const response = await api.get('/documentos-salida', {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return response.data
+}
+
+export const obtenerDocumentoSalida = async id_documento => {
+  const token = getAuthToken()
+  const response = await api.get(`/documentos-salida/${id_documento}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const descargarDocumentoSalida = async id_documento => {
+  // Devuelve un Blob del PDF. En el front puedes crear un ObjectURL y forzar descarga.
+  const token = getAuthToken()
+  const response = await api.get(
+    `/documentos-salida/${id_documento}/download`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'blob',
+    }
+  )
+  return response.data // Blob
+}

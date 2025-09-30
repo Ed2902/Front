@@ -8,11 +8,13 @@ import {
   FaArrowDown,
   FaArrowUp,
   FaRetweet,
+  FaSignOutAlt,
 } from 'react-icons/fa'
 
 // Subcomponentes
 import DiagramaFlujo from './DiagramaFlujo'
 import TablaMovimientos from './TablaMovimientos'
+import TablaSalidas from './TablaSalidas.jsx'
 import FormIngreso from '../Inventario/Formingreso'
 import FormTransformacion from '../Inventario/FormTransformacion'
 import FormSalida from '../Inventario/FormSalida'
@@ -32,6 +34,8 @@ const Movimientos = () => {
         return <DiagramaFlujo />
       case 'tabla':
         return <TablaMovimientos />
+      case 'salidas': // ← nuevo case
+        return <TablaSalidas />
       default:
         return null
     }
@@ -53,6 +57,12 @@ const Movimientos = () => {
             onClick={() => setActiveTab('tabla')}
           >
             <FaTable className='icono-tab' /> Tabla de Movimientos
+          </li>
+          <li
+            className={activeTab === 'salidas' ? 'activo' : ''} // ← nueva pestaña
+            onClick={() => setActiveTab('salidas')}
+          >
+            <FaSignOutAlt className='icono-tab' /> Ver Salidas
           </li>
         </ul>
 
