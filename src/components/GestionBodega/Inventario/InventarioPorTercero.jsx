@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState } from 'react'
-import DataTable from 'react-data-table-component'
+import { ConfigProvider, Table } from 'antd'
 import { FaFileExcel } from 'react-icons/fa'
 import { utils, writeFile } from 'xlsx'
 import { getInventarioCompleto } from './inventario_service'
@@ -74,14 +74,13 @@ const InventarioPorTercero = () => {
       const tipo = pickFirstDefined(it?.Producto?.Tipo, it?.Tipo)
       if (!puedeVerTipo(tipo)) continue
 
-      // Unidad referencial del producto (para decidir regla de kilos)
       const unidad =
         pickFirstDefined(
           it?.Producto?.Unidad_de_medida,
           it?.Unidad_de_medida
         ) ?? ''
 
-      // Cantidad (prioridad inventario -> cantidad -> cantidad del lote)
+      // Cantidad (inventario -> cantidad -> cantidad lote)
       const cantidadRaw = pickFirstDefined(
         it?.Cantidad_Inventario,
         it?.Cantidad,
@@ -90,7 +89,7 @@ const InventarioPorTercero = () => {
       const cantidad = toNumberCO(cantidadRaw)
       if (cantidad <= 0) continue
 
-      // Nombre del tercero (cliente o proveedor)
+      // Tercero (cliente o proveedor)
       const tercero =
         pickFirstDefined(
           it?.LoteProducto?.Cliente?.Nombre,
@@ -105,7 +104,7 @@ const InventarioPorTercero = () => {
       const volumenTotalM3 = volumenUnitarioM3 * cantidad
       const volumenTotalCm3 = volumenTotalM3 * 1_000_000
 
-      // Peso total y PU: probar múltiples rutas/campos
+      // Peso total y PU
       const pesoTotalFromBE = toNumberCO(
         pickFirstDefined(
           it?.PesoTotalKg,
@@ -114,7 +113,6 @@ const InventarioPorTercero = () => {
           it?.total_kg
         )
       )
-
       const pu = toNumberCO(
         pickFirstDefined(
           it?.PesoUnitarioKg,
@@ -122,25 +120,16 @@ const InventarioPorTercero = () => {
           it?.LoteProducto?.PesoUnitarioKg,
           it?.Peso_unitario_kg,
           it?.Peso_unitario,
-          it?.PU_kg // por si hay alias
+          it?.PU_kg
         )
       )
 
-      // Regla de kilos por ítem:
-      // 1) si PesoTotalKg>0 => usarlo
-      // 2) si PU>0 y unidad es "unidades" => cantidad*PU
-      // 3) si unidad es kilo => kilos=cantidad
-      // 4) si no, 0
+      // Regla kilos
       let kilos = 0
-      if (pesoTotalFromBE > 0) {
-        kilos = pesoTotalFromBE
-      } else if (pu > 0 && isUnidad(unidad)) {
-        kilos = cantidad * pu
-      } else if (isKg(unidad)) {
-        kilos = cantidad
-      } else {
-        kilos = 0
-      }
+      if (pesoTotalFromBE > 0) kilos = pesoTotalFromBE
+      else if (pu > 0 && isUnidad(unidad)) kilos = cantidad * pu
+      else if (isKg(unidad)) kilos = cantidad
+      else kilos = 0
 
       const fechaRaw = pickFirstDefined(
         it?.Fecha_ultimo_registro,
@@ -171,6 +160,7 @@ const InventarioPorTercero = () => {
 
       if (!map.has(tercero)) {
         map.set(tercero, {
+          key: tercero, // rowKey padre
           tercero,
           items: [],
           totalCantidad: 0,
@@ -194,17 +184,22 @@ const InventarioPorTercero = () => {
       }
     }
 
-    // Ordenar items por nombre de producto
+    // Ordenar items por producto
     for (const v of map.values()) {
       v.items.sort((a, b) =>
         String(a.nombre_producto).localeCompare(String(b.nombre_producto), 'es')
       )
     }
 
-    // Salida ordenada por nombre de tercero
-    return Array.from(map.values()).sort((a, b) =>
-      String(a.tercero).localeCompare(String(b.tercero), 'es')
-    )
+    // Salida ordenada por nombre de tercero + timestamp para ordenar en tabla
+    return Array.from(map.values())
+      .map(v => ({
+        ...v,
+        ultimoIngresoTs: v.ultimoIngreso
+          ? new Date(v.ultimoIngreso).getTime()
+          : 0,
+      }))
+      .sort((a, b) => String(a.tercero).localeCompare(String(b.tercero), 'es'))
   }, [raw, tienePermiso])
 
   // Filtro global por tercero o cualquier campo del detalle
@@ -224,7 +219,7 @@ const InventarioPorTercero = () => {
     )
   }, [terceros, search])
 
-  // Totales globales (sobre lo filtrado)
+  // Totales globales
   const totalCantidadGlobal = useMemo(
     () => filtered.reduce((s, t) => s + toNumberCO(t.totalCantidad), 0),
     [filtered]
@@ -241,7 +236,7 @@ const InventarioPorTercero = () => {
   // Export a Excel (detalle por ítem)
   const exportar = () => {
     const plano = filtered.flatMap(t =>
-      t.items.map(p => ({
+      t.items.map((p, idx) => ({
         Tercero: t.tercero,
         Código: p.id_producto,
         Producto: p.nombre_producto,
@@ -253,6 +248,7 @@ const InventarioPorTercero = () => {
         Bodega: p.bodega,
         Ubicación: p.ubicacion,
         'Último ingreso': p.fecha,
+        _row: idx + 1,
       }))
     )
 
@@ -273,176 +269,252 @@ const InventarioPorTercero = () => {
     writeFile(wb, 'InventarioPorTercero.xlsx')
   }
 
-  // Columnas tabla padre (terceros)
-  const parentColumns = [
-    {
-      name: 'Tercero',
-      selector: r => r.tercero,
-      sortable: true,
-      grow: 6,
-      minWidth: '380px',
-      wrap: false,
-    },
-    {
-      name: 'Registros',
-      selector: r => r.items?.length || 0,
-      sortable: true,
-      right: true,
-      width: '120px',
-    },
-    {
-      name: 'Cantidad Total',
-      selector: r => r.totalCantidad,
-      sortable: true,
-      right: true,
-      width: '150px',
-      cell: r => (
-        <span className='text-end'>
-          {numberCO(toNumberCO(r.totalCantidad), 2)}
-        </span>
-      ),
-    },
-    {
-      name: 'Kilos Totales (kg)',
-      selector: r => r.totalKilos,
-      sortable: true,
-      right: true,
-      width: '170px',
-      cell: r => (
-        <span className='fw-semibold text-end'>
-          {numberCO(toNumberCO(r.totalKilos), 2)}
-        </span>
-      ),
-    },
-    {
-      name: 'Volumen Total (m³)',
-      selector: r => r.totalVolumenM3,
-      sortable: true,
-      right: true,
-      width: '180px',
-      cell: r => (
-        <span className='fw-semibold text-end'>
-          {numberCO(toNumberCO(r.totalVolumenM3), 5)}
-        </span>
-      ),
-    },
-    {
-      name: 'Último ingreso',
-      selector: r =>
-        r.ultimoIngreso
-          ? new Date(r.ultimoIngreso).toLocaleDateString('es-CO')
-          : 'N/A',
-      sortable: true,
-      width: '140px',
-    },
-  ]
+  // Helpers sort
+  const strSort = (a, b, k) =>
+    String(a[k] ?? '').localeCompare(String(b[k] ?? ''), 'es', {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  const numSort = (a, b, k) => toNumberCO(a[k]) - toNumberCO(b[k])
 
-  // Columnas tabla hija (detalle)
-  const childColumns = [
-    {
-      name: 'Código',
-      selector: r => r.id_producto,
-      sortable: true,
-      width: '140px',
-    },
-    {
-      name: 'Producto',
-      selector: r => r.nombre_producto,
-      sortable: true,
-      grow: 6,
-      minWidth: '420px',
-      wrap: false,
-    },
-    { name: 'Unidad', selector: r => r.unidad, sortable: true, width: '110px' },
-    {
-      name: 'Cantidad',
-      selector: r => r.cantidad,
-      sortable: true,
-      right: true,
-      width: '130px',
-      cell: r => (
-        <span className='text-end'>{numberCO(toNumberCO(r.cantidad), 2)}</span>
-      ),
-    },
-    {
-      name: 'Kilos (kg)',
-      selector: r => r.kilos,
-      sortable: true,
-      right: true,
-      width: '140px',
-      cell: r => (
-        <span className='fw-semibold text-end'>
-          {numberCO(toNumberCO(r.kilos), 2)}
-        </span>
-      ),
-    },
-    {
-      name: 'Volumen (m³)',
-      selector: r => r.volumen_m3,
-      sortable: true,
-      right: true,
-      width: '160px',
-      cell: r => (
-        <span className='text-end'>
-          {numberCO(toNumberCO(r.volumen_m3), 5)}
-        </span>
-      ),
-    },
-    {
-      name: 'Volumen (cm³)',
-      selector: r => r.volumen_cm3,
-      sortable: true,
-      right: true,
-      width: '160px',
-      cell: r => (
-        <span className='text-end'>
-          {Math.round(toNumberCO(r.volumen_cm3)).toLocaleString('es-CO')}
-        </span>
-      ),
-    },
-    { name: 'Bodega', selector: r => r.bodega, sortable: true, width: '110px' },
-    {
-      name: 'Ubicación',
-      selector: r => r.ubicacion,
-      sortable: true,
-      width: '110px',
-    },
-    {
-      name: 'Último ingreso',
-      selector: r => r.fecha,
-      sortable: true,
-      width: '130px',
-    },
-  ]
+  // Filtros dinámicos (padre e hijo)
+  const terceroFilters = useMemo(
+    () =>
+      Array.from(new Set(terceros.map(t => t.tercero))).map(t => ({
+        text: t,
+        value: t,
+      })),
+    [terceros]
+  )
+  const unidadChildFilters = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          terceros.flatMap(t => t.items.map(i => i.unidad)).filter(Boolean)
+        )
+      ).map(u => ({
+        text: u,
+        value: u,
+      })),
+    [terceros]
+  )
+  const bodegaChildFilters = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          terceros.flatMap(t => t.items.map(i => i.bodega)).filter(Boolean)
+        )
+      ).map(b => ({
+        text: b,
+        value: b,
+      })),
+    [terceros]
+  )
+  const ubicChildFilters = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          terceros.flatMap(t => t.items.map(i => i.ubicacion)).filter(Boolean)
+        )
+      ).map(u => ({
+        text: u,
+        value: u,
+      })),
+    [terceros]
+  )
 
-  const tableStyles = {
-    headCells: {
-      style: {
-        fontWeight: 600,
-        whiteSpace: 'normal',
-        lineHeight: '1.1',
-        paddingTop: '0.75rem',
-        paddingBottom: '0.75rem',
+  // Columnas tabla padre (Antd) — fijamos "Tercero" + sorter + filters
+  const parentColumns = useMemo(
+    () => [
+      {
+        title: 'Tercero',
+        dataIndex: 'tercero',
+        key: 'tercero',
+        width: 320,
+        fixed: 'left',
+        ellipsis: true,
+        sorter: (a, b) => strSort(a, b, 'tercero'),
+        sortDirections: ['ascend', 'descend'],
+        filters: terceroFilters,
+        onFilter: (value, record) => record.tercero === value,
       },
-    },
-    rows: { style: { minHeight: '44px' } },
-  }
+      {
+        title: 'Registros',
+        dataIndex: ['items', 'length'],
+        key: 'registros',
+        width: 120,
+        align: 'right',
+        sorter: (a, b) => (a.items?.length || 0) - (b.items?.length || 0),
+        render: (_, r) => r.items?.length || 0,
+      },
+      {
+        title: 'Cantidad Total',
+        dataIndex: 'totalCantidad',
+        key: 'totalCantidad',
+        width: 150,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'totalCantidad'),
+        render: v => numberCO(toNumberCO(v), 2),
+      },
+      {
+        title: 'Kilos Totales (kg)',
+        dataIndex: 'totalKilos',
+        key: 'totalKilos',
+        width: 170,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'totalKilos'),
+        render: v => numberCO(toNumberCO(v), 2),
+      },
+      {
+        title: 'Volumen Total (m³)',
+        dataIndex: 'totalVolumenM3',
+        key: 'totalVolumenM3',
+        width: 180,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'totalVolumenM3'),
+        render: v => numberCO(toNumberCO(v), 5),
+      },
+      {
+        title: 'Último ingreso',
+        dataIndex: 'ultimoIngreso',
+        key: 'ultimoIngreso',
+        width: 150,
+        sorter: (a, b) => (a.ultimoIngresoTs || 0) - (b.ultimoIngresoTs || 0),
+        sortDirections: ['ascend', 'descend'],
+        render: v => (v ? new Date(v).toLocaleDateString('es-CO') : 'N/A'),
+      },
+    ],
+    [terceroFilters]
+  )
 
-  const ExpandedComponent = ({ data }) => (
-    <div className='w-100 px-2 py-2'>
-      <DataTable
-        columns={childColumns}
-        data={data.items}
-        dense
-        responsive
-        highlightOnHover
-        noHeader
-        customStyles={tableStyles}
-        pagination
-        paginationPerPage={10}
-        paginationRowsPerPageOptions={[10, 20, 50]}
-      />
-    </div>
+  // Columnas tabla hija (detalle) — fijamos "Código" y "Producto" + sorter + filters
+  const childColumns = useMemo(
+    () => [
+      {
+        title: 'Código',
+        dataIndex: 'id_producto',
+        key: 'id_producto',
+        width: 160,
+        fixed: 'left',
+        sorter: (a, b) =>
+          String(a.id_producto ?? '').localeCompare(
+            String(b.id_producto ?? ''),
+            'es',
+            {
+              numeric: true,
+              sensitivity: 'base',
+            }
+          ),
+        sortDirections: ['ascend', 'descend'],
+      },
+      {
+        title: 'Producto',
+        dataIndex: 'nombre_producto',
+        key: 'nombre_producto',
+        width: 420,
+        fixed: 'left',
+        ellipsis: true,
+        sorter: (a, b) =>
+          String(a.nombre_producto ?? '').localeCompare(
+            String(b.nombre_producto ?? ''),
+            'es',
+            {
+              numeric: true,
+              sensitivity: 'base',
+            }
+          ),
+        sortDirections: ['ascend', 'descend'],
+      },
+      {
+        title: 'Unidad',
+        dataIndex: 'unidad',
+        key: 'unidad',
+        width: 130,
+        sorter: (a, b) =>
+          String(a.unidad ?? '').localeCompare(String(b.unidad ?? ''), 'es', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+        filters: unidadChildFilters,
+        onFilter: (value, record) => record.unidad === value,
+      },
+      {
+        title: 'Cantidad',
+        dataIndex: 'cantidad',
+        key: 'cantidad',
+        width: 140,
+        align: 'right',
+        sorter: (a, b) => toNumberCO(a.cantidad) - toNumberCO(b.cantidad),
+        render: v => numberCO(toNumberCO(v), 2),
+      },
+      {
+        title: 'Kilos (kg)',
+        dataIndex: 'kilos',
+        key: 'kilos',
+        width: 150,
+        align: 'right',
+        sorter: (a, b) => toNumberCO(a.kilos) - toNumberCO(b.kilos),
+        render: v => numberCO(toNumberCO(v), 2),
+      },
+      {
+        title: 'Volumen (m³)',
+        dataIndex: 'volumen_m3',
+        key: 'volumen_m3',
+        width: 170,
+        align: 'right',
+        sorter: (a, b) => toNumberCO(a.volumen_m3) - toNumberCO(b.volumen_m3),
+        render: v => numberCO(toNumberCO(v), 5),
+      },
+      {
+        title: 'Volumen (cm³)',
+        dataIndex: 'volumen_cm3',
+        key: 'volumen_cm3',
+        width: 170,
+        align: 'right',
+        sorter: (a, b) => toNumberCO(a.volumen_cm3) - toNumberCO(b.volumen_cm3),
+        render: v => Math.round(toNumberCO(v)).toLocaleString('es-CO'),
+      },
+      {
+        title: 'Bodega',
+        dataIndex: 'bodega',
+        key: 'bodega',
+        width: 160,
+        sorter: (a, b) =>
+          String(a.bodega ?? '').localeCompare(String(b.bodega ?? ''), 'es', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+        filters: bodegaChildFilters,
+        onFilter: (value, record) => record.bodega === value,
+      },
+      {
+        title: 'Ubicación',
+        dataIndex: 'ubicacion',
+        key: 'ubicacion',
+        width: 160,
+        sorter: (a, b) =>
+          String(a.ubicacion ?? '').localeCompare(
+            String(b.ubicacion ?? ''),
+            'es',
+            { numeric: true, sensitivity: 'base' }
+          ),
+        filters: ubicChildFilters,
+        onFilter: (value, record) => record.ubicacion === value,
+      },
+      {
+        title: 'Último ingreso',
+        dataIndex: 'fecha',
+        key: 'fecha',
+        width: 150,
+        sorter: (a, b) => {
+          const ta = a.fechaRaw ? new Date(a.fechaRaw).getTime() : 0
+          const tb = b.fechaRaw ? new Date(b.fechaRaw).getTime() : 0
+          return ta - tb
+        },
+        sortDirections: ['ascend', 'descend'],
+      },
+    ],
+    [unidadChildFilters, bodegaChildFilters, ubicChildFilters]
   )
 
   const SubHeader = (
@@ -492,26 +564,46 @@ const InventarioPorTercero = () => {
       <div className='card-body'>
         {error && <div className='alert alert-danger py-2 mb-3'>{error}</div>}
 
-        <DataTable
-          columns={parentColumns}
-          data={filtered}
-          progressPending={loading}
-          pagination
-          paginationPerPage={30}
-          paginationRowsPerPageOptions={[30, 50, 100]}
-          highlightOnHover
-          dense
-          responsive
-          customStyles={tableStyles}
-          subHeader
-          subHeaderComponent={SubHeader}
-          persistTableHead
-          expandableRows
-          expandableRowsComponent={ExpandedComponent}
-          noDataComponent={
-            <div className='text-muted small py-3'>Sin datos.</div>
-          }
-        />
+        {/* Filtros y totales */}
+        <div className='mb-2'>{SubHeader}</div>
+
+        {/* Bordes visibles y color de split sin CSS externo */}
+        <ConfigProvider theme={{ token: { colorSplit: '#bfbfbf' } }}>
+          <Table
+            columns={parentColumns}
+            dataSource={filtered}
+            loading={loading}
+            rowKey='key'
+            bordered
+            size='middle'
+            // scroll horizontal para activar columnas fijas; altura con header sticky
+            scroll={{ x: 'max-content', y: 520 }}
+            sticky
+            expandable={{
+              expandedRowRender: record => (
+                <Table
+                  columns={childColumns}
+                  dataSource={record.items}
+                  rowKey={(r, idx) => `${r.id_producto}|${r.ubicacion}|${idx}`}
+                  size='small'
+                  bordered
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    pageSizeOptions: [10, 20, 50],
+                  }}
+                  scroll={{ x: 'max-content' }}
+                  sticky
+                />
+              ),
+            }}
+            pagination={{
+              pageSize: 30,
+              showSizeChanger: true,
+              pageSizeOptions: [30, 50, 100],
+            }}
+          />
+        </ConfigProvider>
       </div>
     </div>
   )

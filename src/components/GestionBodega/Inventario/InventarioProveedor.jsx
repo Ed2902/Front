@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import DataTable from 'react-data-table-component'
+import { ConfigProvider, Table, Tooltip } from 'antd'
 import { FaFileExcel } from 'react-icons/fa'
 import { utils, writeFile } from 'xlsx'
 import { getInventarioResumen } from './inventario_service'
 
+// Formateo local
 const numberCO = (n, d = 2) =>
   (Number(n) || 0).toLocaleString('es-CO', {
     minimumFractionDigits: d,
     maximumFractionDigits: d,
   })
 
-// Parser robusto para "es-CO" (e.g., "1.234,56" -> 1234.56)
+// Parser robusto "es-CO"
 const toNumberCO = v => {
   if (v == null) return 0
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0
@@ -69,7 +70,35 @@ const InventarioProveedor = () => {
               it?.Fecha_ultimo_registri
             ) ?? null
 
-          // Cantidad fila (prioridad: Inventario -> Cantidad -> Cantidad_Lote)
+          // Bodega / Ubicación (display inteligente: nombre || id)
+          const id_bodega = pickFirstDefined(
+            it?.id_bodega,
+            it?.Id_bodega,
+            it?.Bodega?.Id,
+            it?.BodegaId
+          )
+          const bodegaNombre = pickFirstDefined(
+            it?.Bodega?.Nombre,
+            it?.BodegaNombre,
+            it?.Bodega
+          )
+          const bodegaDisplay = bodegaNombre || id_bodega || ''
+
+          const id_ubicacion = pickFirstDefined(
+            it?.id_ubicacion,
+            it?.Id_ubicacion,
+            it?.Ubicacion?.Id,
+            it?.UbicacionId
+          )
+          const ubicacionNombre = pickFirstDefined(
+            it?.Ubicacion?.Nombre,
+            it?.UbicacionNombre,
+            it?.Ubicacion,
+            it?.ubicacion
+          )
+          const ubicacionDisplay = ubicacionNombre || id_ubicacion || ''
+
+          // Cantidad fila
           const cantidadRaw = pickFirstDefined(
             it?.Cantidad_Inventario,
             it?.Cantidad,
@@ -77,34 +106,31 @@ const InventarioProveedor = () => {
           )
           const cantidadFila = toNumberCO(cantidadRaw)
 
-          // Kilos por fila:
-          // 1) Usa PesoTotalKg si viene (>0)
-          // 2) Si hay PU (>0): cantidad * PU
-          // 3) Si no: cantidad
+          // Kilos por fila: PesoTotalKg || (cantidad*PU) || cantidad
           const pesoTotalFromBE = toNumberCO(it?.PesoTotalKg)
           const pu = toNumberCO(it?.PesoUnitarioKg)
-
-          let kilosFila = 0
-          if (pesoTotalFromBE > 0) {
-            kilosFila = pesoTotalFromBE
-          } else if (pu > 0) {
-            kilosFila = cantidadFila * pu
-          } else {
-            kilosFila = cantidadFila
-          }
+          const kilosFila =
+            pesoTotalFromBE > 0
+              ? pesoTotalFromBE
+              : pu > 0
+              ? cantidadFila * pu
+              : cantidadFila
 
           const key = `${provId}|${prodId}`
           if (!map.has(key)) {
             map.set(key, {
+              key, // rowKey
               id_proveedor: provId,
               proveedor: provName,
               id_producto: prodId,
               nombre_producto: prodName,
-              unidad_referencial: unidad, // informativo
+              unidad_referencial: unidad,
               cantidad_total: 0,
-              unidades_total: 0, // solo donde unidad = "unidades"
+              unidades_total: 0,
               kilos_total: 0,
               lotes: new Set(),
+              bodegas: new Set(),
+              ubicaciones: new Set(),
               ultimo_ingreso: fechaUlt,
             })
           }
@@ -114,6 +140,8 @@ const InventarioProveedor = () => {
           acc.kilos_total += kilosFila
           if (isUnidad(unidad)) acc.unidades_total += cantidadFila
           if (loteId) acc.lotes.add(loteId)
+          if (bodegaDisplay) acc.bodegas.add(bodegaDisplay)
+          if (ubicacionDisplay) acc.ubicaciones.add(ubicacionDisplay)
 
           // último ingreso más reciente
           if (fechaUlt) {
@@ -123,16 +151,32 @@ const InventarioProveedor = () => {
           }
         }
 
-        const out = Array.from(map.values()).map(r => ({
-          ...r,
-          cantidad_total: toNumberCO(r.cantidad_total),
-          unidades_total: toNumberCO(r.unidades_total),
-          kilos_total: toNumberCO(r.kilos_total),
-          lotes_count: r.lotes.size,
-          ultimo_ingreso_fmt: r.ultimo_ingreso
-            ? new Date(r.ultimo_ingreso).toLocaleDateString('es-CO')
-            : 'N/A',
-        }))
+        const out = Array.from(map.values()).map(r => {
+          const bodegasList = Array.from(r.bodegas)
+          const ubicList = Array.from(r.ubicaciones)
+          const bodegas_muestra = bodegasList.slice(0, 3).join(', ')
+          const ubic_muestra = ubicList.slice(0, 3).join(', ')
+          const ultimo_ingreso_ts = r.ultimo_ingreso
+            ? new Date(r.ultimo_ingreso).getTime()
+            : 0
+          return {
+            ...r,
+            cantidad_total: toNumberCO(r.cantidad_total),
+            unidades_total: toNumberCO(r.unidades_total),
+            kilos_total: toNumberCO(r.kilos_total),
+            lotes_count: r.lotes.size,
+            bodegas_count: bodegasList.length,
+            ubicaciones_count: ubicList.length,
+            bodegas_muestra,
+            bodegas_full: bodegasList.join(', '),
+            ubicaciones_muestra: ubic_muestra,
+            ubicaciones_full: ubicList.join(', '),
+            ultimo_ingreso_ts,
+            ultimo_ingreso_fmt: r.ultimo_ingreso
+              ? new Date(r.ultimo_ingreso).toLocaleDateString('es-CO')
+              : 'N/A',
+          }
+        })
 
         // Orden sugerido: más kilos primero
         out.sort((a, b) => b.kilos_total - a.kilos_total)
@@ -205,6 +249,8 @@ const InventarioProveedor = () => {
         'Unidades (agregadas)': toNumberCO(r.unidades_total),
         'Kilos Totales': toNumberCO(r.kilos_total),
         'N° Lotes': r.lotes_count,
+        'Ubicaciones (N)': r.ubicaciones_count,
+        'Ubicaciones (lista)': r.ubicaciones_full,
         'Último ingreso': r.ultimo_ingreso_fmt,
       })),
       { origin: -1 }
@@ -213,104 +259,169 @@ const InventarioProveedor = () => {
     writeFile(wb, 'InventarioPorProveedor.xlsx')
   }
 
-  // Columnas (Nombre amplio, números a la derecha)
+  // Helpers sort
+  const strSort = (a, b, k) =>
+    String(a[k] ?? '').localeCompare(String(b[k] ?? ''), 'es', {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  const numSort = (a, b, k) => toNumberCO(a[k]) - toNumberCO(b[k])
+
+  // Filtros dinámicos de columnas
+  const proveedorFilters = useMemo(
+    () =>
+      Array.from(new Set(rows.map(r => r.proveedor))).map(p => ({
+        text: p,
+        value: p,
+      })),
+    [rows]
+  )
+  const unidadFilters = useMemo(
+    () =>
+      Array.from(
+        new Set(rows.map(r => r.unidad_referencial).filter(Boolean))
+      ).map(u => ({
+        text: u,
+        value: u,
+      })),
+    [rows]
+  )
+
+  // Columnas (Proveedor, Código y Nombre fijos a la izquierda) + sorter + filters
   const columns = useMemo(
     () => [
       {
-        name: 'Proveedor',
-        selector: r => r.proveedor,
-        sortable: true,
-        width: '180px',
-        wrap: true,
+        title: 'Proveedor',
+        dataIndex: 'proveedor',
+        key: 'proveedor',
+        width: 180,
+        fixed: 'left',
+        sorter: (a, b) => strSort(a, b, 'proveedor'),
+        sortDirections: ['ascend', 'descend'],
+        filters: proveedorFilters,
+        onFilter: (value, record) => record.proveedor === value,
       },
       {
-        name: 'Código',
-        selector: r => r.id_producto,
-        sortable: true,
-        width: '140px',
+        title: 'Código',
+        dataIndex: 'id_producto',
+        key: 'id_producto',
+        width: 140,
+        fixed: 'left',
+        sorter: (a, b) => strSort(a, b, 'id_producto'),
+        sortDirections: ['ascend', 'descend'],
       },
       {
-        name: 'Nombre',
-        selector: r => r.nombre_producto,
-        sortable: true,
-        grow: 6,
-        minWidth: '420px',
-        wrap: false,
+        title: 'Nombre',
+        dataIndex: 'nombre_producto',
+        key: 'nombre_producto',
+        width: 300,
+        fixed: 'left',
+        ellipsis: true,
+        sorter: (a, b) => strSort(a, b, 'nombre_producto'),
+        sortDirections: ['ascend', 'descend'],
+      },
+
+      {
+        title: 'Unidad (ref.)',
+        dataIndex: 'unidad_referencial',
+        key: 'unidad_referencial',
+        width: 90,
+        sorter: (a, b) => strSort(a, b, 'unidad_referencial'),
+        filters: unidadFilters,
+        onFilter: (value, record) => record.unidad_referencial === value,
       },
       {
-        name: 'Unidad (ref.)',
-        selector: r => r.unidad_referencial,
-        sortable: true,
-        width: '100px',
-      },
-      {
-        name: 'Cantidad Total',
-        selector: r => r.cantidad_total,
-        sortable: true,
-        right: true,
-        width: '150px',
-        cell: r => (
-          <span className='text-end'>
-            {numberCO(toNumberCO(r.cantidad_total), 2)}
-          </span>
+        title: 'Cantidad Total',
+        dataIndex: 'cantidad_total',
+        key: 'cantidad_total',
+        width: 150,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'cantidad_total'),
+        render: v => (
+          <span className='text-end'>{numberCO(toNumberCO(v), 2)}</span>
         ),
       },
       {
-        name: 'Unidades (agregadas)',
-        selector: r => r.unidades_total,
-        sortable: true,
-        right: true,
-        width: '170px',
-        cell: r =>
-          toNumberCO(r.unidades_total) > 0 ? (
+        title: 'Unidades (agregadas)',
+        dataIndex: 'unidades_total',
+        key: 'unidades_total',
+        width: 170,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'unidades_total'),
+        render: v =>
+          toNumberCO(v) > 0 ? (
             <span className='fw-semibold text-end'>
-              {numberCO(toNumberCO(r.unidades_total), 2)}
+              {numberCO(toNumberCO(v), 2)}
             </span>
           ) : (
             <span className='text-muted'>—</span>
           ),
       },
       {
-        name: 'Kilos Totales',
-        selector: r => r.kilos_total,
-        sortable: true,
-        right: true,
-        width: '160px',
-        cell: r => (
+        title: 'Kilos Totales',
+        dataIndex: 'kilos_total',
+        key: 'kilos_total',
+        width: 160,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'kilos_total'),
+        render: v => (
           <span className='fw-semibold text-end'>
-            {numberCO(toNumberCO(r.kilos_total), 2)}
+            {numberCO(toNumberCO(v), 2)}
           </span>
         ),
       },
       {
-        name: 'N° Lotes',
-        selector: r => r.lotes_count,
-        sortable: true,
-        right: true,
-        width: '110px',
+        title: 'N° Lotes',
+        dataIndex: 'lotes_count',
+        key: 'lotes_count',
+        width: 120,
+        align: 'right',
+        sorter: (a, b) => numSort(a, b, 'lotes_count'),
       },
       {
-        name: 'Último ingreso',
-        selector: r => r.ultimo_ingreso_fmt,
-        sortable: true,
-        width: '140px',
+        title: 'Ubicaciones',
+        key: 'ubicaciones',
+        width: 260,
+        sorter: (a, b) => numSort(a, b, 'ubicaciones_count'),
+        filters: [
+          { text: 'Con ubicaciones', value: 'con' },
+          { text: 'Sin ubicaciones', value: 'sin' },
+        ],
+        onFilter: (value, record) =>
+          value === 'con'
+            ? record.ubicaciones_count > 0
+            : record.ubicaciones_count === 0,
+        render: (_, r) =>
+          r.ubicaciones_count > 0 ? (
+            <Tooltip title={r.ubicaciones_full}>
+              <span>
+                {r.ubicaciones_count}{' '}
+                {r.ubicaciones_count === 1 ? 'ubicación' : 'ubicaciones'}
+                {r.ubicaciones_muestra
+                  ? ` (${r.ubicaciones_muestra}${
+                      r.ubicaciones_count > 3
+                        ? ` +${r.ubicaciones_count - 3} más`
+                        : ''
+                    })`
+                  : ''}
+              </span>
+            </Tooltip>
+          ) : (
+            <span className='text-muted'>—</span>
+          ),
+      },
+      {
+        title: 'Último ingreso',
+        dataIndex: 'ultimo_ingreso_fmt',
+        key: 'ultimo_ingreso_fmt',
+        width: 150,
+        sorter: (a, b) =>
+          (a.ultimo_ingreso_ts || 0) - (b.ultimo_ingreso_ts || 0),
+        sortDirections: ['ascend', 'descend'],
       },
     ],
-    []
+    [proveedorFilters, unidadFilters]
   )
-
-  const customStyles = {
-    headCells: {
-      style: {
-        fontWeight: 600,
-        whiteSpace: 'normal',
-        lineHeight: '1.1',
-        paddingTop: '0.75rem',
-        paddingBottom: '0.75rem',
-      },
-    },
-    rows: { style: { minHeight: '44px' } },
-  }
 
   const SubHeader = (
     <div className='d-flex flex-wrap gap-2 w-100 align-items-center'>
@@ -349,31 +460,33 @@ const InventarioProveedor = () => {
       <div className='card-header d-flex flex-wrap gap-2 align-items-end'>
         <div className='me-auto'>
           <strong>Inventario por Proveedor</strong>
-          <div className='text-muted small'></div>
         </div>
       </div>
 
       <div className='card-body'>
         {error && <div className='alert alert-danger py-2 mb-3'>{error}</div>}
 
-        <DataTable
-          columns={columns}
-          data={filtered}
-          progressPending={loading}
-          pagination
-          paginationPerPage={30}
-          paginationRowsPerPageOptions={[30, 50, 100]}
-          highlightOnHover
-          dense
-          responsive
-          customStyles={customStyles}
-          subHeader
-          subHeaderComponent={SubHeader}
-          persistTableHead
-          noDataComponent={
-            <div className='text-muted small py-3'>Sin datos.</div>
-          }
-        />
+        {/* Filtros y totales */}
+        <div className='mb-2'>{SubHeader}</div>
+
+        {/* Bordes visibles y color de división sin CSS externo */}
+        <ConfigProvider theme={{ token: { colorSplit: '#bfbfbf' } }}>
+          <Table
+            columns={columns}
+            dataSource={filtered}
+            loading={loading}
+            scroll={{ x: 'max-content', y: 520 }} // scroll horizontal + sticky
+            sticky
+            bordered
+            rowKey='key'
+            size='middle'
+            pagination={{
+              pageSize: 30,
+              showSizeChanger: true,
+              pageSizeOptions: [30, 50, 100],
+            }}
+          />
+        </ConfigProvider>
       </div>
     </div>
   )
