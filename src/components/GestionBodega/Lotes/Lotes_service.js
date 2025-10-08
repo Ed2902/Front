@@ -120,3 +120,14 @@ export const getProveedoresDisponibles = async () => {
   })
   return response.data
 }
+// -----------------------------
+// INVENTARIO (resumen general)
+// -----------------------------
+
+export const getInventarioResumen = async () => {
+  const token = localStorage.getItem('token')
+  const response = await api.get('/inventario/resumen', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
