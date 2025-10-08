@@ -30,6 +30,19 @@ const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
 
 const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
 
+// Punto pequeño para el estado
+const Dot = ({ color = 'var(--bs-secondary)' }) => (
+  <span
+    className='d-inline-block rounded-circle align-middle'
+    style={{
+      width: 9,
+      height: 9,
+      backgroundColor: color,
+      verticalAlign: 'middle',
+    }}
+  />
+)
+
 const InventarioLote = () => {
   const [raw, setRaw] = useState([])
   const [loading, setLoading] = useState(false)
@@ -64,7 +77,7 @@ const InventarioLote = () => {
     }
   }, [])
 
-  // --- Agrupar por lote con totales + items detallados
+  // --- Agrupar por lote con totales + items detallados + estado (operando/cerrado)
   const lotes = useMemo(() => {
     const map = new Map()
     for (const it of raw) {
@@ -90,16 +103,16 @@ const InventarioLote = () => {
       const pu = toNumberCO(it?.PesoUnitarioKg)
 
       let kilos = 0
-      if (pesoTotalFromBE > 0) {
-        kilos = pesoTotalFromBE
-      } else if (pu > 0) {
-        kilos = cantidad * pu
-      } else {
-        kilos = cantidad
-      }
+      if (pesoTotalFromBE > 0) kilos = pesoTotalFromBE
+      else if (pu > 0) kilos = cantidad * pu
+      else kilos = cantidad
 
       const fila = {
-        id_producto: pickFirstDefined(it?.Id_producto, it?.id_producto),
+        id_producto: pickFirstDefined(
+          it?.Idproducto,
+          it?.Id_producto,
+          it?.id_producto
+        ),
         nombre_producto:
           pickFirstDefined(it?.Nombre_Producto, it?.Producto?.Nombre) ?? '',
         unidad,
@@ -147,12 +160,23 @@ const InventarioLote = () => {
       }
     }
 
-    // Orden por lote asc, y por nombre dentro
+    // Completar: ordenar items y calcular estado por lote
     for (const v of map.values()) {
       v.items.sort((a, b) =>
         String(a.nombre_producto).localeCompare(String(b.nombre_producto), 'es')
       )
+      // === Estado del lote ===
+      // Cerrado si NO hay inventario (ambos totales en 0). Operando en caso contrario.
+      const totU = toNumberCO(v.totalUnidades)
+      const totK = toNumberCO(v.totalKilos)
+      const cerrado = totU <= 0 && totK <= 0
+      v.estado = cerrado ? 'cerrado' : 'operando'
+      v.estadoUi = cerrado
+        ? { etiqueta: 'Cerrado', color: 'var(--bs-danger)' }
+        : { etiqueta: 'Operando', color: 'var(--bs-warning)' }
     }
+
+    // Orden por lote asc inicialmente
     return Array.from(map.values()).sort((a, b) =>
       String(a.loteId).localeCompare(String(b.loteId), 'es')
     )
@@ -175,21 +199,33 @@ const InventarioLote = () => {
     )
   }, [lotes, search])
 
-  // --- Totales globales (sobre lo filtrado)
+  // --- Orden final: operando primero, cerrados abajo (sin cambiar estilos de tabla)
+  const filteredSorted = useMemo(() => {
+    const rank = e => (e === 'cerrado' ? 1 : 0)
+    return [...filtered].sort((a, b) => {
+      const r = rank(a.estado) - rank(b.estado)
+      if (r !== 0) return r
+      // Si tienen mismo estado, conservar orden por loteId asc
+      return String(a.loteId).localeCompare(String(b.loteId), 'es')
+    })
+  }, [filtered])
+
+  // --- Totales globales (sobre lo filtrado + ordenado)
   const totalUnidades = useMemo(
-    () => filtered.reduce((s, l) => s + toNumberCO(l.totalUnidades), 0),
-    [filtered]
+    () => filteredSorted.reduce((s, l) => s + toNumberCO(l.totalUnidades), 0),
+    [filteredSorted]
   )
   const totalKilos = useMemo(
-    () => filtered.reduce((s, l) => s + toNumberCO(l.totalKilos), 0),
-    [filtered]
+    () => filteredSorted.reduce((s, l) => s + toNumberCO(l.totalKilos), 0),
+    [filteredSorted]
   )
 
   // --- Exportar Excel (detalle por item)
   const exportar = () => {
-    const plano = filtered.flatMap(l =>
+    const plano = filteredSorted.flatMap(l =>
       l.items.map(p => ({
         Lote: l.loteId,
+        Estado: l.estadoUi.etiqueta,
         Código: p.id_producto,
         Producto: p.nombre_producto,
         Unidad: p.unidad,
@@ -268,6 +304,20 @@ const InventarioLote = () => {
       sortable: true,
       width: '140px',
     },
+    {
+      name: 'Estado',
+      selector: r => r.estado, // permite ordenar por estado si quieres
+      sortable: true,
+      width: '140px',
+      cell: r => (
+        <span className='badge text-bg-light border'>
+          <span className='me-1 d-inline-flex align-items-center'>
+            <Dot color={r.estadoUi.color} />
+          </span>
+          {r.estadoUi.etiqueta}
+        </span>
+      ),
+    },
   ]
 
   // --- Columnas tabla hija (items dentro del lote)
@@ -339,7 +389,7 @@ const InventarioLote = () => {
     },
   ]
 
-  // --- Estilos DataTable
+  // --- Estilos DataTable (sin cambios)
   const tableStyles = {
     headCells: {
       style: {
@@ -394,7 +444,7 @@ const InventarioLote = () => {
         <button
           className='btn btn-sm btn-success'
           onClick={exportar}
-          disabled={loading || filtered.length === 0}
+          disabled={loading || filteredSorted.length === 0}
         >
           <FaFileExcel className='me-1' /> Exportar
         </button>
@@ -418,7 +468,7 @@ const InventarioLote = () => {
 
         <DataTable
           columns={parentColumns}
-          data={filtered}
+          data={filteredSorted}
           progressPending={loading}
           pagination
           paginationPerPage={30}
