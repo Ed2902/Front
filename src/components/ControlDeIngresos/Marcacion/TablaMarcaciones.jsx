@@ -4,7 +4,7 @@ import DataTable from 'react-data-table-component'
 import { BiLogIn, BiLogOut } from 'react-icons/bi'
 import { getMarcacionHistorialDelUsuarioActual as getMarcacionesUsuario } from './Marcacion_service'
 
-const HH_ENTRADA = { h: 7, m: 40 } // 07:40
+const HH_ENTRADA = { h: 7, m: 30 } // 07:30
 const HH_SALIDA = { h: 17, m: 30 } // 17:30
 const ONE_HOUR_MS = 60 * 60 * 1000
 const LUNCH_START = { h: 13, m: 0 } // 13:00
@@ -264,7 +264,7 @@ const TablaMarcaciones = () => {
       {
         name: 'Persona',
         sortable: true,
-        grow: 6, // 👈 mucho espacio
+        grow: 6,
         wrap: true,
         selector: r =>
           r?.personal

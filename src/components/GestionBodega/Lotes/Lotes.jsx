@@ -1,20 +1,32 @@
 // src/components/GestionBodega/Lotes/Lotes.jsx
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import Modal from 'react-modal'
 import {
   getLotes,
   getLotesDisponibles,
   getProductosDisponibles,
+  getInventarioResumen,
 } from './Lotes_service.js'
 import EditarRegistro from './EditarRegistro'
-import { utils, writeFile } from 'xlsx'
 import FormLote from './FormLote'
 import './Lotes.css'
-import { FaFileExcel } from 'react-icons/fa'
 import { usePermisos } from '../../../hooks/usePermisos'
 import FormatoEquivalenteModal from './FormatoEquivalenteModal'
 
 Modal.setAppElement('#root')
+
+// Mini componente para dibujar un punto de estado centrado
+const Dot = ({ color = 'var(--bs-secondary)' }) => (
+  <span
+    className='d-inline-block rounded-circle align-middle'
+    style={{
+      width: 9,
+      height: 9,
+      backgroundColor: color,
+      verticalAlign: 'middle',
+    }}
+  />
+)
 
 const Lotes = () => {
   const [lotesData, setLotesData] = useState([])
@@ -31,10 +43,20 @@ const Lotes = () => {
   const [loteTargetId, setLoteTargetId] = useState(null)
   const [loteTargetRegs, setLoteTargetRegs] = useState([])
 
+  // Modal Orden de Remisión
+  const [isRemisionModalOpen, setIsRemisionModalOpen] = useState(false)
+  const [remisionLoteId, setRemisionLoteId] = useState(null)
+
   const [globalFilter, setGlobalFilter] = useState('')
 
   // Catálogo productos id -> nombre
   const [productNameById, setProductNameById] = useState({})
+
+  // Resumen de inventario
+  const [inventarioResumen, setInventarioResumen] = useState([])
+
+  // Filtro por estado (todos | nuevo | operando | cerrado)
+  const [estadoFiltro, setEstadoFiltro] = useState('todos')
 
   const { tienePermiso } = usePermisos()
   const permisoLotesProveedor = tienePermiso('lotesProveedor')
@@ -57,6 +79,7 @@ const Lotes = () => {
     if (permisoLotesProveedor || permisoLotesCliente) {
       fetchLotes()
       fetchProductoMap()
+      fetchInventarioResumen()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permisoLotesProveedor, permisoLotesCliente])
@@ -74,6 +97,19 @@ const Lotes = () => {
         err?.message || err
       )
       setProductNameById({})
+    }
+  }
+
+  const fetchInventarioResumen = async () => {
+    try {
+      const data = await getInventarioResumen()
+      setInventarioResumen(data || [])
+    } catch (error) {
+      console.error(
+        'Error al obtener inventario resumen:',
+        error?.message || error
+      )
+      setInventarioResumen([])
     }
   }
 
@@ -99,6 +135,47 @@ const Lotes = () => {
     }
   }
 
+  // ====== ESTADO DEL LOTE (etiqueta compacta con punto a la derecha) ======
+  // Estados: Nuevo (azul), Operando (amarillo), Cerrado (rojo)
+  const getEstadoLote = useCallback(
+    idLote => {
+      const registros = inventarioResumen.filter(r => r.Id_lote === idLote)
+
+      if (registros.length === 0) {
+        return {
+          key: 'nuevo',
+          etiqueta: 'Nuevo',
+          dotColor: 'var(--bs-primary)', // azul
+          btnBgClass: 'bg-primary-subtle',
+          borderClass: 'border-primary',
+        }
+      }
+
+      const todasCero = registros.every(
+        r => Number(r.Cantidad_Inventario) === 0
+      )
+      if (todasCero) {
+        return {
+          key: 'cerrado',
+          etiqueta: 'Cerrado',
+          dotColor: 'var(--bs-danger)', // rojo
+          btnBgClass: 'bg-danger-subtle',
+          borderClass: 'border-danger',
+        }
+      }
+
+      return {
+        key: 'operando',
+        etiqueta: 'Operando',
+        dotColor: 'var(--bs-warning)', // amarillo
+        btnBgClass: 'bg-warning-subtle',
+        borderClass: 'border-warning',
+      }
+    },
+    [inventarioResumen]
+  )
+
+  // Filtro base (permisos + búsqueda) y luego filtro por estado
   const filteredLotes = useMemo(() => {
     let list = lotesData.filter(item => !isNoAplica(item.id_lote))
 
@@ -122,8 +199,20 @@ const Lotes = () => {
             .includes(gf)
       )
     }
+
+    if (estadoFiltro !== 'todos') {
+      list = list.filter(i => getEstadoLote(i.id_lote).key === estadoFiltro)
+    }
+
     return list
-  }, [lotesData, globalFilter, permisoLotesProveedor, permisoLotesCliente])
+  }, [
+    lotesData,
+    globalFilter,
+    permisoLotesProveedor,
+    permisoLotesCliente,
+    estadoFiltro,
+    getEstadoLote, // ✅ dependencia correcta para ESLint
+  ])
 
   const lotesAgrupadosOrdenados = useMemo(() => {
     const agrupados = {}
@@ -156,32 +245,10 @@ const Lotes = () => {
     if (Number.isNaN(x)) return String(n)
     return x.toLocaleString(undefined, { maximumFractionDigits: digits })
   }
-  const formatDate = d => new Date(d).toLocaleString()
   const pesoTotal = r =>
     r.PesoUnitarioKg == null
       ? null
       : Number(r.PesoUnitarioKg) * Number(r.Cantidad || 0)
-
-  const exportToExcel = () => {
-    const filasPlanas = filteredLotes.map(r => ({
-      Lote: r.id_lote,
-      Producto: `${r.id_producto} — ${
-        productNameById[String(r.id_producto)] || r.Nombre || ''
-      }`,
-      Cantidad: r.Cantidad,
-      'Peso x Unidad (Kg)':
-        r.PesoUnitarioKg == null ? '' : Number(r.PesoUnitarioKg),
-      'Peso Total (Kg)': pesoTotal(r) == null ? '' : pesoTotal(r),
-      Tipo: r.Proveedor ? 'Proveedor' : 'Cliente',
-      Nombre: r.Proveedor?.Nombre || r.Cliente?.Nombre || 'N/A',
-      Comentarios: lotesComentarios[r.id_lote] || '',
-      Fecha: formatDate(r.Fecha_registro),
-    }))
-    const hoja = utils.json_to_sheet(filasPlanas)
-    const libro = utils.book_new()
-    utils.book_append_sheet(libro, hoja, 'Lotes')
-    writeFile(libro, 'Lotes.xlsx')
-  }
 
   const openEditarRegistro = registro => {
     setRegistroAEditar(registro)
@@ -205,11 +272,28 @@ const Lotes = () => {
     setLoteTargetRegs([])
   }
 
+  // Abrir / cerrar Remisión
+  const openRemisionModal = idLote => {
+    setRemisionLoteId(idLote)
+    setIsRemisionModalOpen(true)
+  }
+  const closeRemisionModal = () => {
+    setIsRemisionModalOpen(false)
+    setRemisionLoteId(null)
+  }
+
   const rowKey = (r, i) =>
     r.id_lote_producto ||
     r.Id_lote_producto ||
     r.id ||
     `${r.id_lote}-${r.id_producto}-${i}`
+
+  // Obtener tercero del lote (uno solo por lote)
+  const getTerceroDelLote = registros => {
+    const prov = registros.find(r => r.Proveedor?.Nombre)?.Proveedor?.Nombre
+    const cli = registros.find(r => r.Cliente?.Nombre)?.Cliente?.Nombre
+    return { proveedor: prov || null, cliente: cli || null }
+  }
 
   return (
     <>
@@ -251,7 +335,7 @@ const Lotes = () => {
         )}
       </Modal>
 
-      {/* Modal: Formato equivalente (componente real) */}
+      {/* Modal: Formato equivalente */}
       {permisoFormatoEquivalente && (
         <FormatoEquivalenteModal
           isOpen={isFormatoModalOpen}
@@ -262,27 +346,86 @@ const Lotes = () => {
         />
       )}
 
+      {/* Modal: Orden de Remisión (placeholder) */}
+      <Modal
+        isOpen={isRemisionModalOpen}
+        onRequestClose={closeRemisionModal}
+        contentLabel='Orden de Remisión'
+        className='modal-content'
+        overlayClassName='modal-overlay'
+      >
+        <h3 className='mb-3'>Orden de Remisión — Lote {remisionLoteId}</h3>
+        <p>Hola Estará lista pronto</p>
+        <div className='text-end'>
+          <button className='btn btn-secondary' onClick={closeRemisionModal}>
+            Cerrar
+          </button>
+        </div>
+      </Modal>
+
       {/* Toolbar */}
       <div className='lotes-container container mt-4'>
-        <div className='d-flex flex-wrap align-items-center gap-2 mb-3'>
+        <div className='d-flex flex-wrap align-items-center gap-3 mb-3'>
           <h2 className='m-0 me-auto'>Lotes</h2>
+
+          {/* Filtro por estado - estilo más profesional */}
+          <div className='btn-group' role='group' aria-label='Filtrar estados'>
+            <button
+              type='button'
+              className={`btn btn-sm ${
+                estadoFiltro === 'todos' ? 'btn-dark' : 'btn-outline-dark'
+              }`}
+              onClick={() => setEstadoFiltro('todos')}
+            >
+              Todos
+            </button>
+            <button
+              type='button'
+              className={`btn btn-sm d-inline-flex align-items-center gap-2 ${
+                estadoFiltro === 'nuevo' ? 'btn-primary' : 'btn-outline-primary'
+              }`}
+              onClick={() => setEstadoFiltro('nuevo')}
+            >
+              <Dot color='var(--bs-primary)' />
+              Nuevo
+            </button>
+            <button
+              type='button'
+              className={`btn btn-sm d-inline-flex align-items-center gap-2 ${
+                estadoFiltro === 'operando'
+                  ? 'btn-warning'
+                  : 'btn-outline-warning'
+              }`}
+              onClick={() => setEstadoFiltro('operando')}
+            >
+              <Dot color='var(--bs-warning)' />
+              Operando
+            </button>
+            <button
+              type='button'
+              className={`btn btn-sm d-inline-flex align-items-center gap-2 ${
+                estadoFiltro === 'cerrado' ? 'btn-danger' : 'btn-outline-danger'
+              }`}
+              onClick={() => setEstadoFiltro('cerrado')}
+            >
+              <Dot color='var(--bs-danger)' />
+              Cerrado
+            </button>
+          </div>
+
+          {/* Buscador */}
           <div className='flex-grow-1 d-flex justify-content-center'>
             <input
               type='text'
               className='form-control buscador-pequeno w-75'
-              placeholder='Buscar lote, producto, cliente, proveedor...'
+              placeholder='Buscar lote, producto...'
               value={globalFilter}
               onChange={e => setGlobalFilter(e.target.value)}
             />
           </div>
+
+          {/* Botón agregar */}
           <div className='d-flex gap-2'>
-            <button
-              className='btn-excel'
-              onClick={exportToExcel}
-              title='Exportar a Excel'
-            >
-              <FaFileExcel size={24} />
-            </button>
             <button
               className='btn-agregar-lote'
               onClick={() => setIsAgregarModalOpen(true)}
@@ -309,11 +452,16 @@ const Lotes = () => {
                   new Date(a.Fecha_registro) - new Date(b.Fecha_registro)
               )
 
+              // Estado visual del lote (para color de header/borde)
+              const estado = getEstadoLote(idLote)
+              // Tercero del lote (único)
+              const { proveedor, cliente } = getTerceroDelLote(regsOrdenados)
+
               return (
                 <div className='accordion-item' key={idLote}>
                   <h2 className='accordion-header' id={`heading-${index}`}>
                     <button
-                      className='accordion-button collapsed'
+                      className={`accordion-button collapsed ${estado.btnBgClass} border-start border-4 ${estado.borderClass}`}
                       type='button'
                       data-bs-toggle='collapse'
                       data-bs-target={`#collapse-${index}`}
@@ -324,11 +472,33 @@ const Lotes = () => {
                         <span className='badge rounded-pill text-bg-primary px-3 py-2'>
                           Lote: {idLote}
                         </span>
+
+                        {/* Tercero (único por lote) */}
+                        {proveedor && (
+                          <span className='badge bg-warning text-dark'>
+                            Proveedor: {proveedor}
+                          </span>
+                        )}
+                        {!proveedor && cliente && (
+                          <span className='badge bg-primary'>
+                            Cliente: {cliente}
+                          </span>
+                        )}
+
                         <span className='text-muted small flex-grow-1'>
                           Comentario: {comentario}
                         </span>
                         <span className='text-muted small'>
                           Fecha: {fechaGrupo}
+                        </span>
+
+                        {/* Estado compacto a la derecha */}
+                        <span
+                          className='ms-auto d-inline-flex align-items-center gap-2 small text-uppercase fw-semibold'
+                          aria-label={`Estado: ${estado.etiqueta}`}
+                        >
+                          <Dot color={estado.dotColor} />
+                          {estado.etiqueta}
                         </span>
                       </div>
                     </button>
@@ -341,9 +511,9 @@ const Lotes = () => {
                     data-bs-parent='#lotesAccordion'
                   >
                     <div className='accordion-body'>
-                      {/* Botón Formato equivalente si tiene permiso */}
-                      {permisoFormatoEquivalente && (
-                        <div className='d-flex justify-content-end mb-2'>
+                      {/* Acciones por lote (según tercero) */}
+                      <div className='d-flex justify-content-end mb-2 gap-2'>
+                        {permisoFormatoEquivalente && proveedor && (
                           <button
                             type='button'
                             className='btn btn-outline-primary btn-sm'
@@ -353,8 +523,18 @@ const Lotes = () => {
                           >
                             Formato equivalente
                           </button>
-                        </div>
-                      )}
+                        )}
+
+                        {cliente && (
+                          <button
+                            type='button'
+                            className='btn btn-outline-success btn-sm'
+                            onClick={() => openRemisionModal(idLote)}
+                          >
+                            Orden de remisión
+                          </button>
+                        )}
+                      </div>
 
                       <table className='table table-bordered table-sm text-center align-middle'>
                         <thead>
@@ -363,24 +543,13 @@ const Lotes = () => {
                             <th>Cantidad</th>
                             <th>Peso U. (Kg)</th>
                             <th>Peso Total (Kg)</th>
-                            <th>Cliente / Proveedor</th>
+                            {/* Se elimina la columna Cliente/Proveedor por fila */}
                             <th>Acciones</th>
                           </tr>
                         </thead>
                         <tbody>
                           {regsOrdenados.map((r, i) => {
                             const pTotal = pesoTotal(r)
-                            const terceroBadge = r.Proveedor?.Nombre ? (
-                              <span className='badge bg-warning text-dark'>
-                                Proveedor: {r.Proveedor.Nombre}
-                              </span>
-                            ) : r.Cliente?.Nombre ? (
-                              <span className='badge bg-primary'>
-                                Cliente: {r.Cliente.Nombre}
-                              </span>
-                            ) : (
-                              'N/A'
-                            )
                             const nombre =
                               productNameById[String(r.id_producto)] ||
                               r.Nombre ||
@@ -412,7 +581,6 @@ const Lotes = () => {
                                 <td>
                                   {pTotal == null ? '—' : formatNum(pTotal, 3)}
                                 </td>
-                                <td>{terceroBadge}</td>
                                 <td className='text-nowrap'>
                                   <button
                                     type='button'
