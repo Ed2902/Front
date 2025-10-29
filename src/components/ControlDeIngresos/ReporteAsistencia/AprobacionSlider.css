@@ -1,0 +1,158 @@
+/* ====== Compact 3-way toggle (texto abajo) ====== */
+/* Estructura general: track arriba, etiqueta abajo */
+.tri-toggle {
+  display: inline-flex;
+  flex-direction: column; /* texto debajo */
+  align-items: center;
+  gap: 6px; /* separación track/etiqueta */
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+.tri-toggle.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ====== Tamaños (compactos por defecto) ====== */
+/* SM: ultra compacto */
+.size-sm .tri-track {
+  width: 54px;
+  height: 18px;
+  border-radius: 10px;
+}
+.size-sm .tri-thumb {
+  width: 14px;
+  height: 14px;
+  top: 2px;
+}
+.size-sm .tri-label {
+  font-size: 0.7rem;
+  min-width: 54px;
+}
+
+/* MD: pequeño */
+.size-md .tri-track {
+  width: 66px;
+  height: 22px;
+  border-radius: 12px;
+}
+.size-md .tri-thumb {
+  width: 16px;
+  height: 16px;
+  top: 3px;
+}
+.size-md .tri-label {
+  font-size: 0.78rem;
+  min-width: 66px;
+}
+
+/* LG: mediano (sigue siendo compacto) */
+.size-lg .tri-track {
+  width: 78px;
+  height: 26px;
+  border-radius: 14px;
+}
+.size-lg .tri-thumb {
+  width: 20px;
+  height: 20px;
+  top: 3px;
+}
+.size-lg .tri-label {
+  font-size: 0.86rem;
+  min-width: 78px;
+}
+
+/* ====== Base visual del track/thumb ====== */
+.tri-track {
+  position: relative;
+  background: #e6e6e6;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.tri-thumb {
+  position: absolute;
+  left: 2px; /* recalculado por data-pos */
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: left 0.22s ease;
+}
+
+/* Separadores (tercios) – decorativos */
+.tri-sep {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.06);
+}
+.tri-track .tri-sep:nth-of-type(1) {
+  left: 33.333%;
+}
+.tri-track .tri-sep:nth-of-type(2) {
+  left: 66.666%;
+}
+
+/* ====== Posiciones del thumb por tamaño (0=izq, 1=centro, 2=der) ====== */
+/* SM: 54x18, thumb 14 → centro ~= 50% - 7, der ~= 100% - (14+2)=38px => 54-16=38 */
+.size-sm .tri-thumb[data-pos='0'] {
+  left: 2px;
+}
+.size-sm .tri-thumb[data-pos='1'] {
+  left: calc(50% - 7px);
+}
+.size-sm .tri-thumb[data-pos='2'] {
+  left: calc(100% - 16px);
+}
+
+/* MD: 66x22, thumb 16 → centro 50% - 8, der 100% - (16+3)=47px => 66-19=47 */
+.size-md .tri-thumb[data-pos='0'] {
+  left: 3px;
+}
+.size-md .tri-thumb[data-pos='1'] {
+  left: calc(50% - 8px);
+}
+.size-md .tri-thumb[data-pos='2'] {
+  left: calc(100% - 19px);
+}
+
+/* LG: 78x26, thumb 20 → centro 50% - 10, der 100% - (20+3)=55px => 78-23=55 */
+.size-lg .tri-thumb[data-pos='0'] {
+  left: 3px;
+}
+.size-lg .tri-thumb[data-pos='1'] {
+  left: calc(50% - 10px);
+}
+.size-lg .tri-thumb[data-pos='2'] {
+  left: calc(100% - 23px);
+}
+
+/* ====== Colores por estado ====== */
+.tri-red .tri-track {
+  background: rgba(220, 0, 0, 0.33);
+}
+.tri-yellow .tri-track {
+  background: rgba(255, 200, 0, 0.42);
+}
+.tri-green .tri-track {
+  background: rgba(0, 170, 0, 0.33);
+}
+
+/* Etiqueta debajo, centrada y compacta */
+.tri-label {
+  line-height: 1;
+  text-align: center;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.tri-red .tri-label {
+  color: #c62828;
+}
+.tri-yellow .tri-label {
+  color: #a17600;
+}
+.tri-green .tri-label {
+  color: #2e7d32;
+}

@@ -23,6 +23,7 @@
     "datatables.net": "^2.3.3",
     "datatables.net-bs5": "^2.3.3",
     "date-fns": "^4.1.0",
+    "date-holidays": "^3.26.4",
     "express": "^5.1.0",
     "file-saver": "^2.0.5",
     "jquery": "^3.7.1",

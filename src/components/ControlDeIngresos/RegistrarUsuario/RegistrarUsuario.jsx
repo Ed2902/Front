@@ -1,8 +1,18 @@
 // src/components/ControlIngresos/RegistrarUsuario/RegistrarUsuario.jsx
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useContext } from 'react'
 import Modal from 'react-modal'
 import Webcam from 'react-webcam'
-import { crearPersonal, subirFotosPersonal } from './RegistrarUsuario_service'
+import axios from 'axios'
+import {
+  crearPersonal,
+  subirFotosPersonal,
+  verPersonalPorDocumento,
+  verVectoresPorPersonal,
+  actualizarFotosPersonal,
+  setApi,
+} from './RegistrarUsuario_service'
+
+import AuthContext from '../../../context/AuthContext'
 
 const ANGULOS = [
   { key: 'frontal', label: 'Frontal' },
@@ -24,6 +34,25 @@ function dataURLtoFile(dataUrl, filename) {
 }
 
 const RegistrarUsuario = () => {
+  const { token } = useContext(AuthContext) || {}
+
+  // Inyecta axios con token/API key al service cuando cambie el token
+  useEffect(() => {
+    const instance = axios.create({
+      baseURL: import.meta.env.VITE_API_URL_2 || 'http://localhost:8000',
+    })
+    instance.interceptors.request.use(config => {
+      const apiKey = import.meta.env.VITE_API_KEY || ''
+      if (apiKey) config.headers['X-API-Key'] = apiKey
+      if (token) config.headers.Authorization = `Bearer ${token}`
+      return config
+    })
+    setApi(instance)
+  }, [token])
+
+  // "registrar" o "actualizar"
+  const [modo, setModo] = useState('registrar')
+
   const [formData, setFormData] = useState({
     documento: '',
     nombres: '',
@@ -31,16 +60,19 @@ const RegistrarUsuario = () => {
     email: '',
     telefono: '',
     estado: 'inactivo',
-    horas_semana: '',
+    horario_int: '', // HH:MM
+    horario_off: '', // HH:MM
   })
 
+  const [personalExistenteId, setPersonalExistenteId] = useState(null)
+  const [infoVectores, setInfoVectores] = useState(null)
   const [captures, setCaptures] = useState({
     frontal: null,
     izq45: null,
     der45: null,
     arriba: null,
     abajo: null,
-  }) // { key: { preview, file } }
+  })
 
   const [activeSlot, setActiveSlot] = useState(null)
   const [isCamOpen, setIsCamOpen] = useState(false)
@@ -49,12 +81,38 @@ const RegistrarUsuario = () => {
   const webcamRef = useRef(null)
 
   const videoConstraints = { video: { facingMode: 'user' } }
-  const allFiveReady = ANGULOS.every(a => !!captures[a.key])
+  const countPhotos = ANGULOS.filter(a => !!captures[a.key]).length
+  const allFiveReady = countPhotos === 5
+  const minPhotosOk = modo === 'actualizar' ? countPhotos >= 1 : allFiveReady
 
   useEffect(() => {
-    // Requerido por react-modal para accesibilidad
     Modal.setAppElement('#root')
   }, [])
+
+  // Si cambias de modo, resetea selección
+  useEffect(() => {
+    setPersonalExistenteId(null)
+    setInfoVectores(null)
+    setCaptures({
+      frontal: null,
+      izq45: null,
+      der45: null,
+      arriba: null,
+      abajo: null,
+    })
+    if (modo === 'registrar') {
+      setFormData({
+        documento: '',
+        nombres: '',
+        apellidos: '',
+        email: '',
+        telefono: '',
+        estado: 'inactivo',
+        horario_int: '',
+        horario_off: '',
+      })
+    }
+  }, [modo])
 
   const handleChange = e => {
     const { name, value } = e.target
@@ -65,12 +123,10 @@ const RegistrarUsuario = () => {
     setActiveSlot(slotKey)
     setIsCamOpen(true)
   }
-
   const cerrarCamara = () => {
     setIsCamOpen(false)
     setActiveSlot(null)
   }
-
   const tomarFoto = () => {
     const shot = webcamRef.current?.getScreenshot()
     if (!shot || !activeSlot) return
@@ -81,16 +137,84 @@ const RegistrarUsuario = () => {
     }))
     cerrarCamara()
   }
-
   const eliminarFoto = slotKey => {
     setCaptures(prev => ({ ...prev, [slotKey]: null }))
   }
 
+  // ---- Buscar personal por documento (solo en modo "actualizar")
+  const buscarPorDocumento = async () => {
+    const doc = formData.documento?.trim()
+    if (!doc) {
+      alert('Ingresa un documento para buscar.')
+      return
+    }
+    try {
+      setSaving(true)
+      const p = await verPersonalPorDocumento(doc)
+      if (!p?.id) {
+        setPersonalExistenteId(null)
+        setInfoVectores(null)
+        alert('No se encontró un personal con ese documento.')
+        return
+      }
+      setPersonalExistenteId(p.id)
+      // Rellenar los campos (bloquéalos en modo actualizar)
+      setFormData(prev => ({
+        ...prev,
+        documento: p.documento ?? doc,
+        nombres: p.nombres ?? '',
+        apellidos: p.apellidos ?? '',
+        email: p.email ?? '',
+        telefono: p.telefono ?? '',
+        estado: p.estado ?? 'activo',
+        horario_int: p.horario_int ?? '',
+        horario_off: p.horario_off ?? '',
+      }))
+      // Traer info de vectores
+      try {
+        const v = await verVectoresPorPersonal(p.id)
+        const sizes = [
+          'vector1',
+          'vector2',
+          'vector3',
+          'vector4',
+          'vector5',
+        ].map(k => (v?.[k] ? v[k].length || 1 : 0))
+        setInfoVectores({
+          tiene: sizes.some(s => s > 0),
+          detalle: sizes,
+        })
+      } catch {
+        setInfoVectores(null)
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Error al buscar el personal.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Validación simple de hh:mm
+  const isTime = t => /^\d{2}:\d{2}$/.test(t)
+  const needTimes = modo === 'registrar'
+  const validTimes =
+    !needTimes || (isTime(formData.horario_int) && isTime(formData.horario_off))
+
   const handleSubmit = async e => {
     e.preventDefault()
-    if (!allFiveReady) {
+
+    // ✅ solo validar horarios cuando se registra
+    if (!validTimes) {
+      alert('Completa horario de entrada y salida en formato HH:MM.')
+      return
+    }
+
+    if (!minPhotosOk) {
       alert(
-        'Debes capturar las 5 fotos (frontal, 45° izq., 45° der., arriba y abajo).'
+        modo === 'actualizar'
+          ? 'Para actualizar, captura al menos 1 foto.'
+          : 'Debes capturar las 5 fotos (frontal, 45° izq., 45° der., arriba y abajo).'
       )
       return
     }
@@ -99,27 +223,43 @@ const RegistrarUsuario = () => {
       setSaving(true)
       setUploadProgress(0)
 
-      // 1) Crear personal (JSON)
-      const creado = await crearPersonal(formData) // { id, ... }
-      const personalId = creado?.id
-      if (!personalId) throw new Error('No se recibió el ID del personal.')
+      if (modo === 'registrar') {
+        // 1) Crear personal (con horarios)
+        const creado = await crearPersonal(formData)
+        const personalId = creado?.id
+        if (!personalId) throw new Error('No se recibió el ID del personal.')
 
-      // 2) Subir fotos (FormData): personal_id + 5 x "files"
-      const files = ANGULOS.map(a => captures[a.key].file)
-      await subirFotosPersonal(personalId, files, p => setUploadProgress(p))
+        // 2) Subir 5 fotos
+        const files = ANGULOS.map(a => captures[a.key].file)
+        await subirFotosPersonal(personalId, files, p => setUploadProgress(p))
 
-      alert('Usuario registrado y fotos subidas correctamente.')
+        alert('Usuario registrado y fotos subidas correctamente.')
+      } else {
+        if (!personalExistenteId) {
+          alert('Primero busca y selecciona el personal por documento.')
+          return
+        }
+        // 1..5 fotos (al menos 1)
+        const files = ANGULOS.map(a => captures[a.key]?.file).filter(Boolean)
+        await actualizarFotosPersonal(personalExistenteId, files, p =>
+          setUploadProgress(p)
+        )
+        alert('Fotos actualizadas correctamente.')
+      }
 
       // Reset
-      setFormData({
-        documento: '',
-        nombres: '',
-        apellidos: '',
-        email: '',
-        telefono: '',
-        estado: 'activo',
-        horas_semana: '',
-      })
+      if (modo === 'registrar') {
+        setFormData({
+          documento: '',
+          nombres: '',
+          apellidos: '',
+          email: '',
+          telefono: '',
+          estado: 'activo',
+          horario_int: '',
+          horario_off: '',
+        })
+      }
       setCaptures({
         frontal: null,
         izq45: null,
@@ -128,9 +268,27 @@ const RegistrarUsuario = () => {
         abajo: null,
       })
       setUploadProgress(0)
+      if (modo === 'actualizar' && personalExistenteId) {
+        try {
+          const v = await verVectoresPorPersonal(personalExistenteId)
+          const sizes = [
+            'vector1',
+            'vector2',
+            'vector3',
+            'vector4',
+            'vector5',
+          ].map(k => (v?.[k] ? v[k].length || 1 : 0))
+          setInfoVectores({
+            tiene: sizes.some(s => s > 0),
+            detalle: sizes,
+          })
+        } catch {
+          /* noop */
+        }
+      }
     } catch (err) {
       console.error(err)
-      alert('Ocurrió un error al registrar o subir las fotos.')
+      alert('Ocurrió un error.')
     } finally {
       setSaving(false)
     }
@@ -138,21 +296,57 @@ const RegistrarUsuario = () => {
 
   return (
     <div className='container-fluid mt-4'>
-      <h3 className='text-center mb-4'>Registrar Usuario</h3>
+      <div className='d-flex align-items-center justify-content-between'>
+        <h3 className='mb-0'>Registrar / Actualizar Usuario</h3>
+
+        {/* Selector de modo */}
+        <div className='d-flex align-items-center gap-2'>
+          <span className='small text-muted'>Modo:</span>
+          <select
+            className='form-select form-select-sm'
+            style={{ width: 160 }}
+            value={modo}
+            onChange={e => setModo(e.target.value)}
+            disabled={saving}
+          >
+            <option value='registrar'>Registrar</option>
+            <option value='actualizar'>Actualizar (solo fotos)</option>
+          </select>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className='mt-3'>
         <div className='row'>
           <div className='col-md-4 mb-3'>
             <label className='form-label'>Documento</label>
-            <input
-              className='form-control'
-              name='documento'
-              value={formData.documento}
-              onChange={handleChange}
-              required
-              disabled={saving}
-            />
+            <div className='input-group'>
+              <input
+                className='form-control'
+                name='documento'
+                value={formData.documento}
+                onChange={handleChange}
+                required
+                disabled={saving}
+              />
+              {modo === 'actualizar' && (
+                <button
+                  type='button'
+                  className='btn btn-outline-primary'
+                  onClick={buscarPorDocumento}
+                  disabled={saving || !formData.documento.trim()}
+                  title='Buscar por documento'
+                >
+                  Buscar
+                </button>
+              )}
+            </div>
+            {modo === 'actualizar' && personalExistenteId && (
+              <div className='form-text'>
+                ID encontrado: <b>{personalExistenteId}</b>
+              </div>
+            )}
           </div>
+
           <div className='col-md-4 mb-3'>
             <label className='form-label'>Nombres</label>
             <input
@@ -161,7 +355,7 @@ const RegistrarUsuario = () => {
               value={formData.nombres}
               onChange={handleChange}
               required
-              disabled={saving}
+              disabled={saving || modo === 'actualizar'}
             />
           </div>
           <div className='col-md-4 mb-3'>
@@ -172,7 +366,7 @@ const RegistrarUsuario = () => {
               value={formData.apellidos}
               onChange={handleChange}
               required
-              disabled={saving}
+              disabled={saving || modo === 'actualizar'}
             />
           </div>
         </div>
@@ -186,7 +380,7 @@ const RegistrarUsuario = () => {
               name='email'
               value={formData.email}
               onChange={handleChange}
-              disabled={saving}
+              disabled={saving || modo === 'actualizar'}
             />
           </div>
           <div className='col-md-4 mb-3'>
@@ -196,40 +390,65 @@ const RegistrarUsuario = () => {
               name='telefono'
               value={formData.telefono}
               onChange={handleChange}
-              disabled={saving}
+              disabled={saving || modo === 'actualizar'}
+            />
+          </div>
+
+          {/* Horarios */}
+          <div className='col-md-2 mb-3'>
+            <label className='form-label'>Hora entrada</label>
+            <input
+              type='time'
+              className='form-control'
+              name='horario_int'
+              value={formData.horario_int}
+              onChange={handleChange}
+              required={modo === 'registrar'}
+              disabled={saving || modo === 'actualizar'}
             />
           </div>
           <div className='col-md-2 mb-3'>
-            <label className='form-label'>Estado</label>
-            <select
-              className='form-select'
-              name='estado'
-              value={formData.estado}
-              onChange={handleChange}
-              disabled={saving}
-            >
-              <option value='inactivo'>Inactivo</option>
-              <option value='activo'>activo</option>
-            </select>
-          </div>
-          <div className='col-md-2 mb-3'>
-            <label className='form-label'>Horas/semana</label>
+            <label className='form-label'>Hora salida</label>
             <input
-              type='number'
+              type='time'
               className='form-control'
-              name='horas_semana'
-              value={formData.horas_semana}
+              name='horario_off'
+              value={formData.horario_off}
               onChange={handleChange}
-              required
-              disabled={saving}
-              min={0}
+              required={modo === 'registrar'}
+              disabled={saving || modo === 'actualizar'}
             />
           </div>
         </div>
 
+        {/* Info vectores (solo modo actualizar) */}
+        {modo === 'actualizar' && personalExistenteId && (
+          <div className='alert alert-secondary'>
+            <div className='d-flex justify-content-between align-items-center'>
+              <div>
+                <b>Vectores actuales:</b>{' '}
+                {infoVectores?.tiene
+                  ? 'Sí (mostrando tamaños de blobs)'
+                  : 'No registrados'}
+              </div>
+              {infoVectores?.detalle && (
+                <code className='small'>
+                  {JSON.stringify(infoVectores.detalle)}
+                </code>
+              )}
+            </div>
+            <div className='small text-muted mt-1'>
+              *Para actualizar, captura al menos 1 nueva foto. Se reemplazará el
+              set completo.
+            </div>
+          </div>
+        )}
+
         {/* Capturas del rostro */}
         <div className='mt-4'>
-          <h5 className='mb-3'>Capturas del rostro (5 ángulos)</h5>
+          <h5 className='mb-3'>
+            Capturas del rostro ({modo === 'actualizar' ? '1–5' : '5'} ángulos)
+          </h5>
           <div className='row g-3'>
             {ANGULOS.map(({ key, label }) => {
               const cap = captures[key]
@@ -319,14 +538,20 @@ const RegistrarUsuario = () => {
           <button
             type='submit'
             className='btn btn-success'
-            disabled={saving || !allFiveReady}
+            disabled={
+              saving ||
+              !minPhotosOk ||
+              (modo === 'actualizar' && !personalExistenteId)
+            }
           >
-            Registrar y subir fotos
+            {modo === 'registrar'
+              ? 'Registrar y subir fotos'
+              : 'Actualizar fotos'}
           </button>
         </div>
       </form>
 
-      {/* Modal con react-modal (sin Bootstrap JS) */}
+      {/* Modal */}
       <Modal
         isOpen={isCamOpen}
         onRequestClose={cerrarCamara}
