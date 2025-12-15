@@ -1,0 +1,596 @@
+:root {
+  --brand-primary: #2cb6c0;
+  --brand-secondary: #1e73b6;
+  --brand-dark: #0b3d6e;
+
+  --text: #0f172a;
+  --muted: #64748b;
+
+  --border: #e5e7eb;
+  --border-soft: #eef2f7;
+
+  --bg: #ffffff;
+  --bg-soft: #f8fafc;
+
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+/* ===== layout ===== */
+.excel-wrap {
+  width: 100%;
+}
+
+.excel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.excel-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.excel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ===== scroll + table ===== */
+.excel-scroll {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+/* ✅ ocultar scrollbar horizontal interno (mantiene el scroll funcionando) */
+.excel-scroll {
+  scrollbar-width: thin; /* firefox (si quieres) */
+}
+.excel-scroll::-webkit-scrollbar {
+  height: 0px; /* chrome */
+}
+
+/* OJO: si quieres también ocultar vertical, NO lo hagas; solo ocultamos horizontal */
+.excel-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* header sticky */
+.excel-th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 12px;
+  vertical-align: top;
+}
+
+.excel-th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.excel-th-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.15px;
+}
+
+.excel-sort {
+  font-size: 12px;
+  color: var(--brand-primary);
+  font-weight: 900;
+}
+
+/* rows */
+.excel-tr:hover .excel-td {
+  background: #f7fbff;
+}
+
+.excel-tr:nth-child(even) .excel-td {
+  background: #fcfdff;
+}
+
+.excel-td {
+  border-bottom: 1px solid #f1f5f9;
+  border-right: 1px solid #f1f5f9;
+  padding: 0;
+}
+
+/* helpers align */
+.excel-right {
+  text-align: right;
+}
+.excel-center {
+  text-align: center;
+}
+
+/* ===== widths ===== */
+.col-xxs {
+  min-width: 56px;
+  width: 56px;
+}
+.col-xs {
+  min-width: 92px;
+  width: 92px;
+}
+.col-sm {
+  min-width: 124px;
+  width: 124px;
+}
+.col-md {
+  min-width: 168px;
+  width: 168px;
+}
+.col-lg {
+  min-width: 230px;
+  width: 230px;
+}
+.col-xl {
+  min-width: 340px;
+  width: 340px;
+}
+.col-linea {
+  min-width: 130px;
+  width: 130px;
+}
+
+/* ===== cells ===== */
+.excel-cellwrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.excel-cell,
+.excel-select {
+  width: 100%;
+  border: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: 12px;
+}
+
+.excel-cell:focus,
+.excel-select:focus {
+  background: #ecfeff;
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+
+/* acciones flotantes */
+.excel-cellactions {
+  position: absolute;
+  top: -34px;
+  right: 8px;
+  display: inline-flex;
+  gap: 8px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 6px 8px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(6px);
+}
+
+.excel-cellactions::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  right: 20px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.excel-ok,
+.excel-cancel {
+  border: 1px solid var(--border);
+  background: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transition: transform 0.12s ease, border-color 0.12s ease, filter 0.12s ease;
+}
+
+.excel-ok {
+  border-color: rgba(44, 182, 192, 0.45);
+}
+.excel-ok:hover {
+  border-color: var(--brand-primary);
+  transform: translateY(-1px);
+  filter: brightness(0.99);
+}
+
+.excel-cancel {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.excel-cancel:hover {
+  border-color: #ef4444;
+  transform: translateY(-1px);
+  filter: brightness(0.99);
+}
+
+/* read only */
+.excel-readonly {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #334155;
+}
+
+/* estado badge */
+.estado-badge {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  border-radius: 999px;
+  padding: 0.35rem 0.55rem;
+}
+
+/* risk */
+.risk-overdue {
+  color: #b91c1c;
+  font-weight: 900;
+}
+.risk-high {
+  color: #c2410c;
+  font-weight: 900;
+}
+.risk-medium {
+  color: #a16207;
+  font-weight: 900;
+}
+.risk-low {
+  color: #15803d;
+  font-weight: 900;
+}
+
+.paid-ok {
+  font-weight: 900;
+  font-size: 16px;
+  color: #15803d;
+}
+
+/* Ver button */
+.excel-viewbtn {
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 7px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+.excel-viewbtn:hover {
+  background: var(--bg-soft);
+  border-color: rgba(44, 182, 192, 0.35);
+}
+
+/* icon */
+.excel-iconbtn {
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 6px;
+  opacity: 0.85;
+}
+.excel-iconbtn:hover {
+  opacity: 1;
+}
+
+.btn-abonos {
+  border-radius: 14px !important;
+}
+
+/* footer */
+.excel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 6px 0;
+}
+.excel-footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.excel-loading {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.excel-empty {
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ===== Línea select colores ===== */
+.linea-harvest {
+  background: #e8f7ee;
+  color: #1f7a3a;
+  font-weight: 700;
+}
+.linea-fastway {
+  background: #fff1e6;
+  color: #c75a00;
+  font-weight: 700;
+}
+.linea-greenway {
+  background: #e6f0ff;
+  color: #1e4fd8;
+  font-weight: 700;
+}
+.linea-compras {
+  background: #ffffff;
+  color: #333;
+  font-weight: 600;
+}
+
+/* =======================
+   MODAL CREAR COMPRA
+   ======================= */
+.modal-crear-compra-content.modal-content {
+  width: 100% !important;
+  max-width: 95vw !important;
+  border-radius: 18px;
+}
+
+.modal-crear-compra-body {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 0 !important;
+}
+
+.modal-crear-compra-container {
+  padding: 18px 20px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+/* =======================
+   ABONOS (read-only)
+   ======================= */
+.abonos-ro {
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  border-radius: 18px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+}
+
+.abonos-ro-head {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(238, 242, 247, 1);
+  background: linear-gradient(
+    135deg,
+    rgba(44, 182, 192, 0.14) 0%,
+    rgba(30, 115, 182, 0.1) 100%
+  );
+}
+
+.abonos-ro-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: var(--brand-dark);
+}
+
+.abonos-ro-subtitle {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 3px;
+}
+
+.abonos-ro-tablewrap {
+  padding: 14px 14px 16px;
+  background: #fff;
+}
+
+.abonos-ro-table {
+  margin: 0;
+  border-collapse: separate !important;
+  border-spacing: 0;
+}
+
+.abonos-ro-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-bottom: 1px solid rgba(238, 242, 247, 1);
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.abonos-ro-table tbody td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(241, 245, 249, 1);
+}
+
+.abonos-ro-table tbody tr:hover td {
+  background: rgba(44, 182, 192, 0.06);
+}
+
+.abonos-ro-table thead th:first-child {
+  border-top-left-radius: 12px;
+}
+.abonos-ro-table thead th:last-child {
+  border-top-right-radius: 12px;
+}
+
+/* =========================
+   MODAL ABONOS – FULL CSS
+   ========================= */
+.modal .modal-dialog.abonos-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  margin: auto !important;
+
+  width: 95vw !important;
+  max-width: 95vw !important;
+  height: auto !important;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal .modal-dialog.abonos-modal .modal-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 18px;
+}
+
+@media (min-width: 1200px) {
+  .modal .modal-dialog.abonos-modal {
+    width: 1100px !important;
+    max-width: 1100px !important;
+  }
+}
+
+/* =========================
+   BOTONES TOPBAR (Crear)
+   ========================= */
+.btn-crear,
+.btn-hacer-abono {
+  font-size: 13px;
+  font-weight: 400;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+.btn-crear svg,
+.btn-hacer-abono svg {
+  font-size: 16px;
+}
+
+/* =========================
+   MODAL HACER ABONO – 1200px
+   ========================= */
+.modal .modal-dialog.modal-hacer-abono {
+  position: fixed !important;
+  inset: 0 !important;
+  margin: auto !important;
+
+  width: 95vw !important;
+  max-width: 95vw !important;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal .modal-dialog.modal-hacer-abono .modal-content {
+  width: 100% !important;
+  border-radius: 18px;
+}
+
+@media (min-width: 1200px) {
+  .modal .modal-dialog.modal-hacer-abono {
+    width: 1200px !important;
+    max-width: 1200px !important;
+  }
+}
+.modal-hacer-abono .modal-dialog {
+  max-width: 1200px;
+}
+
+.modal-hacer-abono .modal-body {
+  padding: 0;
+}
+
+.excel-row-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.excel-iconbtn-abono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.excel-iconbtn-abono svg {
+  color: #1e73b6;
+  font-size: 18px;
+}
+
+.excel-iconbtn-abono:hover svg {
+  color: #0b3d6e;
+}
+
+.excel-iconbtn-abono:hover {
+  background: rgba(30, 115, 182, 0.1);
+  border-color: rgba(30, 115, 182, 0.25);
+}
+
+/* =======================================================
+   ✅ NUEVO: Barra horizontal externa sticky (tipo Excel)
+   ======================================================= */
+.excel-scrollbox {
+  position: relative;
+}
+
+/* La barra externa va “por fuera” del componente, pero pegada abajo al hacer scroll */
+.excel-hscroll {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  height: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(6px);
+
+  margin: 10px 0; /* separa visualmente del borde */
+}
+
+/* “contenido” que da el ancho scrolleable */
+.excel-hscroll-inner {
+  height: 1px;
+}

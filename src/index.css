@@ -1,0 +1,5 @@
+/* Bloquea scroll horizontal global */
+html,
+body {
+  overflow-x: hidden;
+}

@@ -1,19 +1,19 @@
-/* Fuente personalizada */
-@font-face {
-  font-family: 'HemiHead';
-  src: url('/fonts/HemiHeadRg-BoldItalic.otf') format('opentype');
-  font-weight: bold;
-  font-style: italic;
-}
-
-/* Contenedor general */
+/* Contenedor general (ocupa el ancho del sidebar en desktop) */
 .sidebar-container {
   position: relative;
+  z-index: 50;
+  width: 250px; /* empuja el layout */
+  flex: 0 0 auto;
+  transition: width 0.3s ease-in-out;
+}
+
+.sidebar-container.collapsed {
+  width: 80px; /* empuja menos cuando colapsa */
 }
 
 /* Sidebar normal */
 .sidebar {
-  width: 250px;
+  width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -26,15 +26,54 @@
   box-shadow: 4px 0 15px rgba(21, 197, 224, 0.4), 0px 0 10px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   border: none;
+  position: relative;
+  z-index: 60;
 }
 
 /* Sidebar colapsado */
 .sidebar.collapsed {
-  width: 80px;
   align-items: center;
 }
 
-/* Parte superior (logo + título) */
+/* ✅ Toggle base (estilo común) */
+.toggle-inside {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+
+  z-index: 80;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.toggle-inside:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(1.03);
+}
+
+/* ✅ Toggle arriba (solo expandido) */
+.toggle-top {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+/* ✅ Wrapper para el toggle de abajo cuando está colapsado */
+.toggle-bottom-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+/* ✅ Parte superior */
 .sidebar-top {
   display: flex;
   flex-direction: column;
@@ -59,16 +98,7 @@
   width: 40px;
 }
 
-.sidebar-title {
-  font-family: 'HemiHead', sans-serif;
-  font-size: 1.4rem;
-  color: white;
-  margin: 0;
-  line-height: 1.1;
-}
-
 .sidebar-subtitle {
-  font-family: 'HemiHead', sans-serif;
   font-size: 0.8rem;
   margin: 0;
 }
@@ -78,15 +108,13 @@
 .fastway-text {
   color: #000000;
 }
-.plus-data {
-  color: white;
-}
 
 /* Menú */
 .sidebar-links {
   flex-grow: 1;
   padding: 0 1rem;
 }
+
 .sidebar-links h6 {
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -104,9 +132,11 @@
   padding: 0;
   margin: 0;
 }
+
 .sidebar-links ul li {
   margin-bottom: 0.5rem;
 }
+
 .sidebar-links ul li a {
   display: flex;
   align-items: center;
@@ -116,20 +146,12 @@
   text-decoration: none;
   transition: background-color 0.2s;
 }
+
 .sidebar-links ul li a:hover {
   background-color: rgb(237, 128, 32);
 }
-.sidebar-links ul li a svg {
-  font-size: 1.5rem;
-}
-.sidebar-links ul li a span {
-  margin-left: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-/* Íconos centrados al colapsar */
+/* En colapsado: centra links normales */
 .sidebar.collapsed .sidebar-links ul li a {
   justify-content: center;
 }
@@ -141,33 +163,65 @@
   font-weight: bold;
 }
 
-/* Submenú */
+/* Submenú (PADRE) */
 .has-submenu {
-  cursor: pointer;
   position: relative;
 }
+
+/* BOTÓN del submenu */
 .submenu-toggle {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
   cursor: pointer;
   color: #212529;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
 }
+
+.submenu-toggle:hover {
+  background-color: rgb(237, 128, 32);
+}
+
 .submenu-title {
   display: flex;
   align-items: center;
   gap: 10px;
 }
+
+/* En colapsado: centra el toggle */
+.sidebar.collapsed .submenu-toggle {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+/* En colapsado ocultamos el chevron */
+.sidebar.collapsed .chevron-icon {
+  display: none;
+}
+
+/* Submenú normal (expandido) */
 .submenu {
   padding-left: 3rem;
   margin-top: 6px;
-  display: none;
   border-left: 3px solid rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: max-height 0.3s ease, opacity 0.25s ease, transform 0.25s ease;
 }
+
 .has-submenu.open .submenu {
-  display: block;
+  max-height: 500px;
+  opacity: 1;
+  transform: translateY(0);
 }
+
+/* Items del submenú */
 .submenu li {
   margin: 0.3rem 0;
 }
@@ -192,7 +246,36 @@
   padding-left: 10px;
 }
 
-/* Ocultar texto al colapsar */
+/* ✅ En colapsado: submenú como panel flotante a la derecha */
+.sidebar.collapsed .has-submenu .submenu {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 0;
+  padding: 10px;
+  margin-top: 0;
+  border-left: none;
+
+  width: 230px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+
+  max-height: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.sidebar.collapsed .has-submenu.open .submenu {
+  max-height: 1000px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* Ocultar texto */
 .hide-text {
   opacity: 0;
   pointer-events: none;
@@ -203,7 +286,7 @@
   transition: all 0.3s ease-in-out;
 }
 
-/* Botón logout */
+/* Logout */
 .sidebar-bottom {
   margin-top: auto;
   padding: 1rem;
@@ -230,43 +313,99 @@
 .sidebar-user {
   margin-top: 10px;
   padding: 0 10px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-user-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: #f74c1b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+.sidebar-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sidebar-user-initials {
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+.sidebar-user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.sidebar-user-profile-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  opacity: 0.9;
 }
 .sidebar-user-text {
-  font-size: 14px;
+  font-size: 0.9rem;
   color: #212529;
-  font-weight: bold;
+  font-weight: 600;
+  margin: 0;
 }
 
-/* Hamburguesa (móvil) */
+/* Responsive real (móvil overlay) */
 .mobile-menu-button {
   display: none;
-  position: fixed;
-  top: 1rem;
-  left: 1rem;
-  background-color: #ff4400;
-  border: 1px solid #e9ecef;
-  padding: 5px;
-  border-radius: 5px;
-  z-index: 1300;
-  cursor: pointer;
 }
 
-/* Sidebar móvil */
+.sidebar-overlay {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .sidebar-container {
+    width: 0; /* no empuja layout */
+  }
+
   .mobile-menu-button {
     display: flex;
     align-items: center;
     justify-content: center;
+
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    background-color: #ff4400;
+    border: 1px solid #e9ecef;
+    padding: 5px;
+    border-radius: 8px;
+    z-index: 1300;
+    cursor: pointer;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1199;
   }
 
   .sidebar {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
-    transform: translateX(-100%);
+
     width: 250px;
     height: 100vh;
+
+    transform: translateX(-100%);
     transition: transform 0.3s ease-in-out;
     z-index: 1200;
   }
@@ -275,36 +414,8 @@
     transform: translateX(0);
   }
 
-  .sidebar.collapsed {
-    width: 250px;
-  }
-
-  .toggle-tab {
+  /* En móvil NO mostramos el toggle de colapsar */
+  .toggle-inside {
     display: none;
   }
-}
-
-/* Botón expandir/collapse */
-.toggle-tab {
-  position: absolute;
-  top: 2rem;
-  left: 250px;
-  width: 30px;
-  height: 30px;
-  background-color: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 1100;
-  transition: left 0.3s ease-in-out;
-}
-.sidebar.collapsed ~ .toggle-tab {
-  left: 80px;
-}
-.toggle-tab:hover {
-  background-color: #37acda;
-  color: white;
 }

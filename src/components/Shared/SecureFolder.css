@@ -1,0 +1,134 @@
+/* Tarjeta general */
+.secure-folder-card {
+  border-radius: 14px;
+  border: none;
+  overflow: hidden;
+}
+
+/* Header degradado */
+.secure-folder-header {
+  background: linear-gradient(90deg, #59a1f7, #67e1ff);
+  color: #fff;
+  border-bottom: none;
+}
+
+.secure-folder-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.secure-folder-badge {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+}
+
+/* Lista con scroll */
+.secure-folder-list-wrapper {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.secure-folder-list-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+.secure-folder-list-wrapper::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+.secure-folder-list-wrapper::-webkit-scrollbar-thumb {
+  background: #cdd4e0;
+  border-radius: 20px;
+}
+
+/* Items */
+.secure-folder-item {
+  border-color: #f1f1f1;
+}
+
+.secure-folder-thumb-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #eef4ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.secure-folder-icon {
+  font-size: 1.4rem;
+  color: #59a1f7;
+}
+
+.secure-folder-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.secure-folder-tags span {
+  font-size: 0.7rem;
+}
+
+/* Botón "Descargar" estilo chip */
+.btn-descargar-doc {
+  background-color: #59a1f7;
+  color: white;
+  border-radius: 999px;
+  padding: 6px 14px;
+  border: none;
+  font-weight: 600;
+}
+
+.btn-descargar-doc:hover {
+  background-color: #00ba59;
+  transform: translateY(-1px);
+}
+
+/* MODAL */
+.secure-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.secure-preview-modal {
+  background: white;
+  width: 95%;
+  max-width: 900px;
+  max-height: 90vh;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.secure-preview-header {
+  background: #59a1f7;
+  color: white;
+  padding: 10px 14px;
+}
+
+.secure-preview-body {
+  padding: 12px;
+  overflow: auto;
+  background: #f9fafb;
+}
+
+.secure-preview-footer {
+  padding: 10px 14px;
+  border-top: 1px solid #eee;
+  background: white;
+}
+
+.secure-preview-iframe {
+  width: 100%;
+  height: 60vh;
+  border: none;
+  border-radius: 6px;
+}

@@ -7,6 +7,7 @@ import {
   Navigate,
   useLocation,
 } from 'react-router-dom'
+
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login/Login'
 import Home from './pages/Home/Home'
@@ -20,6 +21,9 @@ import ControlDeIngresos from './pages/ControlDeIngresos/ControlDeIngresos.jsx'
 import Tickets from './pages/Tickets/TicketsPage.jsx'
 import TiemposPc from './pages/TiemposPc/TiemposPc.jsx'
 import Financiera from './pages/Financiera/Financiera.jsx'
+
+// 👇 IMPORTAMOS LA NUEVA PAGE PERSONAL
+import Personal from './pages/Personal/Personal.jsx'
 
 function App() {
   return (
@@ -50,24 +54,27 @@ function AppRoutes() {
           <PrivateRoute permiso='gestionBodega' element={<GestionBodega />} />
         }
       />
+
       <Route
         path='/operaciones'
         element={
           <PrivateRoute permiso='operaciones' element={<Operaciones />} />
         }
       />
+
       <Route
         path='/perfil-admin'
         element={
           <PrivateRoute permiso='perfilAdmin' element={<PerfilAdmin />} />
         }
       />
+
       <Route
         path='/terceros'
         element={<PrivateRoute permiso='terceros' element={<Terceros />} />}
       />
 
-      {/* ✅ Control de Ingresos (protegida por gestioniingresos) */}
+      {/* ✅ Control de Ingresos */}
       <Route
         path='/control-de-ingresos'
         element={
@@ -78,12 +85,13 @@ function AppRoutes() {
         }
       />
 
+      {/* Tickets */}
       <Route
         path='/tickets'
         element={<PrivateRoute permiso='tickets' element={<Tickets />} />}
       />
 
-      {/* ✅ Tiempos en PC (protegida por awTiemposEnPc) */}
+      {/* ✅ Tiempos en PC */}
       <Route
         path='/tiempos-pc'
         element={
@@ -91,10 +99,18 @@ function AppRoutes() {
         }
       />
 
-      {/* ✅ Financiera (protegida por 'financiera') */}
+      {/* ✅ Financiera */}
       <Route
         path='/financiera'
         element={<PrivateRoute permiso='financiera' element={<Financiera />} />}
+      />
+
+      {/* ⭐ NUEVA RUTA: HOJAS DE VIDA (PERSONAL) */}
+      <Route
+        path='/hojas-de-vida'
+        element={
+          <PrivateRoute permiso='hojasDeVidaPersonal' element={<Personal />} />
+        }
       />
 
       {/* Redirección inicial */}

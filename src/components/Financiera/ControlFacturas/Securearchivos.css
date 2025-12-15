@@ -1,0 +1,83 @@
+/* src/components/Shared/SecureArchivo.css */
+.sa-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sa-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.sa-modal {
+  width: min(980px, 96vw);
+  height: min(82vh, 720px);
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.sa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #0f172a;
+  color: #fff;
+}
+
+.sa-title {
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+
+.sa-close {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.9;
+}
+.sa-close:hover {
+  opacity: 1;
+}
+
+.sa-body {
+  flex: 1;
+  padding: 12px;
+  overflow: auto;
+}
+
+.sa-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.sa-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 12px;
+}
+
+.sa-muted {
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}

@@ -1,0 +1,26 @@
+html,
+body {
+  overflow-x: hidden;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.layout.collapsed .main-content {
+  margin-left: 80px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Contenedor donde renderiza la sección dinámica */
+.financiera-seccion {
+  flex: 1;
+  overflow-y: auto;
+}

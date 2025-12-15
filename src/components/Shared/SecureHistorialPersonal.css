@@ -1,0 +1,78 @@
+/* iconito a la izquierda de los botones */
+.shp-actions .shp-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background-color: #eef4ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shp-icon {
+  font-size: 1.2rem;
+  color: #59a1f7;
+}
+
+/* MODAL — CORREGIDO PARA QUE QUEDE ARRIBA DE TODO */
+.secure-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999; /* ⬅⬅⬅ AUMENTADO, ahora queda por encima de todo */
+}
+
+.secure-preview-modal {
+  background: white;
+  width: 95%;
+  max-width: 900px;
+  max-height: 90vh;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.secure-preview-header {
+  background: #59a1f7;
+  color: white;
+  padding: 10px 14px;
+}
+
+.secure-preview-body {
+  padding: 12px;
+  overflow: auto;
+  background: #f9fafb;
+}
+
+.secure-preview-footer {
+  padding: 10px 14px;
+  border-top: 1px solid #eee;
+  background: white;
+}
+
+.secure-preview-iframe {
+  width: 100%;
+  height: 60vh;
+  border: none;
+  border-radius: 6px;
+}
+
+/* Botón azul */
+.btn-descargar-doc {
+  background-color: #59a1f7;
+  color: white;
+  border-radius: 999px;
+  padding: 6px 14px;
+  border: none;
+  font-weight: 600;
+}
+
+.btn-descargar-doc:hover {
+  background-color: #00ba59;
+  transform: translateY(-1px);
+}
