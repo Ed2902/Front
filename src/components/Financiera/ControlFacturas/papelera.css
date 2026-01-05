@@ -1,0 +1,251 @@
+.papelera-page {
+  padding: 18px;
+}
+
+.papelera-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* ✅ centrado títulos */
+.papelera-head-center {
+  justify-content: center;
+  text-align: center;
+}
+.papelera-head-center > div {
+  width: 100%;
+}
+
+.papelera-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.papelera-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.papelera-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pap-card {
+  border: 1px solid #e6e8ee;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.pap-card-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef1f6;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.pap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.pap-alert {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.pap-alert-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.pap-alert-ok {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.pap-loading,
+.pap-empty {
+  padding: 18px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+}
+
+.pap-empty {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.pap-empty-sub {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.pap-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #cbd5e1;
+  border-top-color: transparent;
+  animation: papspin 0.9s linear infinite;
+}
+
+@keyframes papspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pap-table-wrap {
+  width: 100%;
+  overflow: auto;
+}
+
+.pap-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 980px;
+}
+
+.pap-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
+  border-bottom: 1px solid #eef1f6;
+  font-size: 12px;
+  color: #334155;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.pap-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+  color: #0f172a;
+  vertical-align: middle;
+}
+
+.pap-table tbody tr:hover td {
+  background: #fafafa;
+}
+
+.pap-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.pap-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.pap-badge-pagada {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.pap-badge-pendiente {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.pap-badge-anulada,
+.pap-badge-anulado {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.pap-badge-muted {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+.pap-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.05s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.pap-btn:active {
+  transform: translateY(1px);
+}
+
+.pap-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pap-btn-primary {
+  background: #1e73b6;
+  border-color: #1e73b6;
+  color: #fff;
+  box-shadow: 0 10px 25px rgba(30, 115, 182, 0.18);
+}
+
+.pap-btn-primary:hover {
+  background: #17609a;
+  border-color: #17609a;
+}
+
+.pap-btn-ghost {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.pap-btn-ghost:hover {
+  background: #f8fafc;
+}
+
+.pap-btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-top-color: transparent;
+  animation: papspin 0.9s linear infinite;
+}

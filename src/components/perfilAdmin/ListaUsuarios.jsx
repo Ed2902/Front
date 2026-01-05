@@ -8,7 +8,7 @@ import {
 import { BiUser, BiLock, BiBuilding, BiSave } from 'react-icons/bi'
 
 // =================== Definición de secciones (pilares) ===================
-// Nota: "Aw Tiempos en PC" es su propio pilar.
+
 const SECCIONES = [
   {
     nombre: 'Perfil Admin',
@@ -41,7 +41,6 @@ const SECCIONES = [
         padre: 'gestionBodega',
       },
       { clave: 'lotesCliente', label: 'Lotes Cliente', padre: 'gestionBodega' },
-      // ✅ Permiso nuevo
       {
         clave: 'formatoEquivalente',
         label: 'Formato equivalente',
@@ -88,27 +87,31 @@ const SECCIONES = [
       },
     ],
   },
+  // ===================== NUEVA SECCIÓN =====================
   {
-    nombre: 'Control de Ingresos',
+    nombre: 'Gestión del Talento',
     icono: <BiBuilding />,
     permisos: [
-      { clave: 'gestioniingresos', label: 'Acceso general' },
+      { clave: 'gestionTalento', label: 'Acceso general' },
+
       {
-        clave: 'crearUsuario',
-        label: 'Crear usuario',
-        padre: 'gestioniingresos',
+        clave: 'hojasDeVidaPersonal',
+        label: 'Hojas de vida del personal',
+        padre: 'gestionTalento',
       },
-      { clave: 'marcacion', label: 'Marcación', padre: 'gestioniingresos' },
-      { clave: 'reporte', label: 'Reporte', padre: 'gestioniingresos' },
+      {
+        clave: 'gestioniingresos',
+        label: 'Control de ingresos',
+        padre: 'gestionTalento',
+      },
+      {
+        clave: 'awTiemposEnPc',
+        label: 'Tiempos en PC',
+        padre: 'gestionTalento',
+      },
     ],
   },
-  {
-    nombre: 'Aw Tiempos en PC',
-    icono: <BiBuilding />,
-    permisos: [
-      { clave: 'awTiemposEnPc', label: 'Aw Tiempos en PC' }, // pilar propio
-    ],
-  },
+  // =========================================================
   {
     nombre: 'News',
     icono: <BiBuilding />,
@@ -126,12 +129,28 @@ const SECCIONES = [
       { clave: 'soporteTicket', label: 'Soporte Ticket', padre: 'tickets' },
     ],
   },
-  // ✅ Nueva sección/pilar: Financiera (con “Acceso general”)
+
+  // ===================== AJUSTE FINANCIERA (jerarquía) =====================
   {
     nombre: 'Financiera',
     icono: <BiBuilding />,
     permisos: [
-      { clave: 'financiera', label: 'Acceso general' }, // pilar propio
+      { clave: 'financiera', label: 'Acceso general' },
+
+      {
+        clave: 'tablaFinanciera',
+        label: 'Tabla financiera',
+        padre: 'financiera',
+      },
+
+      {
+        clave: 'controlFacturas',
+        label: 'Control facturas',
+        padre: 'financiera',
+      },
+
+      { clave: 'factventas', label: 'Factventas', padre: 'controlFacturas' },
+      { clave: 'factcompras', label: 'Factcompras', padre: 'controlFacturas' },
     ],
   },
 ]
@@ -427,7 +446,6 @@ const ListaUsuarios = () => {
             responsive
             highlightOnHover
             noHeader
-            // 👇 Sin paginación para que se vea todo
             pagination={false}
           />
         </div>

@@ -1,19 +1,30 @@
-// src/components/Inventario/Salidas/FormSalidaLotes.jsx
-
+// FormSalida.jsx (Híbrido: precarga desde alistamiento + permite agregar manual)
 import { useForm } from 'react-hook-form'
-import { useEffect, useMemo, useState, useContext, useRef } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { useLocation } from 'react-router-dom'
+import Webcam from 'react-webcam'
 import SignatureCanvas from 'react-signature-canvas'
+
 import AuthContext from '../../../context/AuthContext'
 import {
-  getOperaciones,
   crearSalida,
-  crearDocumentoSalida, // se usa al final de procesarSalidas
+  crearDocumentoSalida,
+  getInventarioResumen, // ✅ estaba mal importado
 } from './salida_service'
-import { getInventarioResumen } from './inventario_service'
-import Webcam from 'react-webcam'
 
-// ===== Helpers
+// ✅ este import ya existe en tu archivo y es correcto según tu estructura actual
+import { obtenerAlistamiento } from '../Movimientos/alistamiento/alistamiento_service'
+
+// ================= Helpers =================
 const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
+
 const toNumberCO = v => {
   if (v == null) return 0
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0
@@ -25,7 +36,7 @@ const toNumberCO = v => {
   const n = Number(v)
   return Number.isNaN(n) ? 0 : n
 }
-const numeroDeOP = id => Number(String(id || '').replace(/^OP/i, '')) || 0
+
 const sortLotesDesc = (a, b) => {
   const na = parseInt((String(a).match(/\d+$/) || [0])[0], 10)
   const nb = parseInt((String(b).match(/\d+$/) || [0])[0], 10)
@@ -33,47 +44,118 @@ const sortLotesDesc = (a, b) => {
   return String(b).localeCompare(String(a))
 }
 
-const FormSalidaLotes = ({ onSuccess }) => {
-  const { user } = useContext(AuthContext)
+const normalizeDetalleToItem = (d, idx) => {
+  const id_lote =
+    pickFirstDefined(d?.id_lote, d?.Id_lote) ||
+    pickFirstDefined(d?.lote?.Id_lote, d?.lote?.id_lote) ||
+    ''
 
-  // Form principal (globales)
+  const id_producto =
+    pickFirstDefined(d?.id_producto, d?.Id_producto) ||
+    pickFirstDefined(d?.producto?.Id_producto, d?.producto?.id_producto) ||
+    ''
+
+  const cantidad = toNumberCO(pickFirstDefined(d?.cantidad, d?.Cantidad, 0))
+
+  const nombreProd =
+    pickFirstDefined(d?.producto?.Nombre, d?.producto?.nombre) || id_producto
+
+  return {
+    id_lote,
+    id_producto,
+    cantidad,
+
+    // se selecciona en el form (obligatorio antes de enviar)
+    id_bodega_origen: '',
+    id_ubicacion_origen: '',
+
+    // evidencia por ítem (obligatorio antes de enviar)
+    evidenciaFile: null,
+    evidenciaName: '',
+
+    // solo UI
+    nombre_producto_view: nombreProd,
+    bodega_nombre_view: '',
+    ubicacion_nombre_view: '',
+
+    _from_alistamiento: true,
+    _idx: idx,
+  }
+}
+
+// ================= Component =================
+const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
+  const { user } = useContext(AuthContext)
+  const location = useLocation()
+
+  // ✅ en modal, el dato real llega por props, NO por location.state
+  const prefillFromProps = alistamientoInicial || null
+
+  // ✅ por si algún día lo abres por navegación también
+  const prefillFromState =
+    location.state?.prefillSalida ||
+    location.state?.state?.prefillSalida ||
+    null
+
+  // ✅ prioridad: props > state
+  const [prefillSalida, setPrefillSalida] = useState(
+    prefillFromProps || prefillFromState
+  )
+
+  // ===== Form encabezado
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    getValues,
+    watch,
     formState: { isSubmitting, errors },
-  } = useForm()
+  } = useForm({
+    defaultValues: {
+      id_alistamiento: '',
+      comentario: '',
+    },
+  })
 
-  // Sub-form (ítem)
+  // ===== Subform para agregar manualmente
   const {
     register: registerItem,
     handleSubmit: handleSubmitItem,
     setValue: setValueItem,
     watch: watchItem,
     formState: { errors: errorsItem },
-  } = useForm()
+  } = useForm({
+    defaultValues: {
+      id_lote_item: '',
+      id_producto_item: '',
+      cantidad_item: '',
+    },
+  })
 
-  // ===== Catálogos
+  // ===== Inventario resumen
   const [invResumen, setInvResumen] = useState([])
-  const [operaciones, setOperaciones] = useState([])
 
-  // ===== Estado del editor de ítem
+  // ===== Editor manual
   const [idLoteItem, setIdLoteItem] = useState('')
   const productoItem = watchItem('id_producto_item')
-
-  // Opciones de Bodega/Ubicación con stock para el lote+producto
   const [invOpciones, setInvOpciones] = useState([])
   const [opcionSeleccionadaKey, setOpcionSeleccionadaKey] = useState('')
   const [cantidadDisponibleItem, setCantidadDisponibleItem] = useState(null)
 
-  // Carrito
+  // ===== Ítems salida (híbrido)
   const [items, setItems] = useState([])
 
-  // Cámara por ítem
+  // ===== Mensajes / estado
+  const [statusMessage, setStatusMessage] = useState(null)
+  const [procesando, setProcesando] = useState(false)
+  const [docGenerado, setDocGenerado] = useState(null)
+
+  // ===== Cámara evidencia por ítem
   const [cameraIndex, setCameraIndex] = useState(null)
   const webcamRef = useRef(null)
 
-  // Firmas globales
+  // ===== Firmas globales
   const firmaRefs = {
     autorizador: useRef(),
     conductor: useRef(),
@@ -82,37 +164,47 @@ const FormSalidaLotes = ({ onSuccess }) => {
   const [firmaActual, setFirmaActual] = useState(null)
   const [firmas, setFirmas] = useState({})
 
-  // Mensajes / progreso
-  const [statusMessage, setStatusMessage] = useState(null)
-  const [procesando, setProcesando] = useState(false)
-  const [progreso, setProgreso] = useState([])
+  // ✅ si el modal abre con un alistamiento, lo seteamos acá
+  useEffect(() => {
+    if (alistamientoInicial) setPrefillSalida(alistamientoInicial)
+  }, [alistamientoInicial])
 
-  // PDF generado
-  const [docGenerado, setDocGenerado] = useState(null) // { id, url }
+  // ================= Persistencia del prefill (solo para navegación, no estorba modal) =================
+  useEffect(() => {
+    // si viene del modal, NO sobrescribimos con sessionStorage
+    if (prefillFromProps) return
 
-  // ===== Carga inicial
+    if (prefillFromState) {
+      try {
+        sessionStorage.setItem(
+          'prefillSalida',
+          JSON.stringify(prefillFromState)
+        )
+      } catch (_) {}
+      setPrefillSalida(prefillFromState)
+      return
+    }
+
+    try {
+      const saved = sessionStorage.getItem('prefillSalida')
+      if (saved) setPrefillSalida(JSON.parse(saved))
+    } catch (_) {}
+  }, [prefillFromState, prefillFromProps])
+
+  // ================= Cargar inventario resumen =================
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [resumenData, operacionesData] = await Promise.all([
-          getInventarioResumen(),
-          getOperaciones(),
-        ])
+        const resumenData = await getInventarioResumen()
         setInvResumen(Array.isArray(resumenData) ? resumenData : [])
-        const ordenadas = (operacionesData || [])
-          .filter(op => !!op?.id_operacion)
-          .sort(
-            (a, b) => numeroDeOP(b.id_operacion) - numeroDeOP(a.id_operacion)
-          )
-        setOperaciones(ordenadas)
       } catch (e) {
-        console.error('Error cargando catálogos', e)
+        console.error('Error cargando inventario resumen', e)
       }
     }
     fetchData()
   }, [])
 
-  // ===== Lotes únicos ordenados desc
+  // ================= Lotes disponibles (desc) =================
   const lotesDisponibles = useMemo(() => {
     const set = new Set(
       invResumen
@@ -122,15 +214,17 @@ const FormSalidaLotes = ({ onSuccess }) => {
     return Array.from(set).sort(sortLotesDesc)
   }, [invResumen])
 
-  // ===== Productos por lote
+  // ================= Productos disponibles por lote =================
   const productosDisponibles = useMemo(() => {
     if (!idLoteItem) return []
     const map = new Map()
     invResumen.forEach(r => {
       const id_lote = pickFirstDefined(r?.Id_lote, r?.id_lote)
       if (id_lote !== idLoteItem) return
+
       const id_producto = pickFirstDefined(r?.Id_producto, r?.id_producto)
       if (!id_producto) return
+
       const nombre =
         pickFirstDefined(r?.Nombre_Producto, r?.Producto?.Nombre) || id_producto
       if (!map.has(id_producto)) map.set(id_producto, nombre)
@@ -140,7 +234,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
       .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
   }, [invResumen, idLoteItem])
 
-  // ===== Opciones de Bodega/Ubicación con stock
+  // ================= Opciones Bodega/Ubicación (manual editor) =================
   useEffect(() => {
     setInvOpciones([])
     setOpcionSeleccionadaKey('')
@@ -187,6 +281,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
           0
         )
       )
+
       const key = `${id_bodega}|${id_ubicacion}`
       if (!map.has(key)) {
         map.set(key, {
@@ -208,23 +303,188 @@ const FormSalidaLotes = ({ onSuccess }) => {
       .sort((a, b) => toNumberCO(b.cantidad) - toNumberCO(a.cantidad))
 
     setInvOpciones(opciones)
+
     if (opciones.length === 1) {
       setOpcionSeleccionadaKey(opciones[0].key)
       setCantidadDisponibleItem(toNumberCO(opciones[0].cantidad))
     }
   }, [idLoteItem, productoItem, invResumen])
 
-  // ===== Firmas
-  const guardarFirma = tipo => {
-    const canvas = firmaRefs[tipo].current
-    if (!canvas || canvas.isEmpty()) return alert('Firma vacía')
-    const b64 = canvas.toDataURL('image/png')
-    setFirmas(prev => ({ ...prev, [tipo]: b64 }))
-    setFirmaActual(null)
-  }
-  const limpiarFirma = tipo => firmaRefs[tipo].current?.clear()
+  // ================= Opciones por Lote+Producto (para filas precargadas) =================
+  const opcionesPorLoteProducto = useMemo(() => {
+    const map = new Map()
 
-  // ===== Evidencia por ítem
+    invResumen.forEach(r => {
+      const id_lote = pickFirstDefined(r?.Id_lote, r?.id_lote)
+      const id_prod = pickFirstDefined(r?.Id_producto, r?.id_producto)
+      if (!id_lote || !id_prod) return
+
+      const id_bodega =
+        pickFirstDefined(
+          r?.id_bodega,
+          r?.Id_bodega,
+          r?.Bodega?.Id,
+          r?.BodegaId
+        ) || ''
+      const bodegaNombre =
+        pickFirstDefined(r?.Bodega?.Nombre, r?.BodegaNombre, r?.Bodega) || ''
+      const id_ubicacion =
+        pickFirstDefined(
+          r?.id_ubicacion,
+          r?.Id_ubicacion,
+          r?.Ubicacion?.Id,
+          r?.UbicacionId
+        ) || ''
+      const ubicacionNombre =
+        pickFirstDefined(
+          r?.Ubicacion?.Nombre,
+          r?.UbicacionNombre,
+          r?.Ubicacion,
+          r?.ubicacion
+        ) || ''
+
+      const cantidad = toNumberCO(
+        pickFirstDefined(
+          r?.Cantidad_Inventario,
+          r?.Cantidad,
+          r?.Cantidad_Lote,
+          0
+        )
+      )
+
+      const lk = `${id_lote}__${id_prod}`
+      if (!map.has(lk)) map.set(lk, new Map())
+
+      const bucket = map.get(lk)
+      const key = `${id_bodega}|${id_ubicacion}`
+
+      if (!bucket.has(key)) {
+        bucket.set(key, {
+          key,
+          id_bodega,
+          bodegaNombre,
+          id_ubicacion,
+          ubicacionNombre,
+          cantidad: 0,
+        })
+      }
+      bucket.get(key).cantidad += cantidad
+    })
+
+    const out = new Map()
+    for (const [lk, bucket] of map.entries()) {
+      const opciones = Array.from(bucket.values())
+        .filter(
+          op => (op.id_bodega || op.id_ubicacion) && toNumberCO(op.cantidad) > 0
+        )
+        .sort((a, b) => toNumberCO(b.cantidad) - toNumberCO(a.cantidad))
+      out.set(lk, opciones)
+    }
+    return out
+  }, [invResumen])
+
+  const getOpcionesFila = useCallback(
+    (id_lote, id_producto) => {
+      const lk = `${String(id_lote)}__${String(id_producto)}`
+      return opcionesPorLoteProducto.get(lk) || []
+    },
+    [opcionesPorLoteProducto]
+  )
+
+  // ================= Precarga desde Alistamiento =================
+  const cargarDesdeAlistamiento = useCallback(
+    async (prefill, modo = 'REEMPLAZAR') => {
+      if (!prefill) return
+
+      let data = prefill
+
+      const prefillId = pickFirstDefined(
+        data?.id_alistamiento,
+        data?.Id_alistamiento
+      )
+
+      const traeDetalles =
+        Array.isArray(data?.detalles) && data.detalles.length > 0
+
+      if (!traeDetalles && prefillId) {
+        try {
+          data = await obtenerAlistamiento(prefillId)
+        } catch (e) {
+          console.error(e)
+          setStatusMessage({
+            type: 'error',
+            text:
+              e?.response?.data?.message ||
+              e?.message ||
+              'No se pudo cargar el alistamiento.',
+          })
+          return
+        }
+      }
+
+      const id_alist = pickFirstDefined(
+        data?.id_alistamiento,
+        data?.Id_alistamiento
+      )
+
+      const detalles = Array.isArray(data?.detalles) ? data.detalles : []
+
+      if (!id_alist || !detalles.length) {
+        setStatusMessage({
+          type: 'error',
+          text: 'El alistamiento no trae detalles para precargar.',
+        })
+        return
+      }
+
+      // ✅ encabezado (esto llena el input)
+      reset({
+        id_alistamiento: String(id_alist),
+        comentario: String(data?.observaciones || ''),
+      })
+      setValue('id_alistamiento', String(id_alist))
+
+      // detalles -> items
+      const nuevos = detalles.map((d, idx) => normalizeDetalleToItem(d, idx))
+
+      setItems(prev => {
+        if (modo === 'SUMAR') return [...prev, ...nuevos]
+        return nuevos
+      })
+
+      setStatusMessage({
+        type: 'success',
+        text: `Ítems cargados desde alistamiento #${id_alist}`,
+      })
+      setTimeout(() => setStatusMessage(null), 2000)
+    },
+    [reset, setValue]
+  )
+
+  // ✅ auto-precarga (modal o navegación)
+  useEffect(() => {
+    if (prefillSalida) cargarDesdeAlistamiento(prefillSalida, 'REEMPLAZAR')
+  }, [prefillSalida, cargarDesdeAlistamiento])
+
+  // ================= Acciones items =================
+  const setUbicacionParaItem = (idx, key) => {
+    setItems(prev => {
+      const copy = [...prev]
+      const it = copy[idx]
+      const opts = getOpcionesFila(it.id_lote, it.id_producto)
+      const op = opts.find(o => o.key === key)
+
+      copy[idx] = {
+        ...it,
+        id_bodega_origen: op?.id_bodega || '',
+        id_ubicacion_origen: op?.id_ubicacion || '',
+        bodega_nombre_view: op?.bodegaNombre || op?.id_bodega || '',
+        ubicacion_nombre_view: op?.ubicacionNombre || op?.id_ubicacion || '',
+      }
+      return copy
+    })
+  }
+
   const onFileForItem = (idx, file) => {
     setItems(prev => {
       const copy = [...prev]
@@ -236,34 +496,55 @@ const FormSalidaLotes = ({ onSuccess }) => {
       return copy
     })
   }
+
+  const updateCantidadItem = (idx, value) => {
+    const cant = toNumberCO(value)
+    setItems(prev => {
+      const copy = [...prev]
+      copy[idx] = { ...copy[idx], cantidad: cant }
+      return copy
+    })
+  }
+
+  const removeItem = idx => setItems(prev => prev.filter((_, i) => i !== idx))
+
+  // ================= Cámara =================
   const openCameraForItem = idx => setCameraIndex(idx)
   const closeCamera = () => setCameraIndex(null)
+
   const captureForItem = () => {
-    const imageSrc = webcamRef.current.getScreenshot()
+    const imageSrc = webcamRef.current?.getScreenshot()
+    if (!imageSrc) return
+
     fetch(imageSrc)
       .then(r => r.blob())
       .then(blob => {
         const file = new File(
           [blob],
           `foto-item-${cameraIndex}-${Date.now()}.jpg`,
-          {
-            type: 'image/jpeg',
-          }
+          { type: 'image/jpeg' }
         )
         onFileForItem(cameraIndex, file)
         setCameraIndex(null)
       })
+      .catch(err => console.error(err))
   }
 
-  // Evitar submit con Enter dentro del editor de ítems
-  const preventEnterSubmit = e => {
-    if (e.key === 'Enter') e.preventDefault()
+  // ================= Firmas =================
+  const guardarFirma = tipo => {
+    const canvas = firmaRefs[tipo].current
+    if (!canvas || canvas.isEmpty()) return alert('Firma vacía')
+    const b64 = canvas.toDataURL('image/png')
+    setFirmas(prev => ({ ...prev, [tipo]: b64 }))
+    setFirmaActual(null)
   }
 
-  // ===== Agregar ítem
+  const limpiarFirma = tipo => firmaRefs[tipo].current?.clear()
+
+  // ================= Agregar manual =================
   const onAddItem = handleSubmitItem(
     ({ id_lote_item, id_producto_item, cantidad_item }) => {
-      const cant = Number(cantidad_item)
+      const cant = toNumberCO(cantidad_item)
       if (!id_lote_item || !id_producto_item || !cant || cant <= 0) return
 
       const op = invOpciones.find(o => o.key === opcionSeleccionadaKey)
@@ -291,36 +572,24 @@ const FormSalidaLotes = ({ onSuccess }) => {
 
       const nuevo = {
         id_lote: id_lote_item,
-        id_producto: id_producto_item, // enviar solo código
+        id_producto: id_producto_item,
         cantidad: cant,
+
         id_bodega_origen: op.id_bodega || '',
         id_ubicacion_origen: op.id_ubicacion || '',
+
         evidenciaFile: null,
         evidenciaName: '',
-        // solo visual
+
         nombre_producto_view: prodNombre,
         bodega_nombre_view: op.bodegaNombre || op.id_bodega || '',
         ubicacion_nombre_view: op.ubicacionNombre || op.id_ubicacion || '',
+
+        _from_alistamiento: false,
       }
 
-      // Unificar por Lote+Producto+Bodega+Ubicación
-      setItems(prev => {
-        const idx = prev.findIndex(
-          it =>
-            it.id_lote === nuevo.id_lote &&
-            it.id_producto === nuevo.id_producto &&
-            it.id_bodega_origen === nuevo.id_bodega_origen &&
-            it.id_ubicacion_origen === nuevo.id_ubicacion_origen
-        )
-        if (idx >= 0) {
-          const copy = [...prev]
-          copy[idx] = { ...copy[idx], cantidad: copy[idx].cantidad + cant }
-          return copy
-        }
-        return [...prev, nuevo]
-      })
+      setItems(prev => [...prev, nuevo])
 
-      // Limpiar sub-form
       setValueItem('id_lote_item', '')
       setValueItem('id_producto_item', '')
       setValueItem('cantidad_item', '')
@@ -331,164 +600,149 @@ const FormSalidaLotes = ({ onSuccess }) => {
     }
   )
 
-  const removeItem = idx => setItems(prev => prev.filter((_, i) => i !== idx))
-
-  // ===== Procesar todo (incluye generar PDF)
+  // ================= Validaciones globales =================
   const allItemsHaveEvidence =
     items.length > 0 && items.every(it => !!it.evidenciaFile)
 
+  const allItemsHaveUbicacion =
+    items.length > 0 &&
+    items.every(it => !!it.id_bodega_origen && !!it.id_ubicacion_origen)
+
+  // ================= Submit (procesar salidas) =================
   const procesarSalidas = async data => {
+    const id_alist = String(data?.id_alistamiento || '').trim()
+
+    if (!id_alist) {
+      setStatusMessage({ type: 'error', text: 'Falta id_alistamiento.' })
+      setTimeout(() => setStatusMessage(null), 2000)
+      return
+    }
     if (!items.length) {
       setStatusMessage({ type: 'error', text: 'Agrega al menos un ítem.' })
       setTimeout(() => setStatusMessage(null), 2000)
       return
     }
+    if (!allItemsHaveUbicacion) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Todos los ítems deben tener Bodega y Ubicación.',
+      })
+      setTimeout(() => setStatusMessage(null), 2400)
+      return
+    }
     if (!allItemsHaveEvidence) {
       setStatusMessage({
         type: 'error',
-        text: 'Todos los ítems deben tener evidencia.',
+        text: 'Todos los ítems requieren evidencia.',
       })
       setTimeout(() => setStatusMessage(null), 2200)
       return
     }
 
     setProcesando(true)
-    const resultados = items.map((_, idx) => ({
-      idx,
-      estado: 'pendiente',
-      mensaje: '',
-    }))
-    setProgreso(resultados)
 
-    // Procesar salidas ítem por ítem
     for (let i = 0; i < items.length; i++) {
       const it = items[i]
       const formData = new FormData()
-      formData.append('id_lote', it.id_lote)
-      formData.append('id_producto', it.id_producto)
-      formData.append('operacion', data.operacion || '')
-      formData.append('cantidad', String(it.cantidad))
+
+      formData.append('id_alistamiento', id_alist)
       formData.append('comentario', data.comentario || '')
-      formData.append('id_personal', user?.personal?.id_personal || '')
-      formData.append('id_bodega_origen', it.id_bodega_origen)
-      formData.append('id_ubicacion_origen', it.id_ubicacion_origen)
+      formData.append(
+        'id_personal',
+        user?.personal?.id_personal || user?.id_usuario || ''
+      )
+
+      formData.append('id_lote', String(it.id_lote))
+      formData.append('id_producto', String(it.id_producto))
+      formData.append('cantidad', String(toNumberCO(it.cantidad)))
+      formData.append('id_bodega_origen', String(it.id_bodega_origen))
+      formData.append('id_ubicacion_origen', String(it.id_ubicacion_origen))
+
       formData.append('evidencia', it.evidenciaFile)
+
       formData.append('firma_autorizador', firmas.autorizador || '')
       formData.append('firma_conductor', firmas.conductor || '')
       formData.append('firma_receptor', firmas.receptor || '')
 
       try {
         await crearSalida(formData)
-        resultados[i] = { idx: i, estado: 'ok', mensaje: 'OK' }
-        setProgreso([...resultados])
-      } catch (e) {
-        resultados[i] = {
-          idx: i,
-          estado: 'error',
-          mensaje: e?.response?.data?.message || e?.message || 'Error',
-        }
-        setProgreso([...resultados])
-      }
-    }
-
-    const huboError = resultados.some(p => p.estado === 'error')
-
-    // Si todo salió OK, generamos el PDF MASIVO AQUÍ MISMO
-    if (!huboError) {
-      try {
-        setStatusMessage({ type: 'success', text: 'Generando documento…' })
-
-        // Tomamos un snapshot de items antes de limpiar
-        const itemsSnapshot = items.map(it => ({ ...it }))
-
-        // Construimos payload esperado por /documentos-salida
-        const lotes = Array.from(
-          new Set(itemsSnapshot.map(it => String(it.id_lote)))
-        )
-        const productos = Array.from(
-          new Set(itemsSnapshot.map(it => String(it.id_producto)))
-        )
-
-        const payload = {
-          // el controller ya mapea comentario_global/comentario a metadata.comentario
-          comentario_global: data.comentario || '',
-          operacion: data.operacion || '',
-          firmas: {
-            autorizador: firmas.autorizador || null,
-            conductor: firmas.conductor || null,
-            receptor: firmas.receptor || null,
-          },
-          creado_por: user?.id_usuario || user?.personal?.id_personal || null,
-          lotes,
-          productos,
-          items: itemsSnapshot.map(it => ({
-            id_lote: String(it.id_lote),
-            id_producto: String(it.id_producto),
-            cantidad: Number(it.cantidad) || 0,
-            id_bodega_origen: it.id_bodega_origen || null,
-            id_ubicacion_origen: it.id_ubicacion_origen || null,
-            // Solo visuales para PDF (si el backend los ignora, no pasa nada)
-            producto_nombre: it.nombre_producto_view || null,
-            bodega_origen_nombre: it.bodega_nombre_view || null,
-            ubicacion_origen_nombre: it.ubicacion_nombre_view || null,
-          })),
-        }
-
-        const resp = await crearDocumentoSalida(payload)
-        // Estructuras posibles: { id_documento, ruta_pdf, ... } o { downloadUrl, ... }
-        const idDoc = resp?.id_documento
-        const downloadUrl =
-          resp?.downloadUrl ||
-          (idDoc ? `/api/documentos-salida/${idDoc}/download` : null)
-
-        if (idDoc && downloadUrl) {
-          setDocGenerado({ id: idDoc, url: downloadUrl })
-          setStatusMessage({ type: 'success', text: 'Documento generado.' })
-        } else {
-          setStatusMessage({
-            type: 'error',
-            text: 'Documento creado, pero no se pudo construir el enlace de descarga.',
-          })
-        }
       } catch (e) {
         setStatusMessage({
           type: 'error',
-          text:
-            e?.response?.data?.message ||
-            e?.message ||
-            'No se pudo generar el documento.',
+          text: e?.response?.data?.message || e?.message || 'Error en salida',
         })
+        setTimeout(() => setStatusMessage(null), 2500)
+        setProcesando(false)
+        return
       }
     }
 
-    setProcesando(false)
+    try {
+      const payload = {
+        id_alistamiento: id_alist,
+        comentario_global: data.comentario || '',
+        creado_por: user?.id_usuario || user?.personal?.id_personal || null,
+        firmas: {
+          autorizador: firmas.autorizador || null,
+          conductor: firmas.conductor || null,
+          receptor: firmas.receptor || null,
+        },
+        items: items.map(it => ({
+          id_lote: String(it.id_lote),
+          id_producto: String(it.id_producto),
+          cantidad: toNumberCO(it.cantidad),
+          id_bodega_origen: it.id_bodega_origen || null,
+          id_ubicacion_origen: it.id_ubicacion_origen || null,
+          producto_nombre: it.nombre_producto_view || null,
+          bodega_origen_nombre: it.bodega_nombre_view || null,
+          ubicacion_origen_nombre: it.ubicacion_nombre_view || null,
+        })),
+      }
 
-    // Limpieza de formulario y carrito (conservamos el enlace del PDF si existe)
-    if (!huboError) {
-      reset()
-      setItems([])
-      setInvOpciones([])
-      setOpcionSeleccionadaKey('')
-      setCantidadDisponibleItem(null)
-      setFirmas({})
-      setProgreso([])
-      // onSuccess después de un respiro para que alcance a mostrarse el estado
-      setTimeout(() => {
-        setStatusMessage(null)
-        onSuccess && onSuccess()
-      }, 1200)
-    } else {
-      setStatusMessage({
-        type: 'error',
-        text: 'Proceso finalizado con errores.',
-      })
-      setTimeout(() => setStatusMessage(null), 2500)
+      const resp = await crearDocumentoSalida(payload)
+      const idDoc = resp?.id_documento
+      const downloadUrl =
+        resp?.downloadUrl ||
+        (idDoc ? `/api/documentos-salida/${idDoc}/download` : null)
+
+      if (idDoc && downloadUrl) setDocGenerado({ id: idDoc, url: downloadUrl })
+    } catch (e) {
+      console.error('No se pudo generar documento', e)
     }
+
+    setStatusMessage({ type: 'success', text: 'Salidas registradas.' })
+    setTimeout(() => setStatusMessage(null), 1500)
+
+    setProcesando(false)
+    reset({ id_alistamiento: '', comentario: '' })
+    setItems([])
+    setInvOpciones([])
+    setOpcionSeleccionadaKey('')
+    setCantidadDisponibleItem(null)
+    setFirmas({})
+    setDocGenerado(null)
+
+    try {
+      sessionStorage.removeItem('prefillSalida')
+    } catch (_) {}
+
+    onSuccess?.()
   }
+
+  // ================= UI helpers =================
+  const preventEnterSubmit = e => {
+    if (e.key === 'Enter') e.preventDefault()
+  }
+
+  const totalCantidad = useMemo(() => {
+    return items.reduce((acc, it) => acc + toNumberCO(it.cantidad), 0)
+  }, [items])
+
+  const idAlistValue = getValues('id_alistamiento')
 
   return (
     <div className='container-fluid mt-3'>
-      <h5 className='fw-bold text-center mb-2'>Registrar Salidas (por lote)</h5>
+      <h5 className='fw-bold text-center mb-2'>Registrar Salida (híbrido)</h5>
 
       {statusMessage && (
         <div
@@ -510,40 +764,33 @@ const FormSalidaLotes = ({ onSuccess }) => {
         </div>
       )}
 
-      {/* ===== GLOBAL: Operación, comentario y firmas ===== */}
       <form onSubmit={handleSubmit(procesarSalidas)} className='mt-1'>
+        {/* ===== Encabezado ===== */}
         <div className='row g-2'>
-          <div className='col-md-6'>
-            <label className='form-label mb-1'>ID Operación</label>
-            <select
-              className={`form-select form-select-sm ${
-                errors.operacion ? 'is-invalid' : ''
+          <div className='col-md-4'>
+            <label className='form-label mb-1'>ID Alistamiento (origen)</label>
+            <input
+              className={`form-control form-control-sm ${
+                errors.id_alistamiento ? 'is-invalid' : ''
               }`}
-              {...register('operacion')}
-              name='operacion'
-            >
-              <option value=''>Selecciona una operación</option>
-              {operaciones.map(op => (
-                <option key={op.id_operacion} value={op.id_operacion}>
-                  {op.id_operacion}
-                </option>
-              ))}
-            </select>
-            {errors.operacion && (
+              readOnly
+              {...register('id_alistamiento', { required: true })}
+              value={watch('id_alistamiento') || ''} // ✅ asegura que se muestre
+            />
+            {errors.id_alistamiento && (
               <div className='invalid-feedback'>Obligatorio</div>
             )}
           </div>
 
-          <div className='col-md-6'>
+          <div className='col-md-8'>
             <label className='form-label mb-1'>Comentario (global)</label>
             <input
               type='text'
-              className={`form-control form-select-sm ${
+              className={`form-control form-control-sm ${
                 errors.comentario ? 'is-invalid' : ''
               }`}
               placeholder='Notas u observaciones…'
               {...register('comentario', { required: true })}
-              name='comentario'
             />
             {errors.comentario && (
               <div className='invalid-feedback'>Campo requerido</div>
@@ -551,14 +798,60 @@ const FormSalidaLotes = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* ===== ÍTEMS: editor + tabla ===== */}
+        {/* ===== Acciones de precarga ===== */}
+        <div className='d-flex flex-wrap gap-2 mt-2'>
+          <button
+            type='button'
+            className='btn btn-outline-primary btn-sm'
+            onClick={() => {
+              const id = String(idAlistValue || '').trim()
+              if (!id) {
+                setStatusMessage({
+                  type: 'error',
+                  text: 'Primero debe existir el ID de alistamiento.',
+                })
+                setTimeout(() => setStatusMessage(null), 1800)
+                return
+              }
+              cargarDesdeAlistamiento({ id_alistamiento: id }, 'REEMPLAZAR')
+            }}
+          >
+            Cargar ítems del alistamiento
+          </button>
+
+          <button
+            type='button'
+            className='btn btn-outline-secondary btn-sm'
+            disabled={!items.length}
+            onClick={() => setItems([])}
+          >
+            Vaciar lista
+          </button>
+
+          {docGenerado?.url && (
+            <a
+              className='btn btn-outline-success btn-sm'
+              href={docGenerado.url}
+              target='_blank'
+              rel='noreferrer'
+            >
+              Descargar documento
+            </a>
+          )}
+
+          <div className='ms-auto small text-muted d-flex align-items-center'>
+            Ítems: <b className='ms-1'>{items.length}</b> — Total Cantidad:{' '}
+            <b className='ms-1'>{totalCantidad}</b>
+          </div>
+        </div>
+
+        {/* ===== Editor manual ===== */}
         <div className='mt-3 p-2 border rounded' onKeyDown={preventEnterSubmit}>
           <div className='small text-muted fw-semibold mb-2'>
-            Agregar ítem al listado
+            Agregar ítem manual (se mezcla con lo precargado)
           </div>
 
           <div className='row g-2 align-items-end'>
-            {/* Lote */}
             <div className='col-md-3'>
               <label className='form-label mb-1'>Lote</label>
               <select
@@ -589,7 +882,6 @@ const FormSalidaLotes = ({ onSuccess }) => {
               )}
             </div>
 
-            {/* Producto */}
             <div className='col-md-4'>
               <label className='form-label mb-1'>Producto</label>
               <select
@@ -610,7 +902,6 @@ const FormSalidaLotes = ({ onSuccess }) => {
               )}
             </div>
 
-            {/* Bodega / Ubicación */}
             <div className='col-md-3'>
               <label className='form-label mb-1'>Bodega / Ubicación</label>
               <select
@@ -632,15 +923,13 @@ const FormSalidaLotes = ({ onSuccess }) => {
                 {invOpciones.map(op => (
                   <option key={op.key} value={op.key}>
                     {op.bodegaNombre || op.id_bodega || '—'} →{' '}
-                    {op.ubicacionNombre || op.id_ubicacion || '—'}
-                    {' — Cant: '}
+                    {op.ubicacionNombre || op.id_ubicacion || '—'} — Cant:{' '}
                     {toNumberCO(op.cantidad)}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Cantidad */}
             <div className='col-md-2'>
               <label className='form-label mb-1'>Cantidad</label>
               <input
@@ -654,40 +943,13 @@ const FormSalidaLotes = ({ onSuccess }) => {
                   required: 'Obligatorio',
                   validate: v =>
                     cantidadDisponibleItem == null ||
-                    Number(v) <= cantidadDisponibleItem ||
+                    toNumberCO(v) <= cantidadDisponibleItem ||
                     `Máximo disponible en la ubicación: ${cantidadDisponibleItem}`,
                 })}
               />
               {errorsItem.cantidad_item && (
                 <div className='invalid-feedback'>
                   {errorsItem.cantidad_item.message || 'Inválida'}
-                </div>
-              )}
-            </div>
-
-            {/* Info ubicaciones */}
-            <div className='col-12 mt-2'>
-              {invOpciones.length > 0 ? (
-                <div className='alert alert-info py-2 mb-0'>
-                  Ubicaciones disponibles para el producto seleccionado:
-                  <ul className='mb-0 mt-1'>
-                    {invOpciones.map(op => (
-                      <li key={`info-${op.key}`}>
-                        <strong>
-                          {op.bodegaNombre || op.id_bodega || '—'}
-                        </strong>{' '}
-                        ·{' '}
-                        <strong>
-                          {op.ubicacionNombre || op.id_ubicacion || '—'}
-                        </strong>{' '}
-                        — Cant: <strong>{toNumberCO(op.cantidad)}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <div className='form-text'>
-                  Selecciona lote y producto para ver ubicaciones con stock.
                 </div>
               )}
             </div>
@@ -704,138 +966,178 @@ const FormSalidaLotes = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Tabla de Ítems con evidencia por fila */}
+        {/* ===== Tabla ítems ===== */}
         <div className='mt-3'>
-          <div className='d-flex justify-content-between align-items-center mb-2'>
-            <span className='small text-muted'>
-              Ítems a procesar: <strong>{items.length}</strong>
-            </span>
-            <div className='d-flex gap-2'>
-              {docGenerado?.url && (
-                <a
-                  className='btn btn-outline-success btn-sm'
-                  href={docGenerado.url}
-                  target='_blank'
-                  rel='noreferrer'
-                >
-                  Descargar documento
-                </a>
-              )}
-              <button
-                type='button'
-                className='btn btn-outline-danger btn-sm'
-                disabled={!items.length || procesando}
-                onClick={() => setItems([])}
-              >
-                Vaciar lista
-              </button>
-            </div>
-          </div>
-
           <div className='table-responsive'>
             <table className='table table-sm table-striped align-middle'>
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Lote</th>
+                  <th style={{ width: 120 }}>Lote</th>
                   <th>Producto</th>
-                  <th className='text-end'>Cantidad</th>
-                  <th>Bodega</th>
-                  <th>Ubicación</th>
+                  <th style={{ width: 140 }} className='text-end'>
+                    Cantidad
+                  </th>
+                  <th style={{ minWidth: 320 }}>Bodega / Ubicación</th>
                   <th>Evidencia</th>
-                  <th style={{ width: 140 }}></th>
+                  <th style={{ width: 120 }}></th>
                 </tr>
               </thead>
+
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan='8' className='text-center text-muted'>
+                    <td colSpan='7' className='text-center text-muted'>
                       Sin ítems
                     </td>
                   </tr>
                 ) : (
-                  items.map((it, idx) => (
-                    <tr
-                      key={`${it.id_lote}-${it.id_producto}-${it.id_bodega_origen}-${it.id_ubicacion_origen}-${idx}`}
-                    >
-                      <td>{idx + 1}</td>
-                      <td>{it.id_lote}</td>
-                      <td>
-                        {it.nombre_producto_view
-                          ? `${it.nombre_producto_view} (${it.id_producto})`
-                          : it.id_producto}
-                      </td>
-                      <td className='text-end'>{it.cantidad}</td>
-                      <td>
-                        {it.bodega_nombre_view || it.id_bodega_origen || '-'}
-                      </td>
-                      <td>
-                        {it.ubicacion_nombre_view ||
-                          it.id_ubicacion_origen ||
-                          '-'}
-                      </td>
-                      <td>
-                        <div className='d-flex flex-column gap-1'>
-                          <div className='d-flex gap-2'>
-                            <button
-                              type='button'
-                              className='btn btn-outline-secondary btn-sm'
-                              onClick={() => openCameraForItem(idx)}
-                              disabled={procesando}
-                            >
-                              Usar cámara
-                            </button>
-                            <button
-                              type='button'
-                              className='btn btn-outline-secondary btn-sm'
-                              onClick={() =>
-                                document
-                                  .getElementById(`file-item-${idx}`)
-                                  .click()
-                              }
-                              disabled={procesando}
-                            >
-                              Subir imagen
-                            </button>
-                          </div>
+                  items.map((it, idx) => {
+                    const opcionesFila = getOpcionesFila(
+                      it.id_lote,
+                      it.id_producto
+                    )
+                    const selectedKey = `${it.id_bodega_origen || ''}|${
+                      it.id_ubicacion_origen || ''
+                    }`
+
+                    return (
+                      <tr key={`${it.id_lote}-${it.id_producto}-${idx}`}>
+                        <td>{idx + 1}</td>
+                        <td className='fw-semibold'>
+                          {it.id_lote || <span className='text-muted'>—</span>}
+                        </td>
+                        <td>
+                          {it.nombre_producto_view
+                            ? `${it.nombre_producto_view} (${it.id_producto})`
+                            : it.id_producto}
+                          {it._from_alistamiento && (
+                            <span className='badge bg-info text-dark ms-2'>
+                              alistamiento
+                            </span>
+                          )}
+                        </td>
+
+                        <td className='text-end'>
                           <input
-                            id={`file-item-${idx}`}
-                            type='file'
-                            accept='image/*'
-                            hidden
+                            type='number'
+                            min='0'
+                            step='any'
+                            className='form-control form-control-sm text-end'
+                            value={it.cantidad}
                             onChange={e =>
-                              onFileForItem(idx, e.target.files?.[0] || null)
+                              updateCantidadItem(idx, e.target.value)
                             }
+                            disabled={procesando}
                           />
-                          <div className='small'>
-                            {it.evidenciaName ? (
-                              <span className='text-success'>
-                                Archivo: <strong>{it.evidenciaName}</strong>
-                              </span>
-                            ) : (
-                              <span className='text-danger'>Sin evidencia</span>
-                            )}
+                        </td>
+
+                        <td>
+                          <select
+                            className={`form-select form-select-sm ${
+                              !it.id_bodega_origen || !it.id_ubicacion_origen
+                                ? 'is-invalid'
+                                : ''
+                            }`}
+                            value={
+                              it.id_bodega_origen && it.id_ubicacion_origen
+                                ? selectedKey
+                                : ''
+                            }
+                            onChange={e =>
+                              setUbicacionParaItem(idx, e.target.value)
+                            }
+                            disabled={procesando}
+                          >
+                            <option value=''>
+                              {opcionesFila.length
+                                ? 'Selecciona bodega/ubicación'
+                                : 'Sin ubicaciones con stock'}
+                            </option>
+                            {opcionesFila.map(op => (
+                              <option key={op.key} value={op.key}>
+                                {op.bodegaNombre || op.id_bodega || '—'} →{' '}
+                                {op.ubicacionNombre || op.id_ubicacion || '—'} —
+                                Cant: {toNumberCO(op.cantidad)}
+                              </option>
+                            ))}
+                          </select>
+
+                          {(!it.id_bodega_origen ||
+                            !it.id_ubicacion_origen) && (
+                            <div className='invalid-feedback d-block'>
+                              Selecciona bodega/ubicación
+                            </div>
+                          )}
+                        </td>
+
+                        <td>
+                          <div className='d-flex flex-column gap-1'>
+                            <div className='d-flex gap-2'>
+                              <button
+                                type='button'
+                                className='btn btn-outline-secondary btn-sm'
+                                onClick={() => openCameraForItem(idx)}
+                                disabled={procesando}
+                              >
+                                Cámara
+                              </button>
+                              <button
+                                type='button'
+                                className='btn btn-outline-secondary btn-sm'
+                                onClick={() =>
+                                  document
+                                    .getElementById(`file-item-${idx}`)
+                                    ?.click()
+                                }
+                                disabled={procesando}
+                              >
+                                Subir
+                              </button>
+                            </div>
+
+                            <input
+                              id={`file-item-${idx}`}
+                              type='file'
+                              accept='image/*'
+                              hidden
+                              onChange={e =>
+                                onFileForItem(idx, e.target.files?.[0] || null)
+                              }
+                            />
+
+                            <div className='small'>
+                              {it.evidenciaName ? (
+                                <span className='text-success'>
+                                  Archivo: <strong>{it.evidenciaName}</strong>
+                                </span>
+                              ) : (
+                                <span className='text-danger'>
+                                  Sin evidencia
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className='text-end'>
-                        <button
-                          type='button'
-                          className='btn btn-outline-danger btn-sm'
-                          onClick={() => removeItem(idx)}
-                          disabled={procesando}
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+
+                        <td className='text-end'>
+                          <button
+                            type='button'
+                            className='btn btn-outline-danger btn-sm'
+                            onClick={() => removeItem(idx)}
+                            disabled={procesando}
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
           </div>
 
-          {/* Panel de cámara por ítem */}
           {cameraIndex !== null && (
             <div className='mt-2 border rounded p-2'>
               <div className='d-flex justify-content-between align-items-center mb-2'>
@@ -850,6 +1152,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
                   Cerrar
                 </button>
               </div>
+
               <div className='ratio ratio-16x9'>
                 <Webcam
                   ref={webcamRef}
@@ -857,6 +1160,7 @@ const FormSalidaLotes = ({ onSuccess }) => {
                   className='w-100 h-100'
                 />
               </div>
+
               <div className='d-flex justify-content-center gap-2 mt-2'>
                 <button
                   type='button'
@@ -877,12 +1181,13 @@ const FormSalidaLotes = ({ onSuccess }) => {
           )}
         </div>
 
-        {/* Firmas globales */}
+        {/* ===== Firmas ===== */}
         <div className='row g-2 mt-2'>
           {['autorizador', 'conductor', 'receptor'].map(tipo => (
             <div key={tipo} className='col-md-4'>
               <div className='border rounded p-2 h-100'>
                 <div className='small text-muted mb-1'>Firma {tipo}</div>
+
                 {firmaActual === tipo ? (
                   <>
                     <SignatureCanvas
@@ -932,41 +1237,8 @@ const FormSalidaLotes = ({ onSuccess }) => {
           ))}
         </div>
 
-        {/* Progreso */}
-        {procesando && (
-          <div className='mt-2'>
-            <div className='small text-muted mb-1'>Procesando…</div>
-            <div className='list-group'>
-              {items.map((it, i) => {
-                const p = progreso.find(x => x.idx === i)
-                const estado = p?.estado || 'pendiente'
-                const badge =
-                  estado === 'ok'
-                    ? 'bg-success'
-                    : estado === 'error'
-                    ? 'bg-danger'
-                    : 'bg-secondary'
-                return (
-                  <div
-                    key={i}
-                    className='list-group-item d-flex justify-content-between align-items-center'
-                  >
-                    <span>
-                      {it.id_lote} / {it.id_producto} — {it.cantidad} ·{' '}
-                      {it.id_bodega_origen || '-'} /{' '}
-                      {it.id_ubicacion_origen || '-'}
-                    </span>
-                    <span className={`badge ${badge}`}>{estado}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Acciones */}
+        {/* ===== Submit ===== */}
         <div className='d-flex justify-content-end gap-2 mt-3'>
-          {/* Eliminamos el botón de "Generar documento (PDF)". Todo sale con Submit */}
           <button
             type='submit'
             className='btn btn-primary btn-sm'
@@ -974,14 +1246,8 @@ const FormSalidaLotes = ({ onSuccess }) => {
               isSubmitting ||
               !items.length ||
               !allItemsHaveEvidence ||
+              !allItemsHaveUbicacion ||
               procesando
-            }
-            title={
-              !items.length
-                ? 'Agrega ítems'
-                : !allItemsHaveEvidence
-                ? 'Todos los ítems requieren evidencia'
-                : 'Procesar'
             }
           >
             {procesando ? 'Procesando…' : 'Procesar salidas'}
@@ -992,4 +1258,4 @@ const FormSalidaLotes = ({ onSuccess }) => {
   )
 }
 
-export default FormSalidaLotes
+export default FormSalida

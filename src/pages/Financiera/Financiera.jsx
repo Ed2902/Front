@@ -1,27 +1,27 @@
-import Sidebar from '../../components/Sidebar/Sidebar'
-import TablaFinanciera from '../../components/Financiera/TablaFinanciera/TablaFinanciera'
+import { useState } from 'react'
 import './Financiera.css'
 
-export default function Financiera() {
-  // Handlers de carga de archivos (cuando definas endpoints)
-  const onUploadCuenta = idLote => {
-    // abrir modal/input, armar FormData y llamar al service upload...
-    console.log('Cargar cuenta de cobro para', idLote)
-  }
+import Sidebar from '../../components/Sidebar/Sidebar.jsx'
+import MenuFinanciera from '../../components/Financiera/MenuFinanciera/MenuFinanciera'
+import SeccionDinamicaFinanciera from '../../components/Financiera/SeccionDinamicaFinanciera/SeccionDinamicaFinanciera'
 
-  const onUploadSoporte = idLote => {
-    console.log('Cargar soporte de pago para', idLote)
-  }
+const Financiera = () => {
+  const [selectedSection, setSelectedSection] = useState('tabla-financiera') // opcional: default
 
   return (
-    <section className='layout'>
+    <div className='layout'>
       <Sidebar />
-      <div className='body'>
-        <TablaFinanciera
-          onUploadCuenta={onUploadCuenta}
-          onUploadSoporte={onUploadSoporte}
+
+      <div className='main-content'>
+        <MenuFinanciera
+          selectedSection={selectedSection}
+          onSelectSection={setSelectedSection}
         />
+
+        <SeccionDinamicaFinanciera selectedSection={selectedSection} />
       </div>
-    </section>
+    </div>
   )
 }
+
+export default Financiera

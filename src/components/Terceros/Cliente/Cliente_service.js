@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-// Instancia base
+// Instancia base (JSON)
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   headers: {
@@ -9,99 +9,167 @@ const api = axios.create({
 })
 
 // Token desde localStorage
-const getAuthToken = () => {
-  return localStorage.getItem('token')
-}
+const getAuthToken = () => localStorage.getItem('token')
 
-// 🚀 Obtener todos los clientes (con DocumentoCliente incluido)
-export const getClientes = async () => {
-  const token = getAuthToken()
+const authHeaders = (extra = {}) => ({
+  ...extra,
+  Authorization: `Bearer ${getAuthToken()}`,
+})
+
+// ✅ Exporta también el token para uso en componentes
+export { getAuthToken }
+
+/**
+ * 🚀 Obtener clientes (PAGINADO)
+ * Backend devuelve: { data: [], meta: { page, limit, total, totalPages } }
+ */
+export const getClientes = async ({ page = 1, limit = 20 } = {}) => {
   const response = await api.get('/cliente', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: authHeaders(),
+    params: { page, limit },
   })
   return response.data
 }
 
 // 🚀 Obtener un cliente por ID
 export const getClienteById = async idCliente => {
-  const token = getAuthToken()
   const response = await api.get(`/cliente/${idCliente}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: authHeaders(),
   })
   return response.data
 }
 
 // 🚀 Obtener documentos subidos de un cliente (archivos individuales)
 export const getDocumentosCliente = async idCliente => {
-  const token = getAuthToken()
   const response = await api.get(`/cliente/${idCliente}/documentos`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: authHeaders(),
   })
   return response.data.archivos
 }
 
+// 📄 Abrir documento protegido (PDF en nueva pestaña / descarga)
 export const abrirDocumentoCliente = async (
   rutaRelativa,
   token = getAuthToken()
 ) => {
-  try {
-    // 🌐 Usa el host actual sin `/api`
-    const baseURL = window.location.origin
-    const url = `${baseURL}${rutaRelativa}` // ← NO usa import.meta.env.VITE_API_URL
+  const baseURL = window.location.origin
+  const url = `${baseURL}${rutaRelativa}`
 
-    const response = await axios.get(url, {
-      responseType: 'blob',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+  const response = await axios.get(url, {
+    responseType: 'blob',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
 
-    const blob = new Blob([response.data], {
-      type: response.headers['content-type'] || 'application/pdf',
-    })
-    const blobUrl = URL.createObjectURL(blob)
-    window.open(blobUrl, '_blank')
-  } catch (error) {
-    console.error('❌ Error al abrir el documento:', error)
-    throw error
-  }
+  const blob = new Blob([response.data], {
+    type: response.headers['content-type'] || 'application/pdf',
+  })
+
+  const blobUrl = URL.createObjectURL(blob)
+  window.open(blobUrl, '_blank')
 }
-// ✅ Exporta también el token para uso en componentes
-export { getAuthToken }
 
-// 🚀 Crear nuevo cliente con documentos (FormData)
+/**
+ * 🚀 Crear nuevo cliente con documentos (FormData)
+ * POST /cliente
+ */
 export const crearCliente = async formData => {
-  const token = getAuthToken()
   const response = await axios.post(
     `${import.meta.env.VITE_API_URL}/cliente`,
     formData,
     {
-      headers: {
+      headers: authHeaders({
         'Content-Type': 'multipart/form-data',
-        Authorization: `Bearer ${token}`,
-      },
+      }),
     }
   )
   return response.data
 }
 
-// 🚀 Actualizar cliente con documentos (FormData)
-export const actualizarCliente = async (idCliente, formData) => {
-  const token = getAuthToken()
+/**
+ * ✅ Actualizar datos (JSON)
+ * PUT /cliente/:id
+ */
+export const actualizarClienteDatos = async (idCliente, payload) => {
+  const response = await api.put(`/cliente/${idCliente}`, payload, {
+    headers: authHeaders(),
+  })
+  return response.data
+}
+
+/**
+ * ✅ Activar / desactivar
+ * PATCH /cliente/:id/activo
+ */
+export const actualizarClienteActivo = async (idCliente, Activo) => {
+  const response = await api.patch(
+    `/cliente/${idCliente}/activo`,
+    { Activo },
+    { headers: authHeaders() }
+  )
+  return response.data
+}
+
+/**
+ * ✅ Actualizar observaciones
+ * PATCH /cliente/:id/observaciones
+ */
+export const actualizarClienteObservaciones = async (
+  idCliente,
+  Observaciones
+) => {
+  const response = await api.patch(
+    `/cliente/${idCliente}/observaciones`,
+    { Observaciones },
+    { headers: authHeaders() }
+  )
+  return response.data
+}
+
+/**
+ * ✅ Subir / reemplazar SOLO documentos
+ * PUT /cliente/:id/documentos
+ */
+export const actualizarSoloDocumentosCliente = async (idCliente, formData) => {
+  const response = await axios.put(
+    `${import.meta.env.VITE_API_URL}/cliente/${idCliente}/documentos`,
+    formData,
+    {
+      headers: authHeaders({
+        'Content-Type': 'multipart/form-data',
+      }),
+    }
+  )
+  return response.data
+}
+
+/**
+ * ✅ Eliminar un documento por campo
+ * DELETE /cliente/:id/documentos/:campo
+ */
+export const eliminarDocumentoCliente = async (idCliente, campo) => {
+  const response = await api.delete(
+    `/cliente/${idCliente}/documentos/${campo}`,
+    {
+      headers: authHeaders(),
+    }
+  )
+  return response.data
+}
+
+/**
+ * 🔁 Mantengo tu endpoint anterior (por si todavía lo usas)
+ * PUT /cliente/:id/con-documentos
+ */
+export const actualizarClienteConDocumentos = async (idCliente, formData) => {
   const response = await axios.put(
     `${import.meta.env.VITE_API_URL}/cliente/${idCliente}/con-documentos`,
     formData,
     {
-      headers: {
+      headers: authHeaders({
         'Content-Type': 'multipart/form-data',
-        Authorization: `Bearer ${token}`,
-      },
+      }),
     }
   )
   return response.data

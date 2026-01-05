@@ -1,0 +1,10 @@
+.personal-seccion {
+  background-color: #ffffff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+
+  /* 🔥 Permitimos scroll interno */
+  max-height: calc(100vh - 200px); /* margen para menú personal y paddings */
+  overflow-y: auto;
+}

@@ -9,7 +9,11 @@ const FormCliente = ({ onClose, onSuccess }) => {
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm()
+  } = useForm({
+    defaultValues: {
+      Activo: true,
+    },
+  })
 
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -59,8 +63,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
     setErrorMsg('')
 
     try {
-      console.log('🟢 Datos del formulario:', data)
-
       const erroresArchivo = validarTamanos(data)
       if (erroresArchivo.length > 0) {
         setErrorMsg(erroresArchivo.join(', '))
@@ -73,31 +75,28 @@ const FormCliente = ({ onClose, onSuccess }) => {
       formData.append('Nombre', data.Nombre)
       formData.append('Correo', data.Correo)
       formData.append('Celular', data.Celular)
-      formData.append('Fecha_registro', new Date().toISOString()) // debe coincidir con tu backend
+      formData.append('Fecha_registro', new Date().toISOString())
+
+      // ✅ Campos nuevos
+      formData.append('Activo', data.Activo ? 'true' : 'false')
+      if (data.Direccion) formData.append('Direccion', data.Direccion)
+      if (data.Observaciones)
+        formData.append('Observaciones', data.Observaciones)
 
       documentosObligatorios.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]
-        if (file instanceof File) {
-          formData.append(backend, file)
-        }
+        if (file instanceof File) formData.append(backend, file)
       })
 
       documentosOpcionales.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]
-        if (file instanceof File) {
-          formData.append(backend, file)
-        }
+        if (file instanceof File) formData.append(backend, file)
       })
-
-      console.log('📦 FormData preview:')
-      for (const [k, v] of formData.entries()) {
-        console.log(`${k}:`, v)
-      }
 
       await crearCliente(formData)
 
-      if (onSuccess) onSuccess()
-      onClose()
+      onSuccess?.()
+      onClose?.()
     } catch (error) {
       console.error('❌ Error al registrar cliente:', error)
       const msg =
@@ -157,13 +156,40 @@ const FormCliente = ({ onClose, onSuccess }) => {
         <div>
           <label className='form-label'>Celular *</label>
           <input
-            className='form-control mb-3'
+            className='form-control mb-2'
             {...register('Celular', { required: true })}
           />
           {errors.Celular && (
             <p className='text-danger'>Este campo es obligatorio</p>
           )}
         </div>
+
+        {/* ✅ Nuevos */}
+        <div>
+          <label className='form-label'>Dirección</label>
+          <input className='form-control mb-2' {...register('Direccion')} />
+        </div>
+
+        <div>
+          <label className='form-label'>Activo</label>
+          <div className='form-check mt-1'>
+            <input
+              className='form-check-input'
+              type='checkbox'
+              {...register('Activo')}
+            />
+            <label className='form-check-label'>Cliente activo</label>
+          </div>
+        </div>
+      </div>
+
+      <div className='mb-3'>
+        <label className='form-label'>Observaciones</label>
+        <textarea
+          className='form-control'
+          rows={3}
+          {...register('Observaciones')}
+        />
       </div>
 
       <hr />
@@ -198,7 +224,7 @@ const FormCliente = ({ onClose, onSuccess }) => {
         ))}
       </div>
 
-      {errorMsg && <p className='text-danger'>{errorMsg}</p>}
+      {errorMsg && <p className='text-danger mt-2'>{errorMsg}</p>}
 
       <div className='botones-acciones'>
         <button type='button' className='btn btn-secondary' onClick={onClose}>

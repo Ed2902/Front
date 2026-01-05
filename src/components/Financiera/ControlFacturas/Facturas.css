@@ -1,0 +1,110 @@
+/* Header usa TODO el ancho */
+.facturas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* IZQUIERDA en horizontal */
+.facturas-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1; /* ocupa el ancho disponible */
+}
+
+/* Segment Compra / Venta */
+.facturas-segment {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: #eef2f7;
+  border-radius: 10px;
+}
+
+.facturas-segbtn {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #475569;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.facturas-segbtn.active {
+  background: #2cb6c0; /* color marca */
+  color: #ffffff;
+}
+
+/* Texto a la DERECHA de los botones */
+.facturas-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.facturas-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.facturas-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Borrados */
+.facturas-trashchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.facturas-trashchip.active {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+/* ✅✅ FIX REAL: el className va en .modal-dialog */
+.modal-dialog.modal-papelera {
+  width: 1200px; /* base */
+  max-width: 95vw; /* responsivo */
+  min-width: 1200px; /* mínimo real */
+}
+
+/* (opcional) que el body aproveche el ancho */
+.modal-dialog.modal-papelera .modal-content {
+  width: 100%;
+}
+
+/* Mobile */
+@media (max-width: 576px) {
+  .facturas-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .facturas-left {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* en móvil NO obligamos 1200 */
+  .modal-dialog.modal-papelera {
+    width: 95vw;
+    min-width: 0;
+    max-width: 95vw;
+  }
+}

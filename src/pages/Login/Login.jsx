@@ -29,13 +29,13 @@ const Login = () => {
     try {
       const response = await loginService(username, password)
 
-      // Guardar datos de sesión
+      // Guardar en el AuthContext (token + user completo con personal)
       login(response.user, response.token)
 
       // Redirigir
       navigate('/home')
     } catch (error) {
-      setError(error.message)
+      setError(error.message || 'Error al iniciar sesión.')
     }
   }
 
@@ -44,7 +44,7 @@ const Login = () => {
       <img src='/Genika.webp' alt='Logo GENIKA' className='logo' />
       <h2>Ingreso</h2>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} autoComplete='on'>
         <div className='user-box'>
           <input
             type='text'
@@ -74,7 +74,12 @@ const Login = () => {
           <div className='success-message'>{successMessage}</div>
         )}
 
-        <button type='submit' className='btn-login'>
+        {/* Cambiamos <a href="#"> por <button type="submit"> para evitar refrescos y warnings */}
+        <button type='submit' className='login-submit'>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
           INGRESAR
         </button>
       </form>
