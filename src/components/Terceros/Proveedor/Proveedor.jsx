@@ -1,63 +1,138 @@
-import { useEffect, useState, useMemo } from 'react'
-import { FaFilePdf, FaFileWord } from 'react-icons/fa'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import FormProveedor from './FormProveedor'
+import FormEditarProveedor from './FormEditarProveedor'
+import SecureArchivo from '../SecureArchivo'
 import {
   getProveedores,
   getDocumentosProveedor,
-  getAuthToken,
+  actualizarProveedorActivo,
 } from './Proveedor_service'
 import './Proveedor.css'
-import FormProveedor from './FormProveedor'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL
 
 const Proveedor = () => {
   const [proveedores, setProveedores] = useState([])
   const [loading, setLoading] = useState(true)
-  const [globalFilter, setGlobalFilter] = useState('')
-  const [documentosPorProveedor, setDocumentosPorProveedor] = useState({})
-  const [pdfEnModal, setPdfEnModal] = useState(null)
 
+  // paginación
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(20)
+  const [meta, setMeta] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 1,
+  })
+
+  // buscador + filtros
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('TODOS') // TODOS | ACTIVOS | INACTIVOS
+  const [tipoFiltro, setTipoFiltro] = useState('TODOS') // TODOS | RS | INSUMOS
+
+  // documentos por proveedor (cache estable)
+  const [docsByProveedor, setDocsByProveedor] = useState({})
+  const [docsLoading, setDocsLoading] = useState({})
+  const [docsError, setDocsError] = useState({})
+
+  // modales forms
   const [modalVisible, setModalVisible] = useState(false)
   const [modalAgregarVisible, setModalAgregarVisible] = useState(false)
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState(null)
 
-  useEffect(() => {
-    fetchProveedores()
-  }, [])
-
-  const fetchProveedores = async () => {
+  const fetchProveedores = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await getProveedores()
-      setProveedores(data)
-    } catch (error) {
-      console.error('Error al obtener proveedores:', error.message)
+
+      // getProveedores retorna { data, meta }
+      const payload = await getProveedores({ page, limit })
+
+      setProveedores(Array.isArray(payload?.data) ? payload.data : [])
+      setMeta(payload?.meta || { page, limit, total: 0, totalPages: 1 })
+    } catch (err) {
+      console.error('Error al cargar proveedores:', err)
+      setProveedores([])
+      setMeta({ page, limit, total: 0, totalPages: 1 })
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, limit])
+
+  useEffect(() => {
+    fetchProveedores()
+  }, [fetchProveedores])
 
   const filteredProveedores = useMemo(() => {
-    return proveedores.filter(proveedor =>
-      [proveedor.id_proveedor, proveedor.Nombre, proveedor.Correo].some(field =>
-        field?.toLowerCase().includes(globalFilter.toLowerCase())
-      )
-    )
-  }, [proveedores, globalFilter])
+    const q = globalFilter.trim().toLowerCase()
 
-  const handleToggleDocumentos = async idProveedor => {
+    return proveedores.filter(p => {
+      const isActivo = Boolean(p?.Activo)
+      const tipo = (p?.Tipo_proveedor || '').toUpperCase()
+
+      // filtro estado
+      if (estadoFiltro === 'ACTIVOS' && !isActivo) return false
+      if (estadoFiltro === 'INACTIVOS' && isActivo) return false
+
+      // filtro tipo
+      if (tipoFiltro !== 'TODOS' && tipo !== tipoFiltro) return false
+
+      // filtro texto
+      if (!q) return true
+
+      const valores = [
+        p?.id_proveedor,
+        p?.Nombre,
+        p?.Correo,
+        p?.Telefono,
+        p?.Tipo_proveedor,
+        p?.Direccion,
+        p?.Contacto,
+      ]
+        .filter(Boolean)
+        .map(v => String(v).toLowerCase())
+
+      return valores.some(v => v.includes(q))
+    })
+  }, [proveedores, globalFilter, estadoFiltro, tipoFiltro])
+
+  const loadDocsForProveedor = async idProveedor => {
+    if (Array.isArray(docsByProveedor[idProveedor])) return
+    if (docsLoading[idProveedor]) return
+
     try {
-      const archivos = await getDocumentosProveedor(idProveedor)
-      setDocumentosPorProveedor(prev => ({
+      setDocsLoading(prev => ({ ...prev, [idProveedor]: true }))
+      setDocsError(prev => ({ ...prev, [idProveedor]: false }))
+
+      const archivos = await getDocumentosProveedor(idProveedor) // array
+      setDocsByProveedor(prev => ({
         ...prev,
-        [idProveedor]: archivos,
+        [idProveedor]: Array.isArray(archivos) ? archivos : [],
       }))
-    } catch (error) {
-      console.error('Error al obtener documentos:', error)
+    } catch (e) {
+      console.error('Error al obtener documentos proveedor:', e)
+      setDocsError(prev => ({ ...prev, [idProveedor]: true }))
+    } finally {
+      setDocsLoading(prev => ({ ...prev, [idProveedor]: false }))
+    }
+  }
+
+  const toggleActivo = async (proveedor, nuevoEstado) => {
+    const ok = window.confirm(
+      `¿Seguro que deseas ${
+        nuevoEstado ? 'ACTIVAR' : 'DESACTIVAR'
+      } el proveedor ${proveedor.Nombre} (${proveedor.id_proveedor})?`
+    )
+    if (!ok) return
+
+    try {
+      await actualizarProveedorActivo(proveedor.id_proveedor, nuevoEstado)
+      await fetchProveedores()
+    } catch (e) {
+      console.error('Error cambiando estado del proveedor:', e)
+      alert('No se pudo actualizar el estado. Revisa consola.')
     }
   }
 
   const formatearNombre = nombre => {
+    if (!nombre) return ''
     const partes = nombre.split('-')
     if (partes.length > 1) {
       const tipo = partes[0].replace(/_/g, ' ')
@@ -68,45 +143,6 @@ const Proveedor = () => {
       return `${tipo.toUpperCase()} (${resto})`
     }
     return nombre
-  }
-
-  const handleClickDocumento = async (urlParcial, nombre, idProveedor) => {
-    const ext = nombre.split('.').pop().toLowerCase()
-    const carpetaProveedor = `proveedor-${idProveedor}`
-
-    const rutaFinal = urlParcial?.startsWith('/backendfastway/uploads')
-      ? urlParcial
-      : `/backendfastway/uploads/proveedores/${carpetaProveedor}/${nombre}`
-
-    const url = `${API_BASE_URL.replace('/api', '')}${rutaFinal}`
-
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-      })
-
-      if (!response.ok) throw new Error('Error al obtener el archivo')
-
-      const blob = await response.blob()
-
-      if (ext === 'pdf') {
-        const pdfBlob = new Blob([blob], { type: 'application/pdf' })
-        const blobUrl = URL.createObjectURL(pdfBlob)
-        setPdfEnModal(blobUrl)
-      } else {
-        const blobUrl = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = blobUrl
-        link.download = nombre
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
-    } catch (err) {
-      console.error('Error al acceder al documento:', err)
-    }
   }
 
   return (
@@ -121,134 +157,285 @@ const Proveedor = () => {
         </button>
       </div>
 
-      <input
-        type='text'
-        className='form-control buscador-pequeno mb-3'
-        placeholder='Buscar por nombre, correo o ID'
-        value={globalFilter}
-        onChange={e => setGlobalFilter(e.target.value)}
-      />
+      {/* buscador + filtros */}
+      <div className='row g-2 mb-3'>
+        <div className='col-12 col-lg-6'>
+          <input
+            type='text'
+            className='form-control buscador-pequeno'
+            placeholder='Buscar por nombre, correo, ID, tipo, dirección o contacto'
+            value={globalFilter}
+            onChange={e => setGlobalFilter(e.target.value)}
+          />
+        </div>
+
+        <div className='col-12 col-md-6 col-lg-3'>
+          <select
+            className='form-select'
+            value={estadoFiltro}
+            onChange={e => {
+              setEstadoFiltro(e.target.value)
+              setPage(1)
+            }}
+          >
+            <option value='TODOS'>Todos (Estado)</option>
+            <option value='ACTIVOS'>Solo activos</option>
+            <option value='INACTIVOS'>Solo inactivos</option>
+          </select>
+        </div>
+
+        <div className='col-12 col-md-6 col-lg-3'>
+          <select
+            className='form-select'
+            value={tipoFiltro}
+            onChange={e => {
+              setTipoFiltro(e.target.value)
+              setPage(1)
+            }}
+          >
+            <option value='TODOS'>Todos (Tipo)</option>
+            <option value='RS'>Solo RS</option>
+            <option value='INSUMOS'>Solo INSUMOS</option>
+          </select>
+        </div>
+      </div>
 
       {loading ? (
         <p>Cargando proveedores...</p>
       ) : (
         <div className='accordion' id='proveedoresAccordion'>
-          {filteredProveedores.map((proveedor, index) => (
-            <div className='accordion-item' key={proveedor.id_proveedor}>
-              <h2 className='accordion-header' id={`heading-${index}`}>
-                <button
-                  className='accordion-button collapsed'
-                  type='button'
-                  data-bs-toggle='collapse'
-                  data-bs-target={`#collapse-${index}`}
-                  aria-expanded='false'
-                  aria-controls={`collapse-${index}`}
-                  onClick={() => handleToggleDocumentos(proveedor.id_proveedor)}
-                >
-                  {proveedor.Nombre}{' '}
-                  <span className='ms-2 text-muted'>
-                    ({proveedor.id_proveedor})
-                  </span>
-                </button>
-              </h2>
-              <div
-                id={`collapse-${index}`}
-                className='accordion-collapse collapse'
-                aria-labelledby={`heading-${index}`}
-                data-bs-parent='#proveedoresAccordion'
-              >
-                <div className='accordion-body'>
-                  <p>
-                    <strong>Correo:</strong> {proveedor.Correo}
-                  </p>
-                  <p>
-                    <strong>Teléfono:</strong> {proveedor.Telefono}
-                  </p>
-                  <p>
-                    <strong>Fecha Registro:</strong>{' '}
-                    {new Date(proveedor.Fecha_registro).toLocaleDateString()}
-                  </p>
+          {filteredProveedores.length === 0 ? (
+            <p className='text-muted'>No hay proveedores para mostrar.</p>
+          ) : (
+            filteredProveedores.map((p, index) => {
+              const isActivo = Boolean(p?.Activo)
+              const tipo = (p?.Tipo_proveedor || '').toUpperCase()
 
-                  <hr />
-                  <div className='d-flex justify-content-between align-items-center mb-2'>
-                    <h6 className='mb-0'>📄 Documentos:</h6>
+              return (
+                <div className='accordion-item' key={p.id_proveedor}>
+                  <h2 className='accordion-header' id={`heading-${index}`}>
                     <button
-                      className='btn-agregarform'
-                      onClick={() => {
-                        setProveedorSeleccionado(proveedor)
-                        setModalVisible(true)
-                      }}
+                      className={`accordion-button collapsed ${
+                        !isActivo ? 'text-danger' : ''
+                      }`}
+                      type='button'
+                      data-bs-toggle='collapse'
+                      data-bs-target={`#collapse-${index}`}
+                      aria-expanded='false'
+                      aria-controls={`collapse-${index}`}
+                      onClick={() => loadDocsForProveedor(p.id_proveedor)}
                     >
-                      Actualizar
+                      {p.Nombre}{' '}
+                      <span className='ms-2 text-muted'>
+                        ({p.id_proveedor}) {tipo ? `- ${tipo}` : ''}
+                      </span>
+                      <span
+                        className={`ms-3 badge ${
+                          isActivo ? 'bg-success' : 'bg-danger'
+                        }`}
+                      >
+                        {isActivo ? 'Activo' : 'Inactivo'}
+                      </span>
                     </button>
-                  </div>
+                  </h2>
 
-                  {documentosPorProveedor[proveedor.id_proveedor]?.length >
-                  0 ? (
-                    <div className='grid-documentos'>
-                      {documentosPorProveedor[proveedor.id_proveedor].map(
-                        (doc, i) => {
-                          const urlParcial = doc.url
-                          const nombre = doc.nombre
-                          const ext = nombre.split('.').pop().toLowerCase()
-                          return (
-                            <div
-                              key={i}
-                              className='card-doc'
-                              onClick={() =>
-                                handleClickDocumento(
-                                  urlParcial,
-                                  nombre,
-                                  proveedor.id_proveedor
-                                )
-                              }
+                  <div
+                    id={`collapse-${index}`}
+                    className='accordion-collapse collapse'
+                    aria-labelledby={`heading-${index}`}
+                    data-bs-parent='#proveedoresAccordion'
+                  >
+                    <div className='accordion-body'>
+                      <p>
+                        <strong>Correo:</strong> {p.Correo}
+                      </p>
+                      <p>
+                        <strong>Teléfono:</strong> {p.Telefono}
+                      </p>
+                      <p>
+                        <strong>Tipo:</strong> {p.Tipo_proveedor || '—'}
+                      </p>
+                      <p>
+                        <strong>Dirección:</strong> {p.Direccion || '—'}
+                      </p>
+                      <p>
+                        <strong>Contacto:</strong> {p.Contacto || '—'}
+                      </p>
+
+                      <p>
+                        <strong>Fecha Registro:</strong>{' '}
+                        {p.Fecha_registro
+                          ? new Date(p.Fecha_registro).toLocaleDateString()
+                          : '—'}
+                      </p>
+
+                      {!isActivo && p.Fecha_desactivacion && (
+                        <p className='text-danger'>
+                          <strong>Desactivado el:</strong>{' '}
+                          {new Date(p.Fecha_desactivacion).toLocaleDateString()}
+                        </p>
+                      )}
+
+                      {p.Fecha_actualizacion && (
+                        <p>
+                          <strong>Última actualización:</strong>{' '}
+                          {new Date(p.Fecha_actualizacion).toLocaleString()}
+                        </p>
+                      )}
+
+                      <hr />
+
+                      <div className='d-flex justify-content-between align-items-center mb-2'>
+                        <h6 className='mb-0'>📄 Documentos:</h6>
+
+                        <div className='d-flex align-items-center gap-3'>
+                          {/* switch sin modal */}
+                          <div className='form-check form-switch m-0'>
+                            <input
+                              className='form-check-input'
+                              type='checkbox'
+                              role='switch'
+                              id={`switch-activo-${p.id_proveedor}`}
+                              checked={isActivo}
+                              onChange={e => {
+                                const nuevoEstado = e.target.checked
+                                e.target.checked = !nuevoEstado // revert visual
+                                toggleActivo(p, nuevoEstado)
+                              }}
+                            />
+                            <label
+                              className='form-check-label'
+                              htmlFor={`switch-activo-${p.id_proveedor}`}
                             >
-                              <div className='icono-doc'>
-                                {ext === 'pdf' ? <FaFilePdf /> : <FaFileWord />}
-                              </div>
+                              {isActivo ? 'Activo' : 'Inactivo'}
+                            </label>
+                          </div>
+
+                          <button
+                            className='btn-agregarform'
+                            onClick={() => {
+                              setProveedorSeleccionado(p)
+                              setModalVisible(true)
+                            }}
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* SecureArchivo */}
+                      {docsLoading[p.id_proveedor] ? (
+                        <p className='text-muted'>Cargando documentos...</p>
+                      ) : docsError[p.id_proveedor] ? (
+                        <div className='d-flex align-items-center gap-2'>
+                          <span className='text-danger'>
+                            Error cargando documentos.
+                          </span>
+                          <button
+                            className='btn btn-outline-secondary btn-sm'
+                            onClick={() => {
+                              setDocsByProveedor(prev => {
+                                const copy = { ...prev }
+                                delete copy[p.id_proveedor]
+                                return copy
+                              })
+                              loadDocsForProveedor(p.id_proveedor)
+                            }}
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      ) : Array.isArray(docsByProveedor[p.id_proveedor]) &&
+                        docsByProveedor[p.id_proveedor].length > 0 ? (
+                        <div className='grid-documentos'>
+                          {docsByProveedor[p.id_proveedor].map((doc, i) => (
+                            <div className='card-doc' key={`${doc?.url || i}`}>
                               <div className='nombre-doc'>
-                                {formatearNombre(nombre)}
+                                {formatearNombre(doc?.nombre || 'Documento')}
+                              </div>
+
+                              <div className='mt-2'>
+                                <SecureArchivo
+                                  rutaRelativa={doc?.url}
+                                  nombreArchivo={doc?.nombre}
+                                />
                               </div>
                             </div>
-                          )
-                        }
+                          ))}
+                        </div>
+                      ) : (
+                        <p className='text-muted'>
+                          No hay documentos disponibles.
+                        </p>
                       )}
                     </div>
-                  ) : (
-                    <p className='text-muted'>No hay documentos disponibles.</p>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              )
+            })
+          )}
         </div>
       )}
 
-      {pdfEnModal && (
-        <div className='modal-backdrop' onClick={() => setPdfEnModal(null)}>
-          <div className='modal-pdf' onClick={e => e.stopPropagation()}>
-            <iframe src={pdfEnModal} title='Documento PDF' />
-          </div>
-        </div>
-      )}
+      {/* ✅ PAGINACIÓN AL FINAL */}
+      <div className='d-flex flex-wrap gap-2 align-items-center mt-3'>
+        <button
+          className='btn btn-outline-secondary btn-sm'
+          disabled={meta.page <= 1}
+          onClick={() => setPage(p => Math.max(1, p - 1))}
+        >
+          ◀ Anterior
+        </button>
 
+        <span className='text-muted'>
+          Página {meta.page} de {meta.totalPages} — Total: {meta.total}
+        </span>
+
+        <button
+          className='btn btn-outline-secondary btn-sm'
+          disabled={meta.page >= meta.totalPages}
+          onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
+        >
+          Siguiente ▶
+        </button>
+
+        <div className='ms-auto d-flex align-items-center gap-2'>
+          <label className='text-muted mb-0'>Por página</label>
+          <select
+            className='form-select form-select-sm'
+            style={{ width: 90 }}
+            value={limit}
+            onChange={e => {
+              setLimit(Number(e.target.value))
+              setPage(1)
+            }}
+          >
+            {[10, 20, 50, 100].map(n => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* modal editar */}
       {modalVisible && proveedorSeleccionado && (
         <div className='modal-backdrop' onClick={() => setModalVisible(false)}>
           <div className='modal-pdf' onClick={e => e.stopPropagation()}>
-            <h5 className='mb-2'>Hola, proveedor seleccionado:</h5>
-            <p>
-              <strong>ID:</strong> {proveedorSeleccionado.id_proveedor}
-            </p>
-            <button
-              className='btn-agregarform mt-3'
-              onClick={() => setModalVisible(false)}
-            >
-              Cerrar
-            </button>
+            <FormEditarProveedor
+              proveedor={proveedorSeleccionado}
+              onClose={() => {
+                setModalVisible(false)
+                setProveedorSeleccionado(null)
+              }}
+              onSuccess={fetchProveedores}
+            />
           </div>
         </div>
       )}
 
+      {/* modal agregar */}
       {modalAgregarVisible && (
         <div
           className='modal-backdrop'
@@ -257,10 +444,7 @@ const Proveedor = () => {
           <div className='modal-pdf' onClick={e => e.stopPropagation()}>
             <FormProveedor
               onClose={() => setModalAgregarVisible(false)}
-              onSuccess={() => {
-                setModalAgregarVisible(false)
-                fetchProveedores()
-              }}
+              onSuccess={fetchProveedores}
             />
           </div>
         </div>

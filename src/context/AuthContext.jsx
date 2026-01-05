@@ -1,15 +1,19 @@
 import React, { createContext, useState, useEffect } from 'react'
+import { registerWebPush } from '../utils/webpushClient'
 
 // Crear el contexto de autenticación
 const AuthContext = createContext()
 
-// Componente proveedor para envolver la aplicación
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null) // Guardar los datos del usuario
-  const [token, setToken] = useState(null) // Guardar el token
-  const [loading, setLoading] = useState(true) // 🚀 Saber si está cargando la sesión
+const API_BASE_DEFAULT = import.meta.env.VITE_API_URL_4
+const ORG_ID = import.meta.env.VITE_ORG_ID
 
-  // Verificar si el usuario está autenticado al cargar la aplicación
+// Componente proveedor
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // Cargar sesión desde localStorage
   useEffect(() => {
     const storedUser = localStorage.getItem('user')
     const storedToken = localStorage.getItem('token')
@@ -19,18 +23,44 @@ export const AuthProvider = ({ children }) => {
       setToken(storedToken)
     }
 
-    setLoading(false) // 🚀 Una vez leído, ya no está cargando
+    setLoading(false)
   }, [])
 
-  // Función para iniciar sesión
-  const login = (userData, token) => {
+  // LOGIN
+  const login = async (userData, token) => {
     setUser(userData)
     setToken(token)
+
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.setItem('token', token)
+
+    // 🔑 Normalizar principalId (una sola regla)
+    const principalId =
+      userData?.principalId ??
+      userData?.id_usuario ??
+      userData?.personal?.id_personal
+
+    // 🔔 Registrar Web Push UNA VEZ al iniciar sesión
+    try {
+      if (principalId && token) {
+        await registerWebPush({
+          apiBaseUrl: API_BASE_DEFAULT,
+          orgId: ORG_ID,
+          principalId: String(principalId),
+          token,
+        })
+        console.log('🔔 WebPush registrado para principalId:', principalId)
+      } else {
+        console.warn(
+          '⚠️ No se pudo registrar WebPush: falta principalId o token'
+        )
+      }
+    } catch (err) {
+      console.error('❌ Error registrando WebPush en login:', err)
+    }
   }
 
-  // Función para cerrar sesión
+  // LOGOUT
   const logout = () => {
     setUser(null)
     setToken(null)
@@ -38,7 +68,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token')
   }
 
-  // Estado y funciones disponibles para ser consumidas
   return (
     <AuthContext.Provider value={{ user, token, login, logout, loading }}>
       {children}
@@ -46,5 +75,4 @@ export const AuthProvider = ({ children }) => {
   )
 }
 
-// Exportar el contexto para usarlo en otros componentes
 export default AuthContext

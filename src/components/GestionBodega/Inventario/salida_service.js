@@ -109,3 +109,14 @@ export const descargarDocumentoSalida = async id_documento => {
   )
   return response.data // Blob
 }
+// ✅ RESUMEN DE INVENTARIO (para selects de lote/producto/posición)
+// Ajusta el endpoint si tu back usa otro nombre.
+export const getInventarioResumen = async () => {
+  const token = localStorage.getItem('token')
+
+  const resp = await api.get('/inventario/resumen', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return resp.data
+}

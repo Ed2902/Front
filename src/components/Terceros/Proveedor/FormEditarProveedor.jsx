@@ -1,9 +1,13 @@
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
-import { crearProveedor } from './Proveedor_service'
+import {
+  actualizarProveedorDatos,
+  actualizarProveedorActivo,
+  actualizarSoloDocumentosProveedor,
+} from './Proveedor_service'
 import './FormProveedor.css'
 
-const FormProveedor = ({ onClose, onSuccess }) => {
+const FormEditarProveedor = ({ proveedor, onClose, onSuccess }) => {
   const {
     register,
     handleSubmit,
@@ -11,23 +15,23 @@ const FormProveedor = ({ onClose, onSuccess }) => {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      Activo: true,
-      Tipo_proveedor: 'INSUMOS',
-      Direccion: '',
-      Contacto: '',
+      Nombre: proveedor?.Nombre || '',
+      Correo: proveedor?.Correo || '',
+      Telefono: proveedor?.Telefono || '',
+      Tipo_proveedor: proveedor?.Tipo_proveedor || 'INSUMOS',
+      Direccion: proveedor?.Direccion || '',
+      Contacto: proveedor?.Contacto || '',
+      Activo: Boolean(proveedor?.Activo),
     },
   })
 
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
-  const documentosObligatorios = [
+  const documentosOpcionales = [
     { campo: 'rut', label: 'RUT' },
     { campo: 'camara_comercio', label: 'Cámara de Comercio' },
     { campo: 'certificacion_bancaria', label: 'Certificación Bancaria' },
-  ]
-
-  const documentosOpcionales = [
     { campo: 'acuerdo_seguridad', label: 'Acuerdo de Seguridad' },
     { campo: 'cedula', label: 'Cédula Representante' },
     { campo: 'circular_170', label: 'Circular 170' },
@@ -41,43 +45,53 @@ const FormProveedor = ({ onClose, onSuccess }) => {
     setErrorMsg('')
 
     try {
-      const formData = new FormData()
+      // 1) PUT datos
+      await actualizarProveedorDatos(proveedor.id_proveedor, {
+        Nombre: data.Nombre,
+        Correo: data.Correo,
+        Telefono: data.Telefono,
 
-      formData.append('id_proveedor', data.id_proveedor)
-      formData.append('Nombre', data.Nombre)
-      formData.append('Correo', data.Correo)
-      formData.append('Telefono', data.Telefono)
-
-      // ✅ nuevos campos
-      formData.append('Tipo_proveedor', data.Tipo_proveedor)
-      formData.append('Direccion', data.Direccion || '')
-      formData.append('Contacto', data.Contacto || '')
-
-      // ✅ activo
-      formData.append('Activo', data.Activo ? 'true' : 'false')
-
-      // docs obligatorios
-      documentosObligatorios.forEach(d => {
-        const file = data[d.campo]?.[0]
-        if (file instanceof File) formData.append(d.campo, file)
+        // ✅ nuevos campos
+        Tipo_proveedor: data.Tipo_proveedor,
+        Direccion: data.Direccion || '',
+        Contacto: data.Contacto || '',
       })
 
-      // docs opcionales
+      // 2) PATCH activo (solo si cambió)
+      const activoInicial = Boolean(proveedor.Activo)
+      const activoNuevo = Boolean(data.Activo)
+      if (activoNuevo !== activoInicial) {
+        await actualizarProveedorActivo(proveedor.id_proveedor, activoNuevo)
+      }
+
+      // 3) Docs (solo si adjunta alguno)
+      const formDataDocs = new FormData()
+      let hayDocs = false
+
       documentosOpcionales.forEach(d => {
         const file = data[d.campo]?.[0]
-        if (file instanceof File) formData.append(d.campo, file)
+        if (file instanceof File) {
+          formDataDocs.append(d.campo, file)
+          hayDocs = true
+        }
       })
 
-      await crearProveedor(formData)
+      if (hayDocs) {
+        await actualizarSoloDocumentosProveedor(
+          proveedor.id_proveedor,
+          formDataDocs
+        )
+      }
+
       onSuccess?.()
       onClose?.()
     } catch (error) {
-      console.error('❌ Error al registrar proveedor:', error)
+      console.error('❌ Error al editar proveedor:', error)
       const msg =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error.message ||
-        'Error al registrar proveedor.'
+        'Error al editar proveedor.'
       setErrorMsg(msg)
     } finally {
       setSubmitting(false)
@@ -90,20 +104,9 @@ const FormProveedor = ({ onClose, onSuccess }) => {
       onSubmit={handleSubmit(onSubmit)}
       encType='multipart/form-data'
     >
-      <h5 className='mb-3'>Registrar Proveedor</h5>
+      <h5 className='mb-3'>Editar Proveedor</h5>
 
       <div className='grid-datos-cliente'>
-        <div>
-          <label className='form-label'>ID Proveedor *</label>
-          <input
-            className='form-control mb-2'
-            {...register('id_proveedor', { required: true })}
-          />
-          {errors.id_proveedor && (
-            <p className='text-danger'>Este campo es obligatorio</p>
-          )}
-        </div>
-
         <div>
           <label className='form-label'>Nombre *</label>
           <input
@@ -120,18 +123,10 @@ const FormProveedor = ({ onClose, onSuccess }) => {
           <input
             type='email'
             className='form-control mb-2'
-            {...register('Correo', {
-              required: true,
-              pattern: {
-                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                message: 'Correo inválido',
-              },
-            })}
+            {...register('Correo', { required: true })}
           />
           {errors.Correo && (
-            <p className='text-danger'>
-              {errors.Correo.message || 'Campo obligatorio'}
-            </p>
+            <p className='text-danger'>Este campo es obligatorio</p>
           )}
         </div>
 
@@ -139,18 +134,10 @@ const FormProveedor = ({ onClose, onSuccess }) => {
           <label className='form-label'>Teléfono *</label>
           <input
             className='form-control mb-2'
-            {...register('Telefono', {
-              required: true,
-              pattern: {
-                value: /^[0-9]{7,15}$/,
-                message: 'Teléfono inválido',
-              },
-            })}
+            {...register('Telefono', { required: true })}
           />
           {errors.Telefono && (
-            <p className='text-danger'>
-              {errors.Telefono.message || 'Campo obligatorio'}
-            </p>
+            <p className='text-danger'>Este campo es obligatorio</p>
           )}
         </div>
 
@@ -195,30 +182,14 @@ const FormProveedor = ({ onClose, onSuccess }) => {
       </div>
 
       <hr />
-      <h6>Documentos obligatorios *</h6>
-      <div className='grid-documentos-form'>
-        {documentosObligatorios.map(d => (
-          <div className='input-archivo' key={d.campo}>
-            <label>{d.label}</label>
-            <input
-              type='file'
-              accept='.pdf,docx'
-              className={watch(d.campo)?.length ? 'input-verde' : ''}
-              {...register(d.campo, { required: true })}
-            />
-            {errors[d.campo] && <p className='text-danger'>Requerido</p>}
-          </div>
-        ))}
-      </div>
-
-      <h6 className='mt-4'>Documentos opcionales</h6>
+      <h6>Actualizar documentos (opcional)</h6>
       <div className='grid-documentos-form'>
         {documentosOpcionales.map(d => (
           <div className='input-archivo' key={d.campo}>
             <label>{d.label}</label>
             <input
               type='file'
-              accept='.pdf,.docx'
+              accept='.pdf,docx'
               className={watch(d.campo)?.length ? 'input-verde' : ''}
               {...register(d.campo)}
             />
@@ -233,11 +204,11 @@ const FormProveedor = ({ onClose, onSuccess }) => {
           Cancelar
         </button>
         <button type='submit' className='btn-agregarform' disabled={submitting}>
-          {submitting ? 'Enviando...' : 'Guardar Proveedor'}
+          {submitting ? 'Guardando...' : 'Guardar Cambios'}
         </button>
       </div>
     </form>
   )
 }
 
-export default FormProveedor
+export default FormEditarProveedor

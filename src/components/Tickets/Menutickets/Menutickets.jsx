@@ -1,32 +1,38 @@
 import './Menutickets.css'
-import { useContext } from 'react'
-import AuthContext from '../../../context/AuthContext'
 import { usePermisos } from '../../../hooks/usePermisos'
 
 const MenuTickets = ({ selectedSection, onSelectSection }) => {
-  useContext(AuthContext)
   const { tienePermiso } = usePermisos()
 
   const botones = [
-    { label: 'Usuarios', key: 'usuarios', permiso: 'crearTicket' },
-    { label: 'Soporte', key: 'soporte', permiso: 'soporteTicket' },
+    // Usuario
+    { label: 'Mis Tareas', key: 'misTareas', permiso: 'MisTareas' },
+    { label: 'Mis Creaciones', key: 'misCreaciones', permiso: 'tickets' },
+
+    // Admin
+    { label: 'Catálogos', key: 'adminCatalogos', permiso: 'perfilAdmin' },
+    { label: 'Áreas', key: 'adminAreas', permiso: 'perfilAdmin' },
+    { label: 'Teams', key: 'adminTeams', permiso: 'perfilAdmin' },
   ]
+
+  const visibles = botones.filter(btn => tienePermiso(btn.permiso))
+  const finalBotones = visibles.length
+    ? visibles
+    : botones.filter(b => b.key === 'misTareas')
 
   return (
     <div className='menu-tickets'>
-      {botones
-        .filter(btn => tienePermiso(btn.permiso))
-        .map(btn => (
-          <button
-            key={btn.key}
-            className={`menu-button ${
-              selectedSection === btn.key ? 'active' : ''
-            }`}
-            onClick={() => onSelectSection(btn.key)}
-          >
-            {btn.label}
-          </button>
-        ))}
+      {finalBotones.map(btn => (
+        <button
+          key={btn.key}
+          className={`menu-button ${
+            selectedSection === btn.key ? 'active' : ''
+          }`}
+          onClick={() => onSelectSection(btn.key)}
+        >
+          {btn.label}
+        </button>
+      ))}
     </div>
   )
 }
