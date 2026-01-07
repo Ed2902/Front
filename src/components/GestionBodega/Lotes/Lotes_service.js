@@ -103,7 +103,9 @@ export const getClientesDisponibles = async () => {
       Authorization: `Bearer ${token}`,
     },
   })
-  return response.data
+
+  // ✅ el backend devuelve {data: [...], meta: {...}}
+  return response.data?.data || []
 }
 
 // -----------------------------
@@ -118,8 +120,11 @@ export const getProveedoresDisponibles = async () => {
       Authorization: `Bearer ${token}`,
     },
   })
-  return response.data
+
+  // ✅ por seguridad lo mismo (si backend devuelve {data, meta})
+  return response.data?.data || response.data || []
 }
+
 // -----------------------------
 // INVENTARIO (resumen general)
 // -----------------------------

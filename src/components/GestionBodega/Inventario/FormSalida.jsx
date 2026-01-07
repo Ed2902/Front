@@ -13,11 +13,7 @@ import Webcam from 'react-webcam'
 import SignatureCanvas from 'react-signature-canvas'
 
 import AuthContext from '../../../context/AuthContext'
-import {
-  crearSalida,
-  crearDocumentoSalida,
-  getInventarioResumen, // ✅ estaba mal importado
-} from './salida_service'
+import { crearSalida, getInventarioResumen } from './salida_service'
 
 // ✅ este import ya existe en tu archivo y es correcto según tu estructura actual
 import { obtenerAlistamiento } from '../Movimientos/alistamiento/alistamiento_service'
@@ -149,7 +145,6 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
   // ===== Mensajes / estado
   const [statusMessage, setStatusMessage] = useState(null)
   const [procesando, setProcesando] = useState(false)
-  const [docGenerado, setDocGenerado] = useState(null)
 
   // ===== Cámara evidencia por ítem
   const [cameraIndex, setCameraIndex] = useState(null)
@@ -163,6 +158,11 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
   }
   const [firmaActual, setFirmaActual] = useState(null)
   const [firmas, setFirmas] = useState({})
+
+  // ================= UI helpers =================
+  const preventEnterSubmit = e => {
+    if (e.key === 'Enter') e.preventDefault()
+  }
 
   // ✅ si el modal abre con un alistamiento, lo seteamos acá
   useEffect(() => {
@@ -180,7 +180,9 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
           'prefillSalida',
           JSON.stringify(prefillFromState)
         )
-      } catch (_) {}
+      } catch {
+        /* empty */
+      }
       setPrefillSalida(prefillFromState)
       return
     }
@@ -188,7 +190,9 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
     try {
       const saved = sessionStorage.getItem('prefillSalida')
       if (saved) setPrefillSalida(JSON.parse(saved))
-    } catch (_) {}
+    } catch {
+      /* empty */
+    }
   }, [prefillFromState, prefillFromProps])
 
   // ================= Cargar inventario resumen =================
@@ -199,6 +203,11 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
         setInvResumen(Array.isArray(resumenData) ? resumenData : [])
       } catch (e) {
         console.error('Error cargando inventario resumen', e)
+        setStatusMessage({
+          type: 'error',
+          text: 'Error cargando inventario resumen.',
+        })
+        setTimeout(() => setStatusMessage(null), 2000)
       }
     }
     fetchData()
@@ -418,6 +427,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
               e?.message ||
               'No se pudo cargar el alistamiento.',
           })
+          setTimeout(() => setStatusMessage(null), 2500)
           return
         }
       }
@@ -434,17 +444,16 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
           type: 'error',
           text: 'El alistamiento no trae detalles para precargar.',
         })
+        setTimeout(() => setStatusMessage(null), 2500)
         return
       }
 
-      // ✅ encabezado (esto llena el input)
       reset({
         id_alistamiento: String(id_alist),
         comentario: String(data?.observaciones || ''),
       })
       setValue('id_alistamiento', String(id_alist))
 
-      // detalles -> items
       const nuevos = detalles.map((d, idx) => normalizeDetalleToItem(d, idx))
 
       setItems(prev => {
@@ -532,14 +541,22 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
 
   // ================= Firmas =================
   const guardarFirma = tipo => {
-    const canvas = firmaRefs[tipo].current
-    if (!canvas || canvas.isEmpty()) return alert('Firma vacía')
+    const canvas = firmaRefs[tipo]?.current
+    if (!canvas || canvas.isEmpty()) {
+      setStatusMessage({ type: 'error', text: 'La firma está vacía.' })
+      setTimeout(() => setStatusMessage(null), 2000)
+      return
+    }
+
     const b64 = canvas.toDataURL('image/png')
     setFirmas(prev => ({ ...prev, [tipo]: b64 }))
     setFirmaActual(null)
+
+    setStatusMessage({ type: 'success', text: `Firma ${tipo} guardada.` })
+    setTimeout(() => setStatusMessage(null), 1200)
   }
 
-  const limpiarFirma = tipo => firmaRefs[tipo].current?.clear()
+  const limpiarFirma = tipo => firmaRefs[tipo]?.current?.clear()
 
   // ================= Agregar manual =================
   const onAddItem = handleSubmitItem(
@@ -608,7 +625,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
     items.length > 0 &&
     items.every(it => !!it.id_bodega_origen && !!it.id_ubicacion_origen)
 
-  // ================= Submit (procesar salidas) =================
+  // ================= Submit (procesar salida NUEVA) =================
   const procesarSalidas = async data => {
     const id_alist = String(data?.id_alistamiento || '').trim()
 
@@ -639,99 +656,71 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       return
     }
 
+    // payload items (SIN evidencia, porque va por evidencias[])
+    const itemsPayload = items.map(it => ({
+      id_lote: String(it.id_lote),
+      id_producto: String(it.id_producto),
+      cantidad: toNumberCO(it.cantidad),
+      id_bodega_origen: String(it.id_bodega_origen),
+      id_ubicacion_origen: String(it.id_ubicacion_origen),
+    }))
+
+    const formData = new FormData()
+    formData.append('id_alistamiento', id_alist)
+    formData.append('comentario', data?.comentario || '')
+
+    // ✅ obligatorio para tu validator en /salidas
+    formData.append('nombre', 'AUTO')
+
+    formData.append(
+      'id_personal',
+      user?.personal?.id_personal || user?.id_usuario || ''
+    )
+
+    // ✅ items como JSON string
+    formData.append('items', JSON.stringify(itemsPayload))
+
+    // ✅ evidencias: una por ítem, en el mismo orden que itemsPayload
+    items.forEach(it => {
+      formData.append('evidencias', it.evidenciaFile)
+    })
+
+    // ✅ firmas opcionales
+    formData.append('firma_autorizador', firmas.autorizador || '')
+    formData.append('firma_conductor', firmas.conductor || '')
+    formData.append('firma_receptor', firmas.receptor || '')
+
     setProcesando(true)
+    try {
+      await crearSalida(formData)
 
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i]
-      const formData = new FormData()
+      setStatusMessage({ type: 'success', text: 'Salida registrada.' })
+      setTimeout(() => setStatusMessage(null), 1500)
 
-      formData.append('id_alistamiento', id_alist)
-      formData.append('comentario', data.comentario || '')
-      formData.append(
-        'id_personal',
-        user?.personal?.id_personal || user?.id_usuario || ''
-      )
-
-      formData.append('id_lote', String(it.id_lote))
-      formData.append('id_producto', String(it.id_producto))
-      formData.append('cantidad', String(toNumberCO(it.cantidad)))
-      formData.append('id_bodega_origen', String(it.id_bodega_origen))
-      formData.append('id_ubicacion_origen', String(it.id_ubicacion_origen))
-
-      formData.append('evidencia', it.evidenciaFile)
-
-      formData.append('firma_autorizador', firmas.autorizador || '')
-      formData.append('firma_conductor', firmas.conductor || '')
-      formData.append('firma_receptor', firmas.receptor || '')
+      setProcesando(false)
+      reset({ id_alistamiento: '', comentario: '' })
+      setItems([])
+      setInvOpciones([])
+      setOpcionSeleccionadaKey('')
+      setCantidadDisponibleItem(null)
+      setFirmas({})
+      setFirmaActual(null)
 
       try {
-        await crearSalida(formData)
-      } catch (e) {
-        setStatusMessage({
-          type: 'error',
-          text: e?.response?.data?.message || e?.message || 'Error en salida',
-        })
-        setTimeout(() => setStatusMessage(null), 2500)
-        setProcesando(false)
-        return
-      }
-    }
-
-    try {
-      const payload = {
-        id_alistamiento: id_alist,
-        comentario_global: data.comentario || '',
-        creado_por: user?.id_usuario || user?.personal?.id_personal || null,
-        firmas: {
-          autorizador: firmas.autorizador || null,
-          conductor: firmas.conductor || null,
-          receptor: firmas.receptor || null,
-        },
-        items: items.map(it => ({
-          id_lote: String(it.id_lote),
-          id_producto: String(it.id_producto),
-          cantidad: toNumberCO(it.cantidad),
-          id_bodega_origen: it.id_bodega_origen || null,
-          id_ubicacion_origen: it.id_ubicacion_origen || null,
-          producto_nombre: it.nombre_producto_view || null,
-          bodega_origen_nombre: it.bodega_nombre_view || null,
-          ubicacion_origen_nombre: it.ubicacion_nombre_view || null,
-        })),
+        sessionStorage.removeItem('prefillSalida')
+      } catch {
+        /* empty */
       }
 
-      const resp = await crearDocumentoSalida(payload)
-      const idDoc = resp?.id_documento
-      const downloadUrl =
-        resp?.downloadUrl ||
-        (idDoc ? `/api/documentos-salida/${idDoc}/download` : null)
-
-      if (idDoc && downloadUrl) setDocGenerado({ id: idDoc, url: downloadUrl })
+      onSuccess?.()
     } catch (e) {
-      console.error('No se pudo generar documento', e)
+      setProcesando(false)
+      setStatusMessage({
+        type: 'error',
+        text: e?.response?.data?.message || e?.message || 'Error en salida',
+      })
+      setTimeout(() => setStatusMessage(null), 2500)
     }
-
-    setStatusMessage({ type: 'success', text: 'Salidas registradas.' })
-    setTimeout(() => setStatusMessage(null), 1500)
-
-    setProcesando(false)
-    reset({ id_alistamiento: '', comentario: '' })
-    setItems([])
-    setInvOpciones([])
-    setOpcionSeleccionadaKey('')
-    setCantidadDisponibleItem(null)
-    setFirmas({})
-    setDocGenerado(null)
-
-    try {
-      sessionStorage.removeItem('prefillSalida')
-    } catch (_) {}
-
-    onSuccess?.()
-  }
-
-  // ================= UI helpers =================
-  const preventEnterSubmit = e => {
-    if (e.key === 'Enter') e.preventDefault()
   }
 
   const totalCantidad = useMemo(() => {
@@ -742,7 +731,21 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
 
   return (
     <div className='container-fluid mt-3'>
-      <h5 className='fw-bold text-center mb-2'>Registrar Salida (híbrido)</h5>
+      <div className='d-flex align-items-center justify-content-between mb-2'>
+        <h5 className='fw-bold text-center m-0 flex-grow-1'>
+          Registrar Salida (híbrido)
+        </h5>
+
+        {typeof onClose === 'function' && (
+          <button
+            type='button'
+            className='btn btn-outline-secondary btn-sm ms-2'
+            onClick={onClose}
+          >
+            Cerrar
+          </button>
+        )}
+      </div>
 
       {statusMessage && (
         <div
@@ -764,7 +767,11 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(procesarSalidas)} className='mt-1'>
+      <form
+        onSubmit={handleSubmit(procesarSalidas)}
+        onKeyDown={preventEnterSubmit}
+        className='mt-1'
+      >
         {/* ===== Encabezado ===== */}
         <div className='row g-2'>
           <div className='col-md-4'>
@@ -775,7 +782,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
               }`}
               readOnly
               {...register('id_alistamiento', { required: true })}
-              value={watch('id_alistamiento') || ''} // ✅ asegura que se muestre
+              value={watch('id_alistamiento') || ''}
             />
             {errors.id_alistamiento && (
               <div className='invalid-feedback'>Obligatorio</div>
@@ -827,17 +834,6 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
           >
             Vaciar lista
           </button>
-
-          {docGenerado?.url && (
-            <a
-              className='btn btn-outline-success btn-sm'
-              href={docGenerado.url}
-              target='_blank'
-              rel='noreferrer'
-            >
-              Descargar documento
-            </a>
-          )}
 
           <div className='ms-auto small text-muted d-flex align-items-center'>
             Ítems: <b className='ms-1'>{items.length}</b> — Total Cantidad:{' '}
@@ -1250,7 +1246,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
               procesando
             }
           >
-            {procesando ? 'Procesando…' : 'Procesar salidas'}
+            {procesando ? 'Procesando…' : 'Procesar salida'}
           </button>
         </div>
       </form>
