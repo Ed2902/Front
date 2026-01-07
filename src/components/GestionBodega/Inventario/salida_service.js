@@ -1,3 +1,4 @@
+// salida_service.js
 import axios from 'axios'
 
 const api = axios.create({
@@ -57,66 +58,37 @@ export const getUbicaciones = async () => {
   return response.data
 }
 
-// POST - Registrar salida (con FormData)
+/**
+ * ✅ POST - Crear salida NUEVA (1 sola salida + muchos detalles)
+ * IMPORTANTE:
+ * - Back espera multipart/form-data
+ * - campos: id_alistamiento, nombre, comentario, id_personal
+ * - items: JSON.stringify([...])
+ * - evidencias: N archivos (mismo orden que items)
+ */
 export const crearSalida = async formData => {
   const token = getAuthToken()
-  const response = await api.post('/historial/salida', formData, {
+  const response = await api.post('/salidas', formData, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data
 }
 
-// ===== Documentos de Salida (PDF resumen de salidas masivas) =====
-// IMPORTANTE: estos endpoints NO alteran inventario ni historial;
-// solo generan/listan/obtienen/descargan el documento PDF “resumen”.
-
-export const crearDocumentoSalida = async payload => {
-  // payload: { lotes: [...], productos: [...], items: [...], comentarios, firmas, ... }
-  const token = getAuthToken()
-  const response = await api.post('/documentos-salida', payload, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return response.data
-}
-
-export const listarDocumentosSalida = async (params = {}) => {
-  // params opcionales: { desde, hasta, creado_por, limit, offset }
-  const token = getAuthToken()
-  const response = await api.get('/documentos-salida', {
-    headers: { Authorization: `Bearer ${token}` },
-    params,
-  })
-  return response.data
-}
-
-export const obtenerDocumentoSalida = async id_documento => {
-  const token = getAuthToken()
-  const response = await api.get(`/documentos-salida/${id_documento}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return response.data
-}
-
-export const descargarDocumentoSalida = async id_documento => {
-  // Devuelve un Blob del PDF. En el front puedes crear un ObjectURL y forzar descarga.
-  const token = getAuthToken()
-  const response = await api.get(
-    `/documentos-salida/${id_documento}/download`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-    }
-  )
-  return response.data // Blob
-}
 // ✅ RESUMEN DE INVENTARIO (para selects de lote/producto/posición)
-// Ajusta el endpoint si tu back usa otro nombre.
 export const getInventarioResumen = async () => {
   const token = localStorage.getItem('token')
-
   const resp = await api.get('/inventario/resumen', {
     headers: { Authorization: `Bearer ${token}` },
   })
-
   return resp.data
 }
+
+/**
+ * ⛔️ Ya NO se usa en el flujo actual (si ya eliminaron documentos-salida).
+ * Lo dejo comentado para que no se rompa nada si aún existe en otros lugares.
+ *
+ * export const crearDocumentoSalida = async payload => {...}
+ * export const listarDocumentosSalida = async (params={}) => {...}
+ * export const obtenerDocumentoSalida = async id => {...}
+ * export const descargarDocumentoSalida = async id => {...}
+ */
