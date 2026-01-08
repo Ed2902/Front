@@ -22,12 +22,11 @@ import {
   confirmarEntrada,
 } from './entrada_service'
 import Modal from 'react-modal'
-import Webcam from 'react-webcam'
 import { saveAs } from 'file-saver'
 
 Modal.setAppElement('#root')
 
-// Si quieres permitir confirmar sin fotos, ponlo en false.
+// ✅ Si quieres confirmar sin fotos, ponlo en false
 const REQUIRE_PHOTOS_TO_CONFIRM = true
 
 // Normaliza url pública (para qr_path o rutas relativas en uploads)
@@ -47,14 +46,13 @@ const resolvePublicUrl = maybeUrlOrFile => {
   return `${PUBLIC_BASE}/uploads/${filename}`
 }
 
-// Detecta si hay datos mínimos para guardar borrador (evita borradores vacíos)
+// Detecta si hay datos mínimos para guardar borrador
 const hasMinimumDraftData = ({ idLoteGlobal, items, data, user }) => {
   const hasLote = !!idLoteGlobal
   const hasItems = (items || []).length > 0
-  const hasDestino = !!data?.id_bodega_destino && !!data?.id_ubicacion_destino
   const hasUser = !!(user?.personal?.id_personal || user?.id)
   const hasObs = !!(data?.comentario && String(data.comentario).trim())
-  return hasUser && hasLote && (hasItems || hasDestino || hasObs)
+  return hasUser && hasLote && (hasItems || hasObs)
 }
 
 const FormIngreso = forwardRef(
@@ -87,18 +85,9 @@ const FormIngreso = forwardRef(
     const [entradaEstado, setEntradaEstado] = useState('NUEVA') // NUEVA | BORRADOR | CONFIRMADA
     const [dirty, setDirty] = useState(false)
     const savingRef = useRef(false)
-
-    // ✅ evita duplicar detalles si solo cambias cabecera
     const [itemsDirty, setItemsDirty] = useState(false)
 
-    // Bodega/Ubi global (destino)
-    const idBodegaDestino = watch('id_bodega_destino')
-    const ubicacionesDeBodega = ubicaciones.filter(
-      u => u.id_bodega === (idBodegaDestino || '')
-    )
-
     // ===== Ítems =====
-    // { id_producto, cantidad, verificado, evidenciaFile?, evidenciaName?, evidenciaUrl? }
     const [items, setItems] = useState([])
 
     // Sub-form de ítem
@@ -111,10 +100,6 @@ const FormIngreso = forwardRef(
     } = useForm()
 
     const productoItem = watchItem('id_producto_item')
-
-    // Cámara por ítem
-    const [cameraIndex, setCameraIndex] = useState(null)
-    const webcamRef = useRef(null)
 
     // ========= CARGA INICIAL =========
     useEffect(() => {
@@ -140,22 +125,19 @@ const FormIngreso = forwardRef(
         } catch (err) {
           console.error('Error cargando datos:', err)
           setStatusMessage({ type: 'error', text: 'Error cargando catálogos' })
+          setTimeout(() => setStatusMessage(null), 2200)
         }
       }
       fetchData()
     }, [])
 
-    // ====== (NUEVO) Orden correcto de lotes: GEN_099 arriba, GEN_001 abajo ======
+    // ====== Orden correcto de lotes: GEN_099 arriba, GEN_001 abajo ======
     const parseLote = useCallback(idLote => {
       const s = String(idLote || '').trim()
-
-      // Formato esperado: PREFIJO_NUMERO (ej: GEN_004)
-      // No se esperan caracteres al final.
       const m = s.match(/^([A-Za-z]+)_(\d+)$/)
       if (!m) return { raw: s, prefix: s.toUpperCase(), num: -1 }
-
       const prefix = m[1].toUpperCase()
-      const num = Number(m[2]) // 010 -> 10, 011 -> 11, 099 -> 99
+      const num = Number(m[2])
       return { raw: s, prefix, num: Number.isFinite(num) ? num : -1 }
     }, [])
 
@@ -168,14 +150,8 @@ const FormIngreso = forwardRef(
       unique.sort((a, b) => {
         const A = parseLote(a.id_lote)
         const B = parseLote(b.id_lote)
-
-        // Si en algún momento existieran varios prefijos, los agrupa
         if (A.prefix !== B.prefix) return A.prefix.localeCompare(B.prefix)
-
-        // Descendente por número: 99 arriba, 11 arriba de 10, etc.
         if (B.num !== A.num) return B.num - A.num
-
-        // Desempate estable
         return String(B.raw).localeCompare(String(A.raw))
       })
 
@@ -192,6 +168,14 @@ const FormIngreso = forwardRef(
         )
       )
     }, [lotesRaw, idLoteGlobal])
+
+    // ✅ si ya están todos los productos, deshabilita el botón
+    const allLoteProductsAlreadyAdded = useMemo(() => {
+      if (!idLoteGlobal) return false
+      if (!productosUnicosDelLote.length) return false
+      const itemsSet = new Set(items.map(it => it.id_producto))
+      return productosUnicosDelLote.every(p => itemsSet.has(p))
+    }, [idLoteGlobal, productosUnicosDelLote, items])
 
     const productoNombre = useCallback(
       idProd => {
@@ -210,7 +194,6 @@ const FormIngreso = forwardRef(
       [prodById, lotesRaw, idLoteGlobal]
     )
 
-    // ✅ useCallback para evitar warning en useMemo deps
     const productoUnidad = useCallback(
       idProd => prodById[idProd]?.Unidad_de_medida || '',
       [prodById]
@@ -257,7 +240,6 @@ const FormIngreso = forwardRef(
     }
 
     // ========= Agregar todo el lote =========
-    // Quedan SIN verificar para obligar revisión del usuario.
     const agregarTodoElLote = () => {
       if (!idLoteGlobal) {
         setStatusMessage({ type: 'error', text: 'Selecciona el lote global.' })
@@ -272,6 +254,10 @@ const FormIngreso = forwardRef(
         setTimeout(() => setStatusMessage(null), 2000)
         return
       }
+
+      const data = getValues()
+      const defaultBodega = data.id_bodega_destino || ''
+      const defaultUbi = data.id_ubicacion_destino || ''
 
       setItems(prev => {
         const prevMap = new Map(prev.map(it => [it.id_producto, it]))
@@ -291,6 +277,8 @@ const FormIngreso = forwardRef(
             prevMap.set(idProd, {
               id_producto: idProd,
               cantidad: Number(cantSugerida) || 0,
+              Id_bodega_destino: defaultBodega,
+              Id_ubicacion_destino: defaultUbi,
               verificado: false,
               evidenciaFile: null,
               evidenciaName: '',
@@ -311,9 +299,9 @@ const FormIngreso = forwardRef(
 
       setStatusMessage({
         type: 'success',
-        text: 'Se agregaron los productos del lote. Revisa cantidades y verifica cada ítem.',
+        text: 'Se agregaron los productos del lote. Revisa y verifica.',
       })
-      setTimeout(() => setStatusMessage(null), 2600)
+      setTimeout(() => setStatusMessage(null), 2200)
     }
 
     // ========= Verificación =========
@@ -336,7 +324,39 @@ const FormIngreso = forwardRef(
         copy[idx] = {
           ...copy[idx],
           cantidad: Number.isFinite(cant) ? cant : 0,
-          // al cambiar cantidad, obligamos re-verificación
+          verificado: false,
+        }
+        return copy
+      })
+      if (entradaEstado !== 'CONFIRMADA') {
+        setDirty(true)
+        setItemsDirty(true)
+      }
+    }
+
+    const actualizarBodegaItem = (idx, idBodega) => {
+      setItems(prev => {
+        const copy = [...prev]
+        copy[idx] = {
+          ...copy[idx],
+          Id_bodega_destino: idBodega,
+          Id_ubicacion_destino: '',
+          verificado: false,
+        }
+        return copy
+      })
+      if (entradaEstado !== 'CONFIRMADA') {
+        setDirty(true)
+        setItemsDirty(true)
+      }
+    }
+
+    const actualizarUbicacionItem = (idx, idUbi) => {
+      setItems(prev => {
+        const copy = [...prev]
+        copy[idx] = {
+          ...copy[idx],
+          Id_ubicacion_destino: idUbi,
           verificado: false,
         }
         return copy
@@ -348,7 +368,7 @@ const FormIngreso = forwardRef(
     }
 
     // ========= Totales =========
-    const totalesPorUnidad = useMemo(() => {
+    const _totalesPorUnidad = useMemo(() => {
       const acc = {}
       for (const it of items) {
         const unidad = productoUnidad(it.id_producto) || 'UND'
@@ -358,8 +378,44 @@ const FormIngreso = forwardRef(
       return acc
     }, [items, productoUnidad])
 
+    const totalCantidad = useMemo(() => {
+      return items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0)
+    }, [items])
+
     const allItemsVerified =
       items.length > 0 && items.every(it => it.verificado === true)
+
+    const allItemsHaveEvidence =
+      items.length > 0 &&
+      items.every(it => !!it.evidenciaFile || !!it.evidenciaUrl)
+
+    const allItemsHaveDestino =
+      items.length > 0 &&
+      items.every(it => !!it.Id_bodega_destino && !!it.Id_ubicacion_destino)
+
+    const comentarioWatch = watch('comentario')
+
+    const comentarioValido = useMemo(() => {
+      return !!String(comentarioWatch || '').trim()
+    }, [comentarioWatch])
+
+    const progress = useMemo(() => {
+      let p = 0
+      if (idLoteGlobal) p += 20
+      if (comentarioValido) p += 20
+      if (items.length > 0) p += 20
+      if (allItemsHaveDestino) p += 20
+      if (allItemsVerified) p += 10
+      if (!REQUIRE_PHOTOS_TO_CONFIRM || allItemsHaveEvidence) p += 10
+      return Math.min(100, p)
+    }, [
+      idLoteGlobal,
+      comentarioValido,
+      items.length,
+      allItemsHaveDestino,
+      allItemsVerified,
+      allItemsHaveEvidence,
+    ])
 
     // ========= AUTO-LLENADO PARA EDITAR =========
     useEffect(() => {
@@ -387,13 +443,12 @@ const FormIngreso = forwardRef(
       setEntradaId(id)
       setEntradaNumero(numero)
       setEntradaEstado(estado || 'BORRADOR')
-
       setIdLoteGlobal(firstLote || '')
 
       reset({
-        id_bodega_destino: initialEntrada?.Id_bodega_destino || '',
-        id_ubicacion_destino: initialEntrada?.Id_ubicacion_destino || '',
         comentario: initialEntrada?.Observaciones || '',
+        id_bodega_destino: '',
+        id_ubicacion_destino: '',
       })
 
       const mapped = dets.map(d => {
@@ -407,6 +462,9 @@ const FormIngreso = forwardRef(
         return {
           id_producto: idProd,
           cantidad: cant,
+          Id_bodega_destino: d?.Id_bodega_destino || d?.id_bodega_destino || '',
+          Id_ubicacion_destino:
+            d?.Id_ubicacion_destino || d?.id_ubicacion_destino || '',
           verificado: true,
           evidenciaFile: null,
           evidenciaName: '',
@@ -415,7 +473,6 @@ const FormIngreso = forwardRef(
       })
 
       setItems(mapped)
-
       setDirty(false)
       setItemsDirty(false)
       setInfoLote(null)
@@ -423,7 +480,7 @@ const FormIngreso = forwardRef(
       setValueItem('cantidad_item', '')
     }, [initialEntrada, reset, setValueItem])
 
-    // ========= Mark dirty when user changes fields =========
+    // ========= Mark dirty on change =========
     useEffect(() => {
       const sub = watch(() => {
         if (entradaEstado !== 'CONFIRMADA') setDirty(true)
@@ -440,6 +497,7 @@ const FormIngreso = forwardRef(
           evidenciaFile: file || null,
           evidenciaName: file?.name || '',
           evidenciaUrl: null,
+          verificado: false,
         }
         return copy
       })
@@ -447,26 +505,6 @@ const FormIngreso = forwardRef(
         setDirty(true)
         setItemsDirty(true)
       }
-    }
-
-    const openCameraForItem = idx => setCameraIndex(idx)
-    const closeCamera = () => setCameraIndex(null)
-    const captureForItem = () => {
-      const imageSrc = webcamRef.current?.getScreenshot()
-      if (!imageSrc) return
-      fetch(imageSrc)
-        .then(r => r.blob())
-        .then(blob => {
-          const file = new File(
-            [blob],
-            `foto-item-${cameraIndex}-${Date.now()}.jpg`,
-            {
-              type: 'image/jpeg',
-            }
-          )
-          onFileForItem(cameraIndex, file)
-          setCameraIndex(null)
-        })
     }
 
     const descargarPNG = (src, nombre = 'qr.png') => {
@@ -477,52 +515,10 @@ const FormIngreso = forwardRef(
         .catch(() => {})
     }
 
-    const descargarZIPQRs = async lista => {
-      try {
-        const JSZip = (await import(/* @vite-ignore */ 'jszip')).default
-        const zip = new JSZip()
-        let added = 0
-
-        for (let i = 0; i < (lista || []).length; i++) {
-          const r = lista[i]
-          const src = r?.qr_image
-          if (!src) continue
-
-          const lote = r?.lote || idLoteGlobal || 'LOTE'
-          const prod = r?.producto || `PROD_${i + 1}`
-          const safeProd = String(prod).replace(/[^a-z0-9_\-.]/gi, '_')
-          const safeLote = String(lote).replace(/[^a-z0-9_\-.]/gi, '_')
-          const name = `QR_${safeLote}_${safeProd}_${i + 1}.png`
-
-          const blob = await fetch(src).then(res => res.blob())
-          zip.file(name, blob)
-          added++
-        }
-
-        if (!added) {
-          setStatusMessage({ type: 'error', text: 'No hay QR para comprimir.' })
-          setTimeout(() => setStatusMessage(null), 2000)
-          return
-        }
-
-        const content = await zip.generateAsync({ type: 'blob' })
-        saveAs(content, `QRs_${idLoteGlobal || 'lote'}.zip`)
-      } catch (err) {
-        console.error('ZIP QR error', err)
-        setStatusMessage({
-          type: 'error',
-          text: 'Para ZIP instala: npm i jszip',
-        })
-        setTimeout(() => setStatusMessage(null), 3000)
-      }
-    }
-
     // ========= SUBFORM: Agregar ítem =========
-    // Manual: el usuario digitó cantidad, lo marcamos verificado por defecto.
     const onAddItem = handleSubmitItem(
       ({ id_producto_item, cantidad_item }) => {
         const cant = Number(cantidad_item)
-
         if (!idLoteGlobal) {
           setStatusMessage({
             type: 'error',
@@ -542,6 +538,10 @@ const FormIngreso = forwardRef(
           return
         }
 
+        const data = getValues()
+        const defaultBodega = data.id_bodega_destino || ''
+        const defaultUbi = data.id_ubicacion_destino || ''
+
         const idx = items.findIndex(it => it.id_producto === id_producto_item)
         if (idx >= 0) {
           const copy = [...items]
@@ -557,6 +557,8 @@ const FormIngreso = forwardRef(
             {
               id_producto: id_producto_item,
               cantidad: cant,
+              Id_bodega_destino: defaultBodega,
+              Id_ubicacion_destino: defaultUbi,
               verificado: true,
               evidenciaFile: null,
               evidenciaName: '',
@@ -582,19 +584,11 @@ const FormIngreso = forwardRef(
       }
     }
 
-    // ========= RESULTADOS =========
+    // ========= RESULTADOS / MODAL =========
     const [procesando, setProcesando] = useState(false)
-
-    // eslint-disable-next-line no-unused-vars
-    const [progreso, setProgreso] = useState([])
-
     const [modalResultado, setModalResultado] = useState(false)
     const [respuestas, setRespuestas] = useState([])
     const [pdfUrl, setPdfUrl] = useState(null)
-
-    const allItemsHaveEvidence =
-      items.length > 0 &&
-      items.every(it => !!it.evidenciaFile || !!it.evidenciaUrl)
 
     // ==========================================
     // guardar borrador (create o update)
@@ -625,17 +619,17 @@ const FormIngreso = forwardRef(
         }
 
         if (!idLoteGlobal) throw new Error('Selecciona el lote global.')
-        if (!data.id_bodega_destino || !data.id_ubicacion_destino) {
-          throw new Error('Selecciona bodega y ubicación destino.')
-        }
         if (!items.length) throw new Error('Agrega al menos un ítem.')
+        if (!allItemsHaveDestino) {
+          throw new Error(
+            'Cada producto debe tener bodega y ubicación destino.'
+          )
+        }
 
         const cabeceraPayload = {
           Fecha_entrada: new Date().toISOString(),
           Id_personal: user?.personal?.id_personal || '',
           Observaciones: data.comentario || '',
-          Id_bodega_destino: data.id_bodega_destino,
-          Id_ubicacion_destino: data.id_ubicacion_destino,
         }
 
         let respCab
@@ -655,7 +649,7 @@ const FormIngreso = forwardRef(
         setEntradaNumero(entrada?.Numero_documento || entradaNumero)
         setEntradaEstado(prev => (prev === 'CONFIRMADA' ? prev : 'BORRADOR'))
 
-        // ✅ si estás editando y NO tocaste items/lote, NO re-crea detalles
+        // ✅ Si solo cambió cabecera
         if (entradaId && !itemsDirty) {
           setDirty(false)
           if (!silent) {
@@ -669,6 +663,8 @@ const FormIngreso = forwardRef(
           Id_producto: it.id_producto,
           Id_lote: idLoteGlobal,
           Cantidad: it.cantidad,
+          Id_bodega_destino: it.Id_bodega_destino,
+          Id_ubicacion_destino: it.Id_ubicacion_destino,
           Comentario: '',
         }))
 
@@ -676,14 +672,16 @@ const FormIngreso = forwardRef(
           idEntrada,
           detallesPayload
         )
-        const detallesCreados = respDetalles?.data || respDetalles || []
+        const detallesCreados =
+          respDetalles?.data?.data || respDetalles?.data || respDetalles || []
 
         const detallePorProducto = new Map()
         ;(detallesCreados || []).forEach(d => {
-          detallePorProducto.set(d.Id_producto, d.Id_detalle)
+          const idProd = d.Id_producto || d.id_producto
+          const idDet = d.Id_detalle || d.id_detalle
+          if (idProd && idDet) detallePorProducto.set(idProd, idDet)
         })
 
-        // subir fotos SOLO si hay evidenciaFile nueva
         for (let i = 0; i < items.length; i++) {
           const it = items[i]
           const idDetalle = detallePorProducto.get(it.id_producto)
@@ -691,7 +689,7 @@ const FormIngreso = forwardRef(
             try {
               await subirFotoDetalleEntrada(idDetalle, it.evidenciaFile)
             } catch (e) {
-              if (!silent) console.warn('Error subiendo foto en borrador:', e)
+              if (!silent) console.warn('Error subiendo foto:', e)
             }
           }
         }
@@ -704,6 +702,7 @@ const FormIngreso = forwardRef(
         }
         return { ok: true, idEntrada }
       } catch (err) {
+        console.error(err)
         if (!silent) {
           setStatusMessage({
             type: 'error',
@@ -713,8 +712,6 @@ const FormIngreso = forwardRef(
               'Error guardando borrador',
           })
           setTimeout(() => setStatusMessage(null), 2600)
-        } else {
-          console.warn('Autosave borrador falló:', err)
         }
         return { ok: false, error: err }
       } finally {
@@ -744,12 +741,12 @@ const FormIngreso = forwardRef(
         setTimeout(() => setStatusMessage(null), 1800)
         return
       }
-      if (!data.id_bodega_destino || !data.id_ubicacion_destino) {
+      if (!allItemsHaveDestino) {
         setStatusMessage({
           type: 'error',
-          text: 'Selecciona bodega y ubicación destino.',
+          text: 'Cada producto debe tener bodega y ubicación destino.',
         })
-        setTimeout(() => setStatusMessage(null), 2000)
+        setTimeout(() => setStatusMessage(null), 2400)
         return
       }
       if (!data.comentario) {
@@ -760,17 +757,14 @@ const FormIngreso = forwardRef(
         setTimeout(() => setStatusMessage(null), 2000)
         return
       }
-
-      // ✅ OBLIGATORIO: el usuario debe revisar y verificar
       if (!allItemsVerified) {
         setStatusMessage({
           type: 'error',
-          text: 'Debes revisar las cantidades y marcar como verificados todos los ítems.',
+          text: 'Debes verificar todos los ítems.',
         })
-        setTimeout(() => setStatusMessage(null), 2600)
+        setTimeout(() => setStatusMessage(null), 2200)
         return
       }
-
       if (REQUIRE_PHOTOS_TO_CONFIRM && !allItemsHaveEvidence) {
         setStatusMessage({
           type: 'error',
@@ -782,9 +776,6 @@ const FormIngreso = forwardRef(
 
       setProcesando(true)
       setPdfUrl(null)
-      setProgreso(
-        items.map((_, idx) => ({ idx, estado: 'pendiente', mensaje: '' }))
-      )
 
       try {
         const saved = await guardarBorrador({ silent: true })
@@ -794,8 +785,10 @@ const FormIngreso = forwardRef(
         const respConf = await confirmarEntrada(idToConfirm)
         const confData = respConf?.data || respConf
 
-        const movimientos = confData?.movimientos || []
-        const rutaPdf = confData?.Ruta_pdf || confData?.ruta_pdf
+        const movimientos =
+          confData?.movimientos || confData?.data?.movimientos || []
+        const rutaPdf =
+          confData?.Ruta_pdf || confData?.ruta_pdf || confData?.data?.Ruta_pdf
         if (rutaPdf) setPdfUrl(resolvePublicUrl(rutaPdf))
 
         const resps = movimientos.map((m, idx) => {
@@ -833,7 +826,7 @@ const FormIngreso = forwardRef(
     }
 
     // ==========================================
-    // CIERRE SEGURO (guardar borrador si dirty)
+    // CIERRE SEGURO
     // ==========================================
     const handleCloseRequest = async () => {
       if (entradaEstado === 'CONFIRMADA') {
@@ -847,19 +840,6 @@ const FormIngreso = forwardRef(
     useImperativeHandle(ref, () => ({
       requestClose: () => handleCloseRequest(),
     }))
-
-    useEffect(() => {
-      return () => {
-        try {
-          if (entradaEstado !== 'CONFIRMADA' && dirty && !savingRef.current) {
-            guardarBorrador({ silent: true })
-          }
-        } catch {
-          /* empty */
-        }
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dirty, entradaEstado])
 
     const cerrarModalResultado = () => {
       setModalResultado(false)
@@ -876,17 +856,32 @@ const FormIngreso = forwardRef(
       onSuccess && onSuccess()
     }
 
+    // ==========================================
+    // UI COMPACTA
+    // ==========================================
     return (
-      <div className='container-fluid mt-3'>
-        <div className='d-flex justify-content-between align-items-center mb-2'>
-          <h5 className='fw-bold text-center m-0'>
-            Registrar Entrada (documento + fotos)
-          </h5>
+      <div className='container-fluid py-2' style={{ maxWidth: 1480 }}>
+        {/* Header compacto */}
+        <div className='d-flex align-items-center justify-content-between mb-2'>
+          <div className='d-flex align-items-center gap-2 flex-wrap'>
+            <h6 className='fw-bold m-0'>Entrada</h6>
+            <span className='badge bg-dark'>{entradaEstado}</span>
+            {entradaNumero && (
+              <span className='badge bg-light text-dark border'>
+                {entradaNumero}
+              </span>
+            )}
+            {dirty && entradaEstado !== 'CONFIRMADA' && (
+              <span className='badge bg-warning text-dark border'>
+                Sin guardar
+              </span>
+            )}
+          </div>
 
           {onClose && (
             <button
               type='button'
-              className='btn btn-outline-secondary btn-sm'
+              className='btn btn-sm btn-outline-secondary'
               onClick={handleCloseRequest}
               disabled={procesando || isSubmitting}
             >
@@ -895,47 +890,94 @@ const FormIngreso = forwardRef(
           )}
         </div>
 
+        {/* Status compacto */}
         {statusMessage && (
           <div
-            className='position-sticky top-0'
-            style={{
-              zIndex: 1200,
-              borderRadius: 8,
-              padding: '8px 12px',
-              background:
-                statusMessage.type === 'success' ? '#00BA59' : '#F74C1B',
-              color: 'white',
-              boxShadow: '0 6px 20px rgba(0,0,0,.15)',
-              textAlign: 'center',
-              marginBottom: 8,
-            }}
+            className={`alert py-2 px-3 mb-2 ${
+              statusMessage.type === 'success'
+                ? 'alert-success'
+                : 'alert-danger'
+            }`}
             role='status'
           >
-            {statusMessage.text}
+            <small className='fw-semibold'>
+              {statusMessage.type === 'success' ? '✅ ' : '⚠️ '}
+              {statusMessage.text}
+            </small>
           </div>
         )}
 
-        <div className='d-flex flex-wrap gap-2 align-items-center mb-2'>
-          <span className='badge bg-secondary'>Estado: {entradaEstado}</span>
-          {entradaNumero && (
-            <span className='badge bg-info text-dark'>{entradaNumero}</span>
-          )}
-          {dirty && entradaEstado !== 'CONFIRMADA' && (
-            <span className='badge bg-warning text-dark'>
-              Cambios sin guardar
+        {/* Progreso compacto */}
+        <div className='mb-2'>
+          <div className='d-flex justify-content-between'>
+            <small className='text-muted'>Progreso</small>
+            <small className='text-muted fw-semibold'>{progress}%</small>
+          </div>
+          <div className='progress' style={{ height: 8 }}>
+            <div className='progress-bar' style={{ width: `${progress}%` }} />
+          </div>
+
+          <div className='d-flex flex-wrap gap-1 mt-2'>
+            <span
+              className={`badge ${
+                idLoteGlobal ? 'bg-success' : 'bg-secondary'
+              }`}
+            >
+              Lote
             </span>
-          )}
-          {items.length > 0 &&
-            !allItemsVerified &&
-            entradaEstado !== 'CONFIRMADA' && (
-              <span className='badge bg-danger'>Pendiente verificación</span>
-            )}
+
+            <span
+              className={`badge ${
+                comentarioValido ? 'bg-success' : 'bg-secondary'
+              }`}
+            >
+              Observación
+            </span>
+
+            <span
+              className={`badge ${
+                items.length ? 'bg-success' : 'bg-secondary'
+              }`}
+            >
+              Ítems
+            </span>
+
+            <span
+              className={`badge ${
+                allItemsHaveDestino ? 'bg-success' : 'bg-secondary'
+              }`}
+            >
+              Destino
+            </span>
+
+            <span
+              className={`badge ${
+                !REQUIRE_PHOTOS_TO_CONFIRM || allItemsHaveEvidence
+                  ? 'bg-success'
+                  : 'bg-secondary'
+              }`}
+            >
+              Evidencia
+            </span>
+
+            <span
+              className={`badge ${
+                allItemsVerified ? 'bg-success' : 'bg-secondary'
+              }`}
+            >
+              OK
+            </span>
+          </div>
         </div>
 
-        <form onSubmit={e => e.preventDefault()} className='mt-1'>
-          <div className='row g-2'>
+        {/* Datos base compactos */}
+        <div
+          className='border rounded-3 p-2 mb-2 bg-white'
+          style={{ boxShadow: '0 8px 20px rgba(0,0,0,.06)' }}
+        >
+          <div className='row g-2 align-items-start'>
             <div className='col-md-3'>
-              <label className='form-label mb-1'>Lote (global)</label>
+              <label className='form-label small fw-semibold mb-1'>Lote</label>
               <select
                 className='form-select form-select-sm'
                 value={idLoteGlobal}
@@ -953,7 +995,7 @@ const FormIngreso = forwardRef(
                   }
                 }}
               >
-                <option value=''>Selecciona un lote</option>
+                <option value=''>Selecciona lote</option>
                 {lotesUnicos.map(l => (
                   <option key={l.id_lote} value={l.id_lote}>
                     {l.id_lote}
@@ -962,57 +1004,17 @@ const FormIngreso = forwardRef(
               </select>
             </div>
 
-            <div className='col-md-3'>
-              <label className='form-label mb-1'>Bodega destino</label>
-              <select
-                className={`form-select form-select-sm ${
-                  errors.id_bodega_destino ? 'is-invalid' : ''
-                }`}
-                disabled={entradaEstado === 'CONFIRMADA'}
-                {...register('id_bodega_destino', { required: true })}
-              >
-                <option value=''>Selecciona una bodega</option>
-                {bodegas.map(b => (
-                  <option key={b.id_bodega} value={b.id_bodega}>
-                    {b.nombre}
-                  </option>
-                ))}
-              </select>
-              {errors.id_bodega_destino && (
-                <div className='invalid-feedback'>Obligatorio</div>
-              )}
-            </div>
-
-            <div className='col-md-3'>
-              <label className='form-label mb-1'>Ubicación destino</label>
-              <select
-                className={`form-select form-select-sm ${
-                  errors.id_ubicacion_destino ? 'is-invalid' : ''
-                }`}
-                disabled={entradaEstado === 'CONFIRMADA'}
-                {...register('id_ubicacion_destino', { required: true })}
-              >
-                <option value=''>Selecciona ubicación</option>
-                {ubicacionesDeBodega.map(u => (
-                  <option key={u.id_ubicacion} value={u.id_ubicacion}>
-                    {u.nombre}
-                  </option>
-                ))}
-              </select>
-              {errors.id_ubicacion_destino && (
-                <div className='invalid-feedback'>Obligatorio</div>
-              )}
-            </div>
-
-            <div className='col-md-3'>
-              <label className='form-label mb-1'>Observaciones</label>
-              <input
-                type='text'
-                className={`form-control form-select-sm ${
+            <div className='col-md-9'>
+              <label className='form-label small fw-semibold mb-1'>
+                Observaciones
+              </label>
+              <textarea
+                className={`form-control form-control-sm ${
                   errors.comentario ? 'is-invalid' : ''
                 }`}
                 disabled={entradaEstado === 'CONFIRMADA'}
-                placeholder='Notas u observaciones…'
+                placeholder='Ej: devolución, calidad, observaciones…'
+                rows={2}
                 {...register('comentario', { required: true })}
               />
               {errors.comentario && (
@@ -1022,417 +1024,364 @@ const FormIngreso = forwardRef(
           </div>
 
           {infoLote && productoItem && (
-            <div className='mt-2'>
-              <div className='alert alert-info py-2 mb-1'>
-                Lote: <strong>{idLoteGlobal}</strong> · Producto:{' '}
-                <strong>{productoNombre(productoItem)}</strong> ·{' '}
-                <strong>Cantidad: {infoLote.cantidad ?? '-'}</strong> · Origen:{' '}
-                <strong>{infoLote.origen}</strong>
-              </div>
+            <div className='mt-2 small text-muted'>
+              <span className='fw-semibold'>Ref:</span> {idLoteGlobal} ·{' '}
+              {productoNombre(productoItem)} · Cant: {infoLote.cantidad ?? '-'}{' '}
+              · {infoLote.origen}
             </div>
           )}
+        </div>
 
-          {/* ===== ÍTEMS ===== */}
-          <div className='mt-3 p-3 border rounded'>
-            <div className='d-flex justify-content-between align-items-center gap-2 mb-3'>
-              <div className='small text-muted fw-semibold'>
-                Agregar ítem al listado
-              </div>
+        {/* Ítems compactos */}
+        <div
+          className='border rounded-3 p-2 bg-white'
+          style={{ boxShadow: '0 8px 20px rgba(0,0,0,.06)' }}
+        >
+          <div className='d-flex justify-content-between align-items-center mb-2'>
+            <div className='fw-bold'>Ítems</div>
 
-              <div className='d-flex gap-2'>
-                <button
-                  type='button'
-                  className='btn btn-outline-primary btn-sm'
-                  disabled={
-                    !idLoteGlobal ||
-                    procesando ||
-                    entradaEstado === 'CONFIRMADA'
-                  }
-                  onClick={agregarTodoElLote}
-                  title='Carga todos los productos del lote con cantidades sugeridas (requiere verificación)'
-                >
-                  Agregar todo el lote
-                </button>
-              </div>
+            <button
+              type='button'
+              className='btn btn-sm btn-outline-primary'
+              disabled={
+                !idLoteGlobal ||
+                procesando ||
+                entradaEstado === 'CONFIRMADA' ||
+                allLoteProductsAlreadyAdded
+              }
+              onClick={agregarTodoElLote}
+              title={
+                allLoteProductsAlreadyAdded
+                  ? 'Ya agregaste todos los productos del lote'
+                  : 'Agrega todos los productos del lote'
+              }
+            >
+              {allLoteProductsAlreadyAdded ? 'Lote ✅' : 'Agregar todo'}
+            </button>
+          </div>
+
+          {/* Agregar ítem inline */}
+          <div className='row g-2 align-items-end'>
+            <div className='col-md-6'>
+              <label className='form-label small fw-semibold mb-1'>
+                Producto
+              </label>
+              <select
+                className={`form-select form-select-sm ${
+                  errorsItem.id_producto_item ? 'is-invalid' : ''
+                }`}
+                {...registerItem('id_producto_item', { required: true })}
+                disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
+                onChange={e => setValueItem('id_producto_item', e.target.value)}
+              >
+                <option value=''>Selecciona</option>
+                {productosUnicosDelLote.map((p, idx) => {
+                  const ya = items.some(it => it.id_producto === p)
+                  const labelNombre = productoNombre(p)
+                  const label =
+                    labelNombre && labelNombre !== p
+                      ? `${p} — ${labelNombre}`
+                      : p
+
+                  return (
+                    <option
+                      key={idx}
+                      value={p}
+                      style={
+                        ya ? { color: '#B00020', fontWeight: 600 } : undefined
+                      }
+                    >
+                      {ya ? `${label} — AGREGADO` : label}
+                    </option>
+                  )
+                })}
+              </select>
+              {errorsItem.id_producto_item && (
+                <div className='invalid-feedback'>Obligatorio</div>
+              )}
             </div>
 
-            <div className='row g-3 align-items-end'>
-              <div className='col-md-6'>
-                <label className='form-label mb-1'>Producto</label>
-                <select
-                  className={`form-select form-select-sm ${
-                    errorsItem.id_producto_item ? 'is-invalid' : ''
-                  }`}
-                  {...registerItem('id_producto_item', { required: true })}
-                  disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
-                  onChange={e =>
-                    setValueItem('id_producto_item', e.target.value)
-                  }
-                >
-                  <option value=''>Selecciona un producto</option>
-                  {productosUnicosDelLote.map((p, idx) => {
-                    const ya = items.some(it => it.id_producto === p)
-                    const labelNombre = productoNombre(p)
-                    const label =
-                      labelNombre && labelNombre !== p
-                        ? `${p} — ${labelNombre}`
-                        : p
-                    return (
-                      <option
-                        key={idx}
-                        value={p}
-                        style={
-                          ya ? { color: '#B00020', fontWeight: 600 } : undefined
-                        }
-                      >
-                        {ya ? `${label} — AGREGADO` : label}
-                      </option>
-                    )
-                  })}
-                </select>
-                {errorsItem.id_producto_item && (
-                  <div className='invalid-feedback'>Obligatorio</div>
-                )}
-              </div>
-
-              <div className='col-md-3'>
-                <label className='form-label mb-1'>Cantidad</label>
-                <input
-                  type='number'
-                  min='0'
-                  step='any'
-                  className={`form-control form-control-sm ${
-                    errorsItem.cantidad_item ? 'is-invalid' : ''
-                  }`}
-                  disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
-                  {...registerItem('cantidad_item', {
-                    required: 'Obligatorio',
-                    validate: v => Number(v) > 0 || 'Debe ser mayor a 0',
-                  })}
-                />
-                {errorsItem.cantidad_item && (
-                  <div className='invalid-feedback'>
-                    {errorsItem.cantidad_item.message || 'Inválida'}
-                  </div>
-                )}
-              </div>
-
-              <div className='col-md-3'>
-                <button
-                  type='button'
-                  className='btn btn-primary btn-sm w-100'
-                  onClick={onAddItem}
-                  disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
-                >
-                  Agregar ítem
-                </button>
-              </div>
-            </div>
-
-            <div className='mt-4'>
-              <div className='d-flex justify-content-between align-items-center mb-3'>
-                <span className='small text-muted'>
-                  Ítems a procesar: <strong>{items.length}</strong>
-                </span>
-
-                <button
-                  type='button'
-                  className='btn btn-outline-danger btn-sm'
-                  disabled={
-                    !items.length ||
-                    procesando ||
-                    entradaEstado === 'CONFIRMADA'
-                  }
-                  onClick={() => {
-                    setItems([])
-                    if (entradaEstado !== 'CONFIRMADA') {
-                      setDirty(true)
-                      setItemsDirty(true)
-                    }
-                  }}
-                >
-                  Vaciar lista
-                </button>
-              </div>
-
-              <div className='table-responsive'>
-                <table className='table table-sm table-striped align-middle'>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Producto</th>
-                      <th className='text-end'>Cantidad</th>
-                      <th className='text-center'>Verificado</th>
-                      <th>Foto</th>
-                      <th style={{ width: 120 }}></th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {items.length === 0 ? (
-                      <tr>
-                        <td colSpan='6' className='text-center text-muted'>
-                          Sin ítems
-                        </td>
-                      </tr>
-                    ) : (
-                      items.map((it, idx) => {
-                        const pendiente = !it.verificado
-                        return (
-                          <tr
-                            key={`${it.id_producto}-${idx}`}
-                            style={
-                              pendiente
-                                ? {
-                                    boxShadow:
-                                      'inset 4px 0 0 rgba(247,76,27,.9)',
-                                  }
-                                : undefined
-                            }
-                          >
-                            <td>{idx + 1}</td>
-
-                            <td>
-                              <div className='fw-semibold'>
-                                {productoNombre(it.id_producto)}
-                              </div>
-                              <div className='text-muted small'>
-                                {it.id_producto}
-                              </div>
-                            </td>
-
-                            <td className='text-end'>
-                              {entradaEstado === 'CONFIRMADA' ? (
-                                <>
-                                  {it.cantidad} {productoUnidad(it.id_producto)}
-                                </>
-                              ) : (
-                                <div className='d-flex justify-content-end align-items-center gap-2'>
-                                  <input
-                                    type='number'
-                                    min='0'
-                                    step='any'
-                                    className='form-control form-control-sm'
-                                    style={{ maxWidth: 140 }}
-                                    value={it.cantidad}
-                                    onChange={e =>
-                                      actualizarCantidadItem(
-                                        idx,
-                                        e.target.value
-                                      )
-                                    }
-                                    disabled={procesando}
-                                    title='Si cambias la cantidad, queda pendiente de verificación'
-                                  />
-                                  <span className='text-muted small'>
-                                    {productoUnidad(it.id_producto)}
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-
-                            <td className='text-center'>
-                              <input
-                                type='checkbox'
-                                className='form-check-input'
-                                checked={!!it.verificado}
-                                onChange={() => toggleVerificado(idx)}
-                                disabled={
-                                  procesando || entradaEstado === 'CONFIRMADA'
-                                }
-                                title={
-                                  it.verificado
-                                    ? 'Verificado'
-                                    : 'Pendiente: marca después de revisar'
-                                }
-                              />
-                              {!it.verificado && (
-                                <div className='small text-danger mt-1'>
-                                  Pendiente
-                                </div>
-                              )}
-                            </td>
-
-                            <td>
-                              <div className='d-flex flex-column gap-2'>
-                                <div className='d-flex gap-2'>
-                                  <button
-                                    type='button'
-                                    className='btn btn-outline-secondary btn-sm'
-                                    onClick={() => openCameraForItem(idx)}
-                                    disabled={
-                                      procesando ||
-                                      entradaEstado === 'CONFIRMADA'
-                                    }
-                                  >
-                                    Usar cámara
-                                  </button>
-
-                                  <button
-                                    type='button'
-                                    className='btn btn-outline-secondary btn-sm'
-                                    onClick={() =>
-                                      document
-                                        .getElementById(`file-item-${idx}`)
-                                        ?.click()
-                                    }
-                                    disabled={
-                                      procesando ||
-                                      entradaEstado === 'CONFIRMADA'
-                                    }
-                                  >
-                                    Subir imagen
-                                  </button>
-                                </div>
-
-                                <input
-                                  id={`file-item-${idx}`}
-                                  type='file'
-                                  accept='image/*'
-                                  hidden
-                                  onChange={e =>
-                                    onFileForItem(
-                                      idx,
-                                      e.target.files?.[0] || null
-                                    )
-                                  }
-                                  disabled={entradaEstado === 'CONFIRMADA'}
-                                />
-
-                                <div className='small'>
-                                  {it.evidenciaName ? (
-                                    <span className='text-success'>
-                                      Archivo:{' '}
-                                      <strong>{it.evidenciaName}</strong>
-                                    </span>
-                                  ) : it.evidenciaUrl ? (
-                                    <a
-                                      className='text-success'
-                                      href={it.evidenciaUrl}
-                                      target='_blank'
-                                      rel='noreferrer'
-                                    >
-                                      Evidencia cargada (ver)
-                                    </a>
-                                  ) : (
-                                    <span className='text-danger'>
-                                      Sin foto
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className='text-end'>
-                              <button
-                                type='button'
-                                className='btn btn-outline-danger btn-sm'
-                                onClick={() => removeItem(idx)}
-                                disabled={
-                                  procesando || entradaEstado === 'CONFIRMADA'
-                                }
-                              >
-                                Eliminar
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-
-                  <tfoot>
-                    <tr>
-                      <td colSpan='2' className='text-end fw-semibold'>
-                        TOTAL
-                      </td>
-                      <td className='text-end fw-bold'>
-                        {Object.entries(totalesPorUnidad).length === 0
-                          ? '0'
-                          : Object.entries(totalesPorUnidad).length === 1
-                          ? (() => {
-                              const [u, v] = Object.entries(totalesPorUnidad)[0]
-                              return `${v} ${u}`
-                            })()
-                          : Object.entries(totalesPorUnidad)
-                              .map(([u, v]) => `${v} ${u}`)
-                              .join(' · ')}
-                      </td>
-                      <td colSpan='3'></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {/* Cámara */}
-              {cameraIndex !== null && (
-                <div
-                  className='mt-3 border rounded p-3'
-                  style={{ minHeight: 320 }}
-                >
-                  <div className='d-flex justify-content-between align-items-center mb-2'>
-                    <div className='fw-semibold'>
-                      Cámara para ítem #{cameraIndex + 1}
-                    </div>
-                    <button
-                      type='button'
-                      className='btn btn-outline-dark btn-sm'
-                      onClick={closeCamera}
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-
-                  <div className='ratio ratio-16x9'>
-                    <Webcam
-                      ref={webcamRef}
-                      screenshotFormat='image/jpeg'
-                      videoConstraints={{ facingMode: 'environment' }}
-                      className='w-100 h-100'
-                    />
-                  </div>
-
-                  <div className='d-flex justify-content-center gap-3 mt-3'>
-                    <button
-                      type='button'
-                      className='btn btn-primary btn-sm'
-                      onClick={captureForItem}
-                    >
-                      Capturar
-                    </button>
-                    <button
-                      type='button'
-                      className='btn btn-outline-danger btn-sm'
-                      onClick={closeCamera}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
+            <div className='col-md-3'>
+              <label className='form-label small fw-semibold mb-1'>
+                Cantidad
+              </label>
+              <input
+                type='number'
+                min='0'
+                step='any'
+                className={`form-control form-control-sm ${
+                  errorsItem.cantidad_item ? 'is-invalid' : ''
+                }`}
+                disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
+                {...registerItem('cantidad_item', {
+                  required: 'Obligatorio',
+                  validate: v => Number(v) > 0 || 'Debe ser mayor a 0',
+                })}
+              />
+              {errorsItem.cantidad_item && (
+                <div className='invalid-feedback'>
+                  {errorsItem.cantidad_item.message || 'Inválida'}
                 </div>
               )}
             </div>
+
+            <div className='col-md-3'>
+              <button
+                type='button'
+                className='btn btn-sm btn-primary w-100'
+                onClick={onAddItem}
+                disabled={!idLoteGlobal || entradaEstado === 'CONFIRMADA'}
+              >
+                Agregar
+              </button>
+            </div>
           </div>
 
-          {/* Acciones */}
-          <div className='d-flex justify-content-end gap-2 mt-4'>
+          {/* Tabla compacta */}
+          <div className='table-responsive mt-2' style={{ maxHeight: 420 }}>
+            <table className='table table-sm align-middle mb-0'>
+              <thead
+                className='table-light'
+                style={{ position: 'sticky', top: 0, zIndex: 5 }}
+              >
+                <tr className='small text-muted'>
+                  <th>#</th>
+                  <th>Producto</th>
+                  <th className='text-end'>Cant</th>
+                  <th>Bodega</th>
+                  <th>Ubicación</th>
+                  <th>Evidencia</th>
+                  <th className='text-center'>OK</th>
+                  <th></th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan='8' className='text-center text-muted py-3'>
+                      Sin ítems.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((it, idx) => {
+                    const ubicacionesItem = ubicaciones.filter(
+                      u => u.id_bodega === (it.Id_bodega_destino || '')
+                    )
+
+                    return (
+                      <tr
+                        key={`${it.id_producto}-${idx}`}
+                        className='border-top'
+                      >
+                        <td>{idx + 1}</td>
+
+                        <td>
+                          <div className='fw-semibold small'>
+                            {productoNombre(it.id_producto)}
+                          </div>
+                          <div className='text-muted small'>
+                            {it.id_producto}
+                          </div>
+                        </td>
+
+                        <td className='text-end'>
+                          <input
+                            type='number'
+                            min='0'
+                            step='any'
+                            className='form-control form-control-sm'
+                            style={{ maxWidth: 110, marginLeft: 'auto' }}
+                            value={it.cantidad}
+                            onChange={e =>
+                              actualizarCantidadItem(idx, e.target.value)
+                            }
+                            disabled={
+                              procesando || entradaEstado === 'CONFIRMADA'
+                            }
+                          />
+                        </td>
+
+                        <td>
+                          <select
+                            className='form-select form-select-sm'
+                            value={it.Id_bodega_destino || ''}
+                            disabled={
+                              procesando || entradaEstado === 'CONFIRMADA'
+                            }
+                            onChange={e =>
+                              actualizarBodegaItem(idx, e.target.value)
+                            }
+                          >
+                            <option value=''>Bodega…</option>
+                            {bodegas.map(b => (
+                              <option key={b.id_bodega} value={b.id_bodega}>
+                                {b.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        <td>
+                          <select
+                            className='form-select form-select-sm'
+                            value={it.Id_ubicacion_destino || ''}
+                            disabled={
+                              procesando ||
+                              entradaEstado === 'CONFIRMADA' ||
+                              !it.Id_bodega_destino
+                            }
+                            onChange={e =>
+                              actualizarUbicacionItem(idx, e.target.value)
+                            }
+                          >
+                            <option value=''>Ubicación…</option>
+                            {ubicacionesItem.map(u => (
+                              <option
+                                key={u.id_ubicacion}
+                                value={u.id_ubicacion}
+                              >
+                                {u.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Evidencia */}
+                        <td>
+                          <div className='d-flex gap-2 align-items-center flex-wrap'>
+                            <label
+                              htmlFor={`file-${idx}`}
+                              className='btn btn-sm btn-primary mb-0'
+                              style={{
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                borderRadius: 10,
+                                boxShadow: '0 4px 10px rgba(13,110,253,.15)',
+                              }}
+                            >
+                              Seleccionar
+                            </label>
+
+                            <input
+                              id={`file-${idx}`}
+                              type='file'
+                              accept='image/*'
+                              onChange={e =>
+                                onFileForItem(idx, e.target.files?.[0] || null)
+                              }
+                              disabled={entradaEstado === 'CONFIRMADA'}
+                              style={{ display: 'none' }}
+                            />
+
+                            {it.evidenciaFile || it.evidenciaUrl ? (
+                              <span className='badge bg-success'>✔</span>
+                            ) : (
+                              <span className='badge bg-secondary'>—</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* OK */}
+                        <td className='text-center'>
+                          <div
+                            className='d-inline-flex align-items-center justify-content-center'
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 8,
+                              background: it.verificado
+                                ? 'rgba(13,110,253,.12)'
+                                : '#f1f3f5',
+                              border: it.verificado
+                                ? '2px solid #0d6efd'
+                                : '2px solid #6c757d',
+                            }}
+                          >
+                            <input
+                              type='checkbox'
+                              className='form-check-input m-0'
+                              style={{
+                                width: 18,
+                                height: 18,
+                                cursor: 'pointer',
+                                accentColor: '#0d6efd',
+                              }}
+                              checked={!!it.verificado}
+                              onChange={() => toggleVerificado(idx)}
+                              disabled={
+                                procesando || entradaEstado === 'CONFIRMADA'
+                              }
+                            />
+                          </div>
+                        </td>
+
+                        <td className='text-end'>
+                          <button
+                            type='button'
+                            className='btn btn-sm btn-outline-danger'
+                            onClick={() => removeItem(idx)}
+                            disabled={
+                              procesando || entradaEstado === 'CONFIRMADA'
+                            }
+                          >
+                            X
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {items.length > 0 && (
+            <div className='mt-2 small text-muted'>
+              <span className='fw-semibold'>Total:</span> {totalCantidad}
+            </div>
+          )}
+        </div>
+
+        {/* Sticky footer */}
+        <div
+          className='position-sticky bottom-0 mt-2'
+          style={{
+            background: 'rgba(255,255,255,.92)',
+            backdropFilter: 'blur(6px)',
+            borderTop: '1px solid rgba(0,0,0,.08)',
+            padding: '8px 0',
+          }}
+        >
+          <div className='d-flex justify-content-end gap-2'>
             <button
               type='button'
-              className='btn btn-outline-primary btn-sm'
+              className='btn btn-sm btn-outline-primary'
               disabled={
                 isSubmitting ||
                 procesando ||
                 entradaEstado === 'CONFIRMADA' ||
                 !items.length ||
-                !idLoteGlobal
+                !idLoteGlobal ||
+                !allItemsHaveDestino
               }
               onClick={() => guardarBorrador({ silent: false })}
             >
-              Guardar borrador
+              Guardar
             </button>
 
             <button
               type='button'
-              className='btn btn-primary btn-sm'
+              className='btn btn-sm btn-primary'
+              title={
+                !allItemsVerified
+                  ? 'Debes verificar todos los ítems'
+                  : !allItemsHaveDestino
+                  ? 'Falta destino en algunos ítems'
+                  : REQUIRE_PHOTOS_TO_CONFIRM && !allItemsHaveEvidence
+                  ? 'Falta evidencia en algunos ítems'
+                  : ''
+              }
               disabled={
                 isSubmitting ||
                 procesando ||
@@ -1440,127 +1389,61 @@ const FormIngreso = forwardRef(
                 !items.length ||
                 !idLoteGlobal ||
                 !allItemsVerified ||
+                !allItemsHaveDestino ||
                 (REQUIRE_PHOTOS_TO_CONFIRM ? !allItemsHaveEvidence : false)
               }
               onClick={confirmar}
-              title={
-                !allItemsVerified
-                  ? 'Debes verificar todos los ítems antes de confirmar'
-                  : undefined
-              }
             >
-              {procesando ? 'Procesando…' : 'Confirmar entrada'}
+              {procesando ? 'Procesando…' : 'Confirmar'}
             </button>
           </div>
-        </form>
+        </div>
 
-        {/* Modal QRs */}
+        {/* Modal resultado */}
         <Modal
           isOpen={modalResultado}
           onRequestClose={() => {}}
           shouldCloseOnOverlayClick={false}
           shouldCloseOnEsc={false}
           contentLabel='Resultado de Entrada'
-          style={{
-            overlay: { backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 },
-            content: {
-              inset: '5% 4%',
-              borderRadius: 16,
-              padding: 20,
-              maxWidth: 1280,
-              margin: '0 auto',
-              zIndex: 2001,
-            },
-          }}
         >
-          <div className='d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3'>
-            <h6 className='m-0 fw-bold' style={{ color: '#1E73B6' }}>
-              Entrada confirmada {entradaNumero ? `— ${entradaNumero}` : ''}
-            </h6>
-
-            <div className='d-flex flex-wrap gap-3'>
-              <button
-                className='btn btn-sm btn-outline-primary'
-                onClick={() => descargarZIPQRs(respuestas)}
-              >
-                Descargar QR (ZIP)
-              </button>
-
-              {pdfUrl && (
-                <a
-                  className='btn btn-sm btn-outline-dark'
-                  href={pdfUrl}
-                  target='_blank'
-                  rel='noreferrer'
-                >
-                  Ver PDF de entrada
-                </a>
-              )}
-
-              <button
-                className='btn btn-sm btn-outline-secondary'
-                onClick={cerrarModalResultado}
-              >
-                Cerrar
-              </button>
-            </div>
+          <div className='d-flex justify-content-between align-items-center mb-3'>
+            <h6 className='m-0 fw-bold'>Entrada confirmada</h6>
+            <button
+              className='btn btn-outline-secondary btn-sm'
+              onClick={cerrarModalResultado}
+            >
+              Cerrar
+            </button>
           </div>
 
-          <div className='row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 gy-4 gx-4'>
-            {respuestas.length === 0 ? (
-              <div className='text-muted'>No hay respuestas</div>
-            ) : (
-              respuestas.map((r, i) => {
-                const nombrePNG = `QR_${r.lote}_${r.producto}_${i + 1}.png`
-                return (
-                  <div key={i} className='col'>
-                    <div
-                      className='border rounded-3 p-4 h-100 d-flex flex-column shadow-sm'
-                      style={{ minHeight: 520 }}
-                    >
-                      <div className='small text-muted mb-1'>
-                        {r.mensaje || 'OK'}
-                      </div>
-                      <div className='fw-semibold mb-1'>
-                        {productoNombre(r.producto)} · {r.cantidad_ingresada}{' '}
-                        {productoUnidad(r.producto)}
-                      </div>
+          {pdfUrl && (
+            <div className='alert alert-info py-2'>
+              PDF generado:{' '}
+              <a href={pdfUrl} target='_blank' rel='noreferrer'>
+                Abrir PDF
+              </a>
+            </div>
+          )}
 
-                      <div className='d-flex justify-content-center mb-4'>
-                        {r.qr_image ? (
-                          <img
-                            src={r.qr_image}
-                            alt='QR'
-                            style={{
-                              maxWidth: 260,
-                              width: '100%',
-                              borderRadius: 10,
-                              border: '1px dashed #59A1F7',
-                              padding: 10,
-                            }}
-                          />
-                        ) : (
-                          <div className='text-muted'>Sin QR</div>
-                        )}
-                      </div>
-
-                      <div className='d-flex flex-wrap gap-3 mt-auto'>
-                        <button
-                          type='button'
-                          className='btn btn-sm btn-outline-primary'
-                          onClick={() =>
-                            r.qr_image && descargarPNG(r.qr_image, nombrePNG)
-                          }
-                          disabled={!r.qr_image}
-                        >
-                          Descargar PNG
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
+          <div className='row'>
+            {respuestas.map((r, i) => (
+              <div key={i} className='col-md-3 mb-3'>
+                <div className='border rounded-3 p-3 h-100 text-center'>
+                  <div className='fw-semibold'>{r.producto}</div>
+                  {r.qr_image && (
+                    <img src={r.qr_image} alt='QR' className='img-fluid mt-2' />
+                  )}
+                  <button
+                    className='btn btn-outline-primary btn-sm mt-2'
+                    onClick={() => descargarPNG(r.qr_image, `QR_${i + 1}.png`)}
+                    disabled={!r.qr_image}
+                  >
+                    Descargar PNG
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </Modal>
       </div>
