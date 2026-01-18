@@ -1,4 +1,3 @@
-// src/components/Shared/SecureFolder.jsx
 import { useContext, useEffect, useState } from 'react'
 import axios from 'axios'
 import { saveAs } from 'file-saver'
@@ -17,19 +16,22 @@ const FILES_URL = API_URL.replace(/\/api\/?$/, '')
 
 const SecureFolder = ({ rutaCarpeta }) => {
   const { token } = useContext(AuthContext)
+
   const [archivos, setArchivos] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
 
   // ============================================================
-  // CARGA DE ARCHIVOS (MISMA LÓGICA QUE USABAS)
+  // CARGA DE ARCHIVOS
   // ============================================================
   useEffect(() => {
     const cargarArchivos = async () => {
+      // 👉 SI NO EXISTE CARPETA, NO SE ROMPE NADA
       if (!rutaCarpeta) {
+        setArchivos([])
         setLoading(false)
-        setError('No se definió la carpeta de documentos.')
+        setError('Aún no existe una carpeta de documentos.')
         return
       }
 
@@ -46,7 +48,7 @@ const SecureFolder = ({ rutaCarpeta }) => {
         if (!data.ok) throw new Error(data.msg || 'Respuesta inválida')
 
         const lista = (data.files || []).map(f => {
-          const rutaRel = f.url.startsWith('/') ? f.url.slice(1) : f.url
+          const rutaRel = f.url?.startsWith('/') ? f.url.slice(1) : f.url
           return {
             nombre: f.name,
             ruta: rutaRel,
@@ -67,9 +69,10 @@ const SecureFolder = ({ rutaCarpeta }) => {
   }, [rutaCarpeta, token])
 
   // ============================================================
-  // HELPERS DE TIPOS
+  // HELPERS DE TIPOS (SEGUROS)
   // ============================================================
-  const getExt = name => name.split('.').pop().toLowerCase()
+  const getExt = name =>
+    typeof name === 'string' ? name.split('.').pop().toLowerCase() : ''
 
   const esImagen = name =>
     ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(getExt(name))
@@ -83,14 +86,16 @@ const SecureFolder = ({ rutaCarpeta }) => {
   }
 
   const buildFileUrl = archivo =>
-    `${FILES_URL}/${archivo.ruta || archivo.nombre}`
+    `${FILES_URL}/${archivo?.ruta || archivo?.nombre || ''}`
 
   // ============================================================
-  // DESCARGA CON TOKEN (MISMA LÓGICA)
+  // DESCARGA
   // ============================================================
   const handleDownload = async archivo => {
     try {
       const url = buildFileUrl(archivo)
+      if (!url) return
+
       const resp = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -104,13 +109,14 @@ const SecureFolder = ({ rutaCarpeta }) => {
   }
 
   // ============================================================
-  // PREVIEW USANDO BLOB (CON TOKEN SIEMPRE)
+  // PREVIEW
   // ============================================================
   const handlePreview = async archivo => {
     try {
       const url = buildFileUrl(archivo)
-      const nombre = archivo.nombre
+      if (!url) return
 
+      const nombre = archivo?.nombre || ''
       let tipo = 'otro'
       if (esImagen(nombre)) tipo = 'imagen'
       else if (esPdf(nombre)) tipo = 'pdf'
@@ -139,11 +145,12 @@ const SecureFolder = ({ rutaCarpeta }) => {
     })
   }
 
+  // ============================================================
+  // NOMBRE DE CARPETA (100% SEGURO)
+  // ============================================================
   const carpetaNombre = rutaCarpeta
-    .split('/')
-    .filter(Boolean)
-    .slice(-2)
-    .join('/')
+    ? rutaCarpeta.split('/').filter(Boolean).slice(-2).join('/')
+    : 'Sin carpeta'
 
   return (
     <>
@@ -159,7 +166,7 @@ const SecureFolder = ({ rutaCarpeta }) => {
           )}
 
           {error && !loading && (
-            <div className='p-3 text-danger small'>{error}</div>
+            <div className='p-3 text-muted small'>{error}</div>
           )}
 
           {!loading && !error && archivos.length === 0 && (
@@ -171,91 +178,60 @@ const SecureFolder = ({ rutaCarpeta }) => {
           {!loading && !error && archivos.length > 0 && (
             <div className='secure-folder-list-wrapper'>
               <ul className='list-group list-group-flush'>
-                {archivos.map((archivo, idx) => {
-                  const nombre = archivo.nombre
-
-                  return (
-                    <li
-                      key={idx}
-                      className='list-group-item secure-folder-item d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2'
-                    >
-                      {/* IZQUIERDA */}
-                      <div className='d-flex flex-row align-items-center gap-3'>
-                        <div className='secure-folder-thumb-wrapper'>
-                          <div className='secure-folder-icon'>
-                            {obtenerIcono(nombre)}
-                          </div>
-                        </div>
-
-                        <div className='secure-folder-info'>
-                          <div className='secure-folder-name'>{nombre}</div>
-                          <div className='secure-folder-tags'>
-                            {esImagen(nombre) && (
-                              <span className='badge bg-light text-dark me-1'>
-                                Imagen
-                              </span>
-                            )}
-                            {esPdf(nombre) && (
-                              <span className='badge bg-light text-dark me-1'>
-                                PDF
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                {archivos.map((archivo, idx) => (
+                  <li
+                    key={idx}
+                    className='list-group-item secure-folder-item d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2'
+                  >
+                    <div className='d-flex align-items-center gap-3'>
+                      <div className='secure-folder-icon'>
+                        {obtenerIcono(archivo.nombre)}
                       </div>
 
-                      {/* DERECHA - BOTONES */}
-                      <div className='d-flex justify-content-end gap-2'>
-                        <button
-                          type='button'
-                          className='btn btn-sm btn-outline-secondary d-flex align-items-center gap-1'
-                          onClick={() => handlePreview(archivo)}
-                        >
-                          <FaEye size={12} /> Ver
-                        </button>
-
-                        <button
-                          type='button'
-                          className='btn btn-sm btn-descargar-doc d-flex align-items-center gap-1'
-                          onClick={() => handleDownload(archivo)}
-                        >
-                          <FaDownload size={12} /> Descargar
-                        </button>
+                      <div>
+                        <div className='secure-folder-name'>
+                          {archivo.nombre}
+                        </div>
                       </div>
-                    </li>
-                  )
-                })}
+                    </div>
+
+                    <div className='d-flex gap-2'>
+                      <button
+                        className='btn btn-sm btn-outline-secondary'
+                        onClick={() => handlePreview(archivo)}
+                      >
+                        <FaEye size={12} /> Ver
+                      </button>
+
+                      <button
+                        className='btn btn-sm btn-descargar-doc'
+                        onClick={() => handleDownload(archivo)}
+                      >
+                        <FaDownload size={12} /> Descargar
+                      </button>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}
         </div>
       </div>
 
-      {/* ============================================================
-          MODAL PREVIEW
-      ============================================================ */}
       {preview && (
         <div className='secure-preview-backdrop' onClick={closePreview}>
           <div
             className='secure-preview-modal'
             onClick={e => e.stopPropagation()}
           >
-            <div className='secure-preview-header d-flex justify-content-between align-items-center'>
+            <div className='secure-preview-header'>
               <h6 className='mb-0 text-truncate'>{preview.archivo.nombre}</h6>
-              <button
-                type='button'
-                className='btn-close btn-close-white'
-                onClick={closePreview}
-              />
+              <button className='btn-close' onClick={closePreview} />
             </div>
 
             <div className='secure-preview-body'>
               {preview.tipo === 'imagen' && (
-                <img
-                  src={preview.url}
-                  className='img-fluid rounded'
-                  alt='preview'
-                />
+                <img src={preview.url} className='img-fluid rounded' />
               )}
 
               {preview.tipo === 'pdf' && (
@@ -267,25 +243,10 @@ const SecureFolder = ({ rutaCarpeta }) => {
               )}
 
               {preview.tipo === 'otro' && (
-                <div className='text-center text-muted small'>
+                <div className='text-muted text-center'>
                   No hay previsualización disponible.
                 </div>
               )}
-            </div>
-
-            <div className='secure-preview-footer text-end'>
-              <button
-                className='btn btn-sm btn-secondary me-2'
-                onClick={closePreview}
-              >
-                Cerrar
-              </button>
-              <button
-                className='btn btn-sm btn-descargar-doc'
-                onClick={() => handleDownload(preview.archivo)}
-              >
-                Descargar
-              </button>
             </div>
           </div>
         </div>
