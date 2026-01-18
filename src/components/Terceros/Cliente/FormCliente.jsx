@@ -18,23 +18,86 @@ const FormCliente = ({ onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
-  // Mapeo frontend => backend
+  // ✅ Mapeo frontend => backend (NO se cambian los existentes)
   const documentosObligatorios = [
-    { campo: 'rut_url', backend: 'rut' },
-    { campo: 'camara_comercio_url', backend: 'camara_comercio' },
-    { campo: 'cedula_url', backend: 'cedula' },
-    { campo: 'certificacion_bancaria_url', backend: 'certificacion_bancaria' },
-    { campo: 'acuerdo_seguridad_url', backend: 'acuerdo_seguridad' },
+    { campo: 'rut_url', backend: 'rut', label: 'RUT' },
+    {
+      campo: 'camara_comercio_url',
+      backend: 'camara_comercio',
+      label: 'Cámara de comercio',
+    },
+    { campo: 'cedula_url', backend: 'cedula', label: 'Fotocopia de la cédula' },
+    {
+      campo: 'certificacion_bancaria_url',
+      backend: 'certificacion_bancaria',
+      label: 'Certificación bancaria',
+    },
+    {
+      campo: 'acuerdo_seguridad_url',
+      backend: 'acuerdo_seguridad',
+      label: 'Acuerdo de seguridad',
+    },
+
+    // ✅ NUEVO (obligatorio según el correo)
+    // Nota: la clave backend es NUEVA; las anteriores NO se modifican.
+    {
+      campo: 'tratamiento_datos_personales_url',
+      backend: 'tratamiento_datos_personales',
+      label: 'Tratamiento de datos personales',
+    },
   ]
 
   const documentosOpcionales = [
-    { campo: 'circular_170_url', backend: 'circular_170' },
+    // (existentes)
+    {
+      campo: 'circular_170_url',
+      backend: 'circular_170',
+      label: 'Circular 170',
+    },
     {
       campo: 'certificacion_comercial_url',
       backend: 'certificacion_comercial',
+      label: 'Certificación comercial',
     },
-    { campo: 'estados_financieros_url', backend: 'estados_financieros' },
-    { campo: 'certificado_contadora_url', backend: 'certificado_contadora' },
+    {
+      campo: 'estados_financieros_url',
+      backend: 'estados_financieros',
+      label: 'Estados financieros',
+    },
+
+    // ✅ NUEVOS (opcionales según el correo)
+    {
+      campo: 'visita_seguridad_url',
+      backend: 'visita_seguridad',
+      label: 'Visita de seguridad',
+    },
+    {
+      campo: 'lista_clinton_url',
+      backend: 'lista_clinton',
+      label: 'Lista Clinton',
+    },
+    {
+      campo: 'certificacion_judicial_url',
+      backend: 'certificacion_judicial',
+      label: 'Certificación judicial',
+    },
+    {
+      campo: 'certificacion_contraloria_url',
+      backend: 'certificacion_contraloria',
+      label: 'Certificación Contraloría',
+    },
+    {
+      campo: 'certificacion_procuraduria_url',
+      backend: 'certificacion_procuraduria',
+      label: 'Certificación Procuraduría',
+    },
+
+    // ✅ EXTRA (se mantiene aunque no esté en el correo)
+    {
+      campo: 'certificado_contadora_url',
+      backend: 'certificado_contadora',
+      label: 'Certificado contadora (extra)',
+    },
   ]
 
   const MAX_FILE_SIZE_MB = 10
@@ -77,17 +140,18 @@ const FormCliente = ({ onClose, onSuccess }) => {
       formData.append('Celular', data.Celular)
       formData.append('Fecha_registro', new Date().toISOString())
 
-      // ✅ Campos nuevos
       formData.append('Activo', data.Activo ? 'true' : 'false')
       if (data.Direccion) formData.append('Direccion', data.Direccion)
       if (data.Observaciones)
         formData.append('Observaciones', data.Observaciones)
 
+      // ✅ Envía obligatorios
       documentosObligatorios.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]
         if (file instanceof File) formData.append(backend, file)
       })
 
+      // ✅ Envía opcionales
       documentosOpcionales.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]
         if (file instanceof File) formData.append(backend, file)
@@ -109,6 +173,9 @@ const FormCliente = ({ onClose, onSuccess }) => {
       setSubmitting(false)
     }
   }
+
+  const labelDeCampo = item =>
+    item?.label || item?.campo?.replace('_url', '').replace(/_/g, ' ')
 
   return (
     <form
@@ -164,7 +231,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
           )}
         </div>
 
-        {/* ✅ Nuevos */}
         <div>
           <label className='form-label'>Dirección</label>
           <input className='form-control mb-2' {...register('Direccion')} />
@@ -197,7 +263,11 @@ const FormCliente = ({ onClose, onSuccess }) => {
       <div className='grid-documentos-form'>
         {documentosObligatorios.map(({ campo }) => (
           <div className='input-archivo' key={campo}>
-            <label>{campo.replace('_url', '').replace(/_/g, ' ')}</label>
+            <label>
+              {labelDeCampo(
+                documentosObligatorios.find(d => d.campo === campo)
+              )}
+            </label>
             <input
               type='file'
               accept='.pdf,.docx'
@@ -213,7 +283,9 @@ const FormCliente = ({ onClose, onSuccess }) => {
       <div className='grid-documentos-form'>
         {documentosOpcionales.map(({ campo }) => (
           <div className='input-archivo' key={campo}>
-            <label>{campo.replace('_url', '').replace(/_/g, ' ')}</label>
+            <label>
+              {labelDeCampo(documentosOpcionales.find(d => d.campo === campo))}
+            </label>
             <input
               type='file'
               accept='.pdf,.docx'
