@@ -28,22 +28,44 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
+  // ✅ LOS 15 DOCUMENTOS (correo + extra)
   const documentosOpcionales = [
-    { campo: 'rut_url', backend: 'rut' },
-    { campo: 'camara_comercio_url', backend: 'camara_comercio' },
+    // obligatorios del correo (en editar pasan a opcionales)
     { campo: 'cedula_url', backend: 'cedula' },
+    { campo: 'camara_comercio_url', backend: 'camara_comercio' },
+    { campo: 'rut_url', backend: 'rut' },
     { campo: 'certificacion_bancaria_url', backend: 'certificacion_bancaria' },
     { campo: 'acuerdo_seguridad_url', backend: 'acuerdo_seguridad' },
-    { campo: 'circular_170_url', backend: 'circular_170' },
+    {
+      campo: 'tratamiento_datos_personales_url',
+      backend: 'tratamiento_datos_personales',
+    },
+
+    // opcionales del correo
+    { campo: 'visita_seguridad_url', backend: 'visita_seguridad' },
     {
       campo: 'certificacion_comercial_url',
       backend: 'certificacion_comercial',
     },
     { campo: 'estados_financieros_url', backend: 'estados_financieros' },
+    { campo: 'lista_clinton_url', backend: 'lista_clinton' },
+    { campo: 'certificacion_judicial_url', backend: 'certificacion_judicial' },
+    {
+      campo: 'certificacion_contraloria_url',
+      backend: 'certificacion_contraloria',
+    },
+    {
+      campo: 'certificacion_procuraduria_url',
+      backend: 'certificacion_procuraduria',
+    },
+    { campo: 'circular_170_url', backend: 'circular_170' },
+
+    // extra (se mantiene)
     { campo: 'certificado_contadora_url', backend: 'certificado_contadora' },
   ]
 
   const MAX_FILE_SIZE_MB = 10
+
   const validarTamanos = data => {
     const errores = []
     const revisar = (archivo, nombreCampo) => {
@@ -51,9 +73,11 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         errores.push(`"${nombreCampo}" supera ${MAX_FILE_SIZE_MB} MB`)
       }
     }
+
     documentosOpcionales.forEach(({ campo }) => {
       if (data[campo]?.[0]) revisar(data[campo][0], campo)
     })
+
     return errores
   }
 
@@ -69,7 +93,7 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         return
       }
 
-      // 1) PUT datos básicos (incluye Direccion)
+      // 1️⃣ Actualizar datos básicos
       await actualizarClienteDatos(cliente.id_Cliente, {
         Nombre: data.Nombre,
         Correo: data.Correo,
@@ -77,26 +101,27 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         Direccion: data.Direccion || null,
       })
 
-      // 2) PATCH Activo si cambió
+      // 2️⃣ Cambiar activo si aplica
       const activoInicial = Boolean(cliente.Activo)
       const activoNuevo = Boolean(data.Activo)
       if (activoNuevo !== activoInicial) {
         await actualizarClienteActivo(cliente.id_Cliente, activoNuevo)
       }
 
-      // 3) PATCH Observaciones si cambió
+      // 3️⃣ Actualizar observaciones si aplica
       const obsInicial = cliente.Observaciones || ''
       const obsNuevo = data.Observaciones || ''
       if (obsNuevo !== obsInicial) {
         await actualizarClienteObservaciones(
           cliente.id_Cliente,
-          obsNuevo ? obsNuevo : null
+          obsNuevo || null
         )
       }
 
-      // 4) Docs: solo si adjuntó alguno
+      // 4️⃣ Subir SOLO documentos adjuntados
       const formDataDocs = new FormData()
       let hayDocs = false
+
       documentosOpcionales.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]
         if (file instanceof File) {
