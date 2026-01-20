@@ -1,7 +1,7 @@
 // src/modules/CrearTicket/service.CrearTicket.js
 import axios from 'axios'
 
-const API_URL_5 = import.meta.env.VITE_API_URL_5 // http://localhost:4000/tikets
+const API_URL_5 = import.meta.env.VITE_API_URL_5
 
 const buildHeaders = (token, isFormData = false) => {
   const headers = {}
@@ -20,7 +20,9 @@ const pickItems = res => {
   return []
 }
 
+// ======================================================
 // GET /tickets/mine
+// ======================================================
 export const listarTicketsMine = async (
   {
     id_personal,
@@ -55,7 +57,9 @@ export const listarMisCreaciones = async (
     token
   )
 
+// ======================================================
 // CATÁLOGO
+// ======================================================
 export const listarCatalogo = async (
   { orgId, type, page = 1, limit = 100, active = true } = {},
   token
@@ -87,7 +91,9 @@ export const listarCategorias = async (orgId, token) =>
     token
   )
 
+// ======================================================
 // TEAMS / AREAS
+// ======================================================
 export const listarTeams = async (
   { page = 1, limit = 100, search, activo = true } = {},
   token
@@ -116,7 +122,98 @@ export const listarAreas = async (
   return data
 }
 
+// ======================================================
+// ✅ POST /tickets (multipart/form-data)
+// - Soporta: todos los tipos + asignación + operación + adjuntos múltiples
+// - Keys compatibles con tu validator:
+//   asignado_a[tipo], asignado_a[id], watchers[], operacion[subtipo], etc.
+// ======================================================
+export const crearTicket = async (
+  {
+    orgId,
+    tipo, // tarea | proyecto | operacion
+    titulo,
+    descripcion,
+    categoria_id,
+    prioridad_id,
+    estado_id,
+
+    creado_por,
+
+    // asignación
+    asignado_tipo, // personal | area | team
+    asignado_id, // id_personal o ObjectId
+
+    // opcionales
+    watchers = [], // array id_personal
+    fecha_estimada, // 'YYYY-MM-DD' o ISO string
+    nota_estado,
+
+    // operacion (si tipo=operacion)
+    operacion_subtipo, // comercio | bodega
+    operacion_cliente,
+    operacion_lote,
+    operacion_producto,
+    operacion_apoyo_ids = [], // array id_personal
+    operacion_servicios_adicionales = [], // array strings
+
+    // archivos
+    files = [], // File[]
+  } = {},
+  token
+) => {
+  const fd = new FormData()
+
+  // required
+  fd.append('orgId', orgId ?? '')
+  fd.append('tipo', tipo ?? '')
+  fd.append('titulo', titulo ?? '')
+  fd.append('descripcion', descripcion ?? '')
+  fd.append('categoria_id', categoria_id ?? '')
+  fd.append('prioridad_id', prioridad_id ?? '')
+  fd.append('estado_id', estado_id ?? '')
+  fd.append('creado_por', creado_por ?? '')
+
+  // asignado_a bracket keys
+  fd.append('asignado_a[tipo]', asignado_tipo ?? '')
+  fd.append('asignado_a[id]', asignado_id ?? '')
+
+  // opcionales
+  if (fecha_estimada) fd.append('fecha_estimada', fecha_estimada)
+  if (nota_estado) fd.append('nota_estado', nota_estado)
+  ;(watchers || []).forEach(x => {
+    if (x) fd.append('watchers[]', String(x))
+  })
+
+  // operacion
+  if (tipo === 'operacion') {
+    fd.append('operacion[subtipo]', operacion_subtipo ?? '')
+    fd.append('operacion[cliente]', operacion_cliente ?? '')
+    if (operacion_lote) fd.append('operacion[lote]', operacion_lote)
+    if (operacion_producto) fd.append('operacion[producto]', operacion_producto)
+    ;(operacion_apoyo_ids || []).forEach(x => {
+      if (x) fd.append('operacion[apoyo_ids][]', String(x))
+    })
+    ;(operacion_servicios_adicionales || []).forEach(x => {
+      if (x) fd.append('operacion[servicios_adicionales][]', String(x))
+    })
+  }
+
+  // Archivos (multer uploadAny.any() captura cualquier key)
+  ;(files || []).forEach(file => {
+    if (file instanceof File) fd.append('files', file)
+  })
+
+  const { data } = await axios.post(`${API_URL_5}/tickets`, fd, {
+    headers: buildHeaders(token, true),
+  })
+
+  return data
+}
+
+// ======================================================
 // ✅ BUNDLE PARA TABLA (maps por _id)
+// ======================================================
 export const fetchMisCreacionesBundle = async (
   { id_personal, page = 1, limit = 100 } = {},
   token
