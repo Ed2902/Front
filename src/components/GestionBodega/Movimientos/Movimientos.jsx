@@ -17,7 +17,7 @@ import {
 import DiagramaFlujo from './DiagramaFlujo'
 import TablaMovimientos from './TablaMovimientos'
 import TablaAlistamientos from './alistamiento/tabla_alistamientos.jsx'
-import TablaSalidas from './TablaSalidas.jsx'
+import TablaSalidas from './salida/tabla_salidas.jsx'
 import TablaEntradas from '../Inventario/tabla_entradas.jsx'
 import FormIngreso from '../Inventario/Formingreso'
 import FormTransformacion from '../Inventario/FormTransformacion'

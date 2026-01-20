@@ -5,6 +5,9 @@ import AuthContext from '../../../context/AuthContext'
 import { fetchMisCreacionesBundle } from './service.CrearTicket'
 import Filtros from './Filtros.jsx'
 
+// ✅ IMPORTA el form (misma carpeta)
+import CrearTicketForm from './CrearTicketForm.jsx'
+
 const fmtDate = iso => {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -613,15 +616,17 @@ const TablaCrearTicket = () => {
         />
       </div>
 
-      {/* MODAL CREAR */}
+      {/* ✅ MODAL CREAR (con el form real) */}
       <AntdModal
         open={openCrear}
         title='Crear ticket'
         onCancel={() => setOpenCrear(false)}
         footer={null}
         centered
+        width={980}
+        destroyOnClose
       >
-        <p>Hola mundo 🚧</p>
+        <CrearTicketForm token={token} />
       </AntdModal>
 
       {/* MODAL ACTUALIZAR */}

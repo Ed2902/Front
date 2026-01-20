@@ -63,7 +63,7 @@ export const getUbicaciones = async () => {
 // ✅ POST - Crear transformación (con FormData)
 export const crearTransformacion = async data => {
   const token = getAuthToken()
-  const response = await api.post('/historial/transformacion', data, {
+  const response = await api.post('/historial/transformacion/paso', data, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

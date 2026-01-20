@@ -34,13 +34,11 @@ export const getHistorialConLote = async () => {
   }
 
   try {
-    console.log('Haciendo solicitud para historial completo...')
     const response = await api.get('/historial/con-lote', {
       headers: {
         Authorization: `Bearer ${token}`, // Enviar token en la cabecera Authorization
       },
     })
-    console.log('Respuesta recibida:', response.data)
     return response.data
   } catch (error) {
     console.error('Error al obtener historial completo:', error.message)
@@ -60,7 +58,6 @@ export const getHistorialPorLoteYProducto = async (
   }
 
   try {
-    console.log('Haciendo solicitud para historial filtrado...')
     const response = await api.get('/historial/con-lote', {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -70,7 +67,6 @@ export const getHistorialPorLoteYProducto = async (
         id_producto,
       },
     })
-    console.log('Respuesta recibida:', response.data)
     return response.data
   } catch (error) {
     console.error(
@@ -89,7 +85,6 @@ export const getEvidenciaUrl = filename => {
     throw new Error('Token no disponible')
   }
 
-  console.log(`Generando URL de evidencia para el archivo: ${filename}`)
   return `${import.meta.env.VITE_API_URL}/historial/evidencia/${filename}` // URL para la imagen
 }
 
@@ -100,10 +95,6 @@ export const getDocumentoUrl = id_historial => {
     console.error('Token no disponible')
     throw new Error('Token no disponible')
   }
-
-  console.log(
-    `Generando URL del documento PDF para el historial ${id_historial}`
-  )
   return `${import.meta.env.VITE_API_URL}/historial/${id_historial}/pdf` // URL para el PDF
 }
 // 📦 Obtener archivo (imagen o PDF) como blob
