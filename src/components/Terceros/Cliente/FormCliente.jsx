@@ -1,7 +1,26 @@
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
-import { crearCliente } from './Cliente_service'
+import { crearCliente, getAuthToken } from './Cliente_service'
 import './FormCliente.css'
+
+const LINEAS_SERVICIO = ['Logistica internacional', 'Bodega', 'RS']
+
+const getIdPersonalFromToken = () => {
+  try {
+    const token = getAuthToken()
+    if (!token) return null
+    const payloadBase64 = token.split('.')[1]
+    const payloadJson = atob(
+      payloadBase64.replace(/-/g, '+').replace(/_/g, '/')
+    )
+    const payload = JSON.parse(payloadJson)
+
+    // En tu login llega como id_personal (y también viene user.personal.id_personal)
+    return payload?.id_personal || payload?.user?.personal?.id_personal || null
+  } catch {
+    return null
+  }
+}
 
 const FormCliente = ({ onClose, onSuccess }) => {
   const {
@@ -12,6 +31,7 @@ const FormCliente = ({ onClose, onSuccess }) => {
   } = useForm({
     defaultValues: {
       Activo: true,
+      Linea_servicio: 'Bodega',
     },
   })
 
@@ -234,6 +254,23 @@ const FormCliente = ({ onClose, onSuccess }) => {
         <div>
           <label className='form-label'>Dirección</label>
           <input className='form-control mb-2' {...register('Direccion')} />
+        </div>
+
+        <div>
+          <label className='form-label'>Línea de servicio *</label>
+          <select
+            className='form-control mb-2'
+            {...register('Linea_servicio', { required: true })}
+          >
+            {LINEAS_SERVICIO.map(op => (
+              <option key={op} value={op}>
+                {op}
+              </option>
+            ))}
+          </select>
+          {errors.Linea_servicio && (
+            <p className='text-danger'>Este campo es obligatorio</p>
+          )}
         </div>
 
         <div>

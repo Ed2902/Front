@@ -1,12 +1,14 @@
 import { useForm } from 'react-hook-form'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  actualizarClienteDatos,
   actualizarClienteActivo,
   actualizarClienteObservaciones,
-  actualizarSoloDocumentosCliente,
+  actualizarClienteAuto,
+  getNombrePersonal,
 } from './Cliente_service'
 import './FormCliente.css'
+
+const LINEAS_SERVICIO = ['Logistica internacional', 'Bodega', 'RS']
 
 const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
   const {
@@ -22,6 +24,8 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       Direccion: cliente?.Direccion || '',
       Observaciones: cliente?.Observaciones || '',
       Activo: Boolean(cliente?.Activo),
+      Id_personal: cliente?.Id_personal ?? cliente?.id_personal ?? '',
+      Linea_servicio: cliente?.Linea_servicio ?? cliente?.linea_servicio ?? '',
     },
   })
 
@@ -46,6 +50,42 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
     {
       campo: 'certificacion_comercial_url',
       backend: 'certificacion_comercial',
+      label: 'Certificación comercial',
+    },
+    {
+      campo: 'estados_financieros_url',
+      backend: 'estados_financieros',
+      label: 'Estados financieros',
+    },
+    {
+      campo: 'visita_seguridad_url',
+      backend: 'visita_seguridad',
+      label: 'Visita de seguridad',
+    },
+    {
+      campo: 'lista_clinton_url',
+      backend: 'lista_clinton',
+      label: 'Lista Clinton',
+    },
+    {
+      campo: 'certificacion_judicial_url',
+      backend: 'certificacion_judicial',
+      label: 'Certificación judicial',
+    },
+    {
+      campo: 'certificacion_contraloria_url',
+      backend: 'certificacion_contraloria',
+      label: 'Certificación Contraloría',
+    },
+    {
+      campo: 'certificacion_procuraduria_url',
+      backend: 'certificacion_procuraduria',
+      label: 'Certificación Procuraduría',
+    },
+    {
+      campo: 'certificado_contadora_url',
+      backend: 'certificado_contadora',
+      label: 'Certificado contadora',
     },
     { campo: 'estados_financieros_url', backend: 'estados_financieros' },
     { campo: 'lista_clinton_url', backend: 'lista_clinton' },
@@ -98,7 +138,24 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         Nombre: data.Nombre,
         Correo: data.Correo,
         Celular: data.Celular,
-        Direccion: data.Direccion || null,
+      }
+
+      const dir = String(data.Direccion ?? '').trim()
+      payload.Direccion = dir === '' ? null : dir
+
+      const linea = String(data.Linea_servicio ?? '').trim()
+      payload.Linea_servicio = linea === '' ? null : linea
+
+      const idp = String(data.Id_personal ?? '').trim()
+      payload.Id_personal = idp === '' ? null : idp
+
+      // FormData de docs (solo archivos)
+      const formDataDocs = new FormData()
+      documentos.forEach(({ campo, backend }) => {
+        const file = data[campo]?.[0]
+        if (file instanceof File) {
+          formDataDocs.append(backend, file)
+        }
       })
 
       // 2️⃣ Cambiar activo si aplica
@@ -133,14 +190,17 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       if (hayDocs) {
         await actualizarSoloDocumentosCliente(cliente.id_Cliente, formDataDocs)
       }
-
-      onSuccess?.()
       onClose?.()
     } catch (error) {
       console.error('❌ Error al editar cliente:', error)
+      console.log('DETAIL:', error?.response?.data)
+
       const msg =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
+        (Array.isArray(error?.response?.data?.errors)
+          ? error.response.data.errors.map(e => e.msg).join(', ')
+          : null) ||
         error.message ||
         'Error al editar cliente.'
       setErrorMsg(msg)
@@ -198,6 +258,30 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         </div>
 
         <div>
+          <label className='form-label'>Comercial a cargo (ID)</label>
+          <input className='form-control mb-2' {...register('Id_personal')} />
+          {String(idPersonalWatch ?? '').trim() !== '' && (
+            <small className='text-muted'>
+              {nombreComercial
+                ? `Nombre: ${nombreComercial}`
+                : 'Buscando nombre...'}
+            </small>
+          )}
+        </div>
+
+        <div>
+          <label className='form-label'>Línea de negocio</label>
+          <select className='form-select mb-2' {...register('Linea_servicio')}>
+            <option value=''>— Seleccionar —</option>
+            {LINEAS_SERVICIO.map(l => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label className='form-label'>Activo</label>
           <div className='form-check mt-1'>
             <input
@@ -221,16 +305,12 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
 
       <hr />
       <h6>Actualizar documentos (opcional)</h6>
+
       <div className='grid-documentos-form'>
-        {documentosOpcionales.map(({ campo }) => (
+        {documentos.map(({ campo, label }) => (
           <div className='input-archivo' key={campo}>
-            <label>{campo.replace('_url', '').replace(/_/g, ' ')}</label>
-            <input
-              type='file'
-              accept='.pdf,.docx'
-              className={watch(campo)?.length ? 'input-verde' : ''}
-              {...register(campo)}
-            />
+            <label>{label}</label>
+            <input type='file' accept='.pdf,.docx' {...register(campo)} />
           </div>
         ))}
       </div>
