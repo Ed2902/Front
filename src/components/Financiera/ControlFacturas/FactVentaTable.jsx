@@ -21,7 +21,7 @@ import {
 
 // ✅ CAMBIO: componentes de VENTA
 import FormVenta from './FormVenta'
-import FormAbonoVenta from './FormAbonoVenta'
+import FormAbonoVenta from './FormAbonoventa'
 
 // ✅ NUEVO: visor/descargador seguro (token + VITE_API_URL_4)
 import SecureArchivo from './SecureArchivo'

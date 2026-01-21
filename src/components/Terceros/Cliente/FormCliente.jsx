@@ -165,13 +165,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
       if (data.Observaciones)
         formData.append('Observaciones', data.Observaciones)
 
-      // ✅ NUEVO: enum línea de servicio
-      formData.append('Linea_servicio', data.Linea_servicio)
-
-      // ✅ NUEVO: Id_personal automático (no visible)
-      const idPersonal = getIdPersonalFromToken()
-      if (idPersonal) formData.append('Id_personal', idPersonal)
-
       // ✅ Envía obligatorios
       documentosObligatorios.forEach(({ campo, backend }) => {
         const file = data[campo]?.[0]

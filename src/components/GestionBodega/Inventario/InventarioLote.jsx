@@ -30,11 +30,25 @@ const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
 
 const isUnidad = u => /(unidad|unid|uds?)/i.test(String(u || '').trim())
 
+// Punto pequeño para el estado
+const Dot = ({ color = 'var(--bs-secondary)' }) => (
+  <span
+    className='d-inline-block rounded-circle align-middle'
+    style={{
+      width: 9,
+      height: 9,
+      backgroundColor: color,
+      verticalAlign: 'middle',
+    }}
+  />
+)
+
 const InventarioLote = () => {
   const [raw, setRaw] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
+  const [tipoFiltro, setTipoFiltro] = useState('todos') // 'todos' | 'RS' | 'Bodega'
 
   const { tienePermiso } = usePermisos()
   const puedeVerTipo = tipo => {
@@ -64,7 +78,7 @@ const InventarioLote = () => {
     }
   }, [])
 
-  // --- Agrupar por lote con totales + items detallados
+  // --- Agrupar por lote con totales + items detallados + estado + tipoLote (RS/Bodega)
   const lotes = useMemo(() => {
     const map = new Map()
     for (const it of raw) {
@@ -76,6 +90,7 @@ const InventarioLote = () => {
           it?.Unidad_de_medida,
           it?.Producto?.Unidad_de_medida
         ) ?? ''
+      const tipo = String(it?.Tipo || '').trim() // 'RS' | 'Bodega' (lo que venga del BE)
 
       // Cantidad (prioridad: Inventario -> Cantidad -> Cantidad_Lote)
       const cantidadRaw = pickFirstDefined(
@@ -90,16 +105,16 @@ const InventarioLote = () => {
       const pu = toNumberCO(it?.PesoUnitarioKg)
 
       let kilos = 0
-      if (pesoTotalFromBE > 0) {
-        kilos = pesoTotalFromBE
-      } else if (pu > 0) {
-        kilos = cantidad * pu
-      } else {
-        kilos = cantidad
-      }
+      if (pesoTotalFromBE > 0) kilos = pesoTotalFromBE
+      else if (pu > 0) kilos = cantidad * pu
+      else kilos = cantidad
 
       const fila = {
-        id_producto: pickFirstDefined(it?.Id_producto, it?.id_producto),
+        id_producto: pickFirstDefined(
+          it?.Idproducto,
+          it?.Id_producto,
+          it?.id_producto
+        ),
         nombre_producto:
           pickFirstDefined(it?.Nombre_Producto, it?.Producto?.Nombre) ?? '',
         unidad,
@@ -133,12 +148,16 @@ const InventarioLote = () => {
           totalUnidades: 0,
           totalKilos: 0,
           ultimoIngreso: null,
+          anyRS: false,
+          anyBodega: false,
         })
       }
       const acc = map.get(loteId)
       acc.items.push(fila)
       if (isUnidad(unidad)) acc.totalUnidades += cantidad
       acc.totalKilos += kilos
+      if (tipo === 'RS') acc.anyRS = true
+      if (tipo === 'Bodega') acc.anyBodega = true
 
       if (fila.fechaRaw) {
         const cur = acc.ultimoIngreso ? new Date(acc.ultimoIngreso) : null
@@ -147,49 +166,79 @@ const InventarioLote = () => {
       }
     }
 
-    // Orden por lote asc, y por nombre dentro
+    // Completar: ordenar items y calcular estado/tipo por lote
     for (const v of map.values()) {
       v.items.sort((a, b) =>
         String(a.nombre_producto).localeCompare(String(b.nombre_producto), 'es')
       )
+      // Estado del lote
+      const totU = toNumberCO(v.totalUnidades)
+      const totK = toNumberCO(v.totalKilos)
+      const cerrado = totU <= 0 && totK <= 0
+      v.estado = cerrado ? 'cerrado' : 'operando'
+      v.estadoUi = cerrado
+        ? { etiqueta: 'Cerrado', color: 'var(--bs-danger)' }
+        : { etiqueta: 'Operando', color: 'var(--bs-warning)' }
+
+      // Tipo del lote (sin mezclas)
+      if (v.anyRS && !v.anyBodega) v.tipoLote = 'RS'
+      else if (v.anyBodega && !v.anyRS) v.tipoLote = 'Bodega'
+      else v.tipoLote = 'Mixto' // si llegara a ocurrir, se excluye al filtrar
     }
+
+    // Orden por lote asc inicialmente
     return Array.from(map.values()).sort((a, b) =>
       String(a.loteId).localeCompare(String(b.loteId), 'es')
     )
   }, [raw, tienePermiso])
 
-  // --- Filtro global (lote o cualquier campo hijo)
+  // --- Filtro global + filtro de tipo (RS/Bodega)
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return lotes
-    return lotes.filter(
-      l =>
-        String(l.loteId).toLowerCase().includes(q) ||
-        l.items.some(item =>
-          Object.values(item).some(val =>
-            String(val ?? '')
-              .toLowerCase()
-              .includes(q)
-          )
+    const bySearch = l =>
+      !q ||
+      String(l.loteId).toLowerCase().includes(q) ||
+      l.items.some(item =>
+        Object.values(item).some(val =>
+          String(val ?? '')
+            .toLowerCase()
+            .includes(q)
         )
-    )
-  }, [lotes, search])
+      )
 
-  // --- Totales globales (sobre lo filtrado)
+    const byTipo =
+      tipoFiltro === 'todos' ? () => true : l => l.tipoLote === tipoFiltro // excluye 'Mixto' automáticamente
+
+    return lotes.filter(l => bySearch(l) && byTipo(l))
+  }, [lotes, search, tipoFiltro])
+
+  // --- Orden final: operando primero, cerrados abajo
+  const filteredSorted = useMemo(() => {
+    const rank = e => (e === 'cerrado' ? 1 : 0)
+    return [...filtered].sort((a, b) => {
+      const r = rank(a.estado) - rank(b.estado)
+      if (r !== 0) return r
+      return String(a.loteId).localeCompare(String(b.loteId), 'es')
+    })
+  }, [filtered])
+
+  // --- Totales globales (sobre lo filtrado + ordenado)
   const totalUnidades = useMemo(
-    () => filtered.reduce((s, l) => s + toNumberCO(l.totalUnidades), 0),
-    [filtered]
+    () => filteredSorted.reduce((s, l) => s + toNumberCO(l.totalUnidades), 0),
+    [filteredSorted]
   )
   const totalKilos = useMemo(
-    () => filtered.reduce((s, l) => s + toNumberCO(l.totalKilos), 0),
-    [filtered]
+    () => filteredSorted.reduce((s, l) => s + toNumberCO(l.totalKilos), 0),
+    [filteredSorted]
   )
 
   // --- Exportar Excel (detalle por item)
   const exportar = () => {
-    const plano = filtered.flatMap(l =>
+    const plano = filteredSorted.flatMap(l =>
       l.items.map(p => ({
         Lote: l.loteId,
+        Estado: l.estadoUi.etiqueta,
+        Tipo: l.tipoLote,
         Código: p.id_producto,
         Producto: p.nombre_producto,
         Unidad: p.unidad,
@@ -268,6 +317,20 @@ const InventarioLote = () => {
       sortable: true,
       width: '140px',
     },
+    {
+      name: 'Estado',
+      selector: r => r.estado,
+      sortable: true,
+      width: '140px',
+      cell: r => (
+        <span className='badge text-bg-light border'>
+          <span className='me-1 d-inline-flex align-items-center'>
+            <Dot color={r.estadoUi.color} />
+          </span>
+          {r.estadoUi.etiqueta}
+        </span>
+      ),
+    },
   ]
 
   // --- Columnas tabla hija (items dentro del lote)
@@ -339,7 +402,7 @@ const InventarioLote = () => {
     },
   ]
 
-  // --- Estilos DataTable
+  // --- Estilos DataTable (sin cambios)
   const tableStyles = {
     headCells: {
       style: {
@@ -371,7 +434,7 @@ const InventarioLote = () => {
     </div>
   )
 
-  // --- SubHeader (buscador + totales + export)
+  // --- SubHeader (buscador + filtro tipo + totales + export)
   const SubHeader = (
     <div className='d-flex flex-wrap gap-2 w-100 align-items-center'>
       <div className='input-group' style={{ maxWidth: 360 }}>
@@ -385,6 +448,44 @@ const InventarioLote = () => {
         />
       </div>
 
+      {/* Filtro RS/Bodega */}
+      <div
+        className='btn-group btn-group-sm ms-2'
+        role='group'
+        aria-label='Filtrar tipo'
+      >
+        <button
+          type='button'
+          className={`btn ${
+            tipoFiltro === 'todos' ? 'btn-dark' : 'btn-outline-dark'
+          }`}
+          onClick={() => setTipoFiltro('todos')}
+          title='Mostrar todos'
+        >
+          Todos
+        </button>
+        <button
+          type='button'
+          className={`btn ${
+            tipoFiltro === 'RS' ? 'btn-info' : 'btn-outline-info'
+          }`}
+          onClick={() => setTipoFiltro('RS')}
+          title='Solo RS'
+        >
+          RS
+        </button>
+        <button
+          type='button'
+          className={`btn ${
+            tipoFiltro === 'Bodega' ? 'btn-success' : 'btn-outline-success'
+          }`}
+          onClick={() => setTipoFiltro('Bodega')}
+          title='Solo Bodega'
+        >
+          Bodega
+        </button>
+      </div>
+
       <div className='ms-auto d-flex align-items-center gap-3'>
         <div className='text-muted small'>
           <strong>Total Unidades:</strong> {numberCO(totalUnidades, 2)}
@@ -394,7 +495,7 @@ const InventarioLote = () => {
         <button
           className='btn btn-sm btn-success'
           onClick={exportar}
-          disabled={loading || filtered.length === 0}
+          disabled={loading || filteredSorted.length === 0}
         >
           <FaFileExcel className='me-1' /> Exportar
         </button>
@@ -418,7 +519,7 @@ const InventarioLote = () => {
 
         <DataTable
           columns={parentColumns}
-          data={filtered}
+          data={filteredSorted}
           progressPending={loading}
           pagination
           paginationPerPage={30}

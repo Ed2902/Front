@@ -55,8 +55,9 @@ const Lotes = () => {
   // Resumen de inventario
   const [inventarioResumen, setInventarioResumen] = useState([])
 
-  // Filtro por estado (todos | nuevo | operando | cerrado)
-  const [estadoFiltro, setEstadoFiltro] = useState('todos')
+  // Filtros
+  const [estadoFiltro, setEstadoFiltro] = useState('todos') // todos | nuevo | operando | cerrado
+  const [tipoFiltro, setTipoFiltro] = useState('todos') // todos | rs | bodega
 
   const { tienePermiso } = usePermisos()
   const permisoLotesProveedor = tienePermiso('lotesProveedor')
@@ -136,7 +137,6 @@ const Lotes = () => {
   }
 
   // ====== ESTADO DEL LOTE (etiqueta compacta con punto a la derecha) ======
-  // Estados: Nuevo (azul), Operando (amarillo), Cerrado (rojo)
   const getEstadoLote = useCallback(
     idLote => {
       const registros = inventarioResumen.filter(r => r.Id_lote === idLote)
@@ -175,10 +175,38 @@ const Lotes = () => {
     [inventarioResumen]
   )
 
-  // Filtro base (permisos + búsqueda) y luego filtro por estado
+  // ====== Tipo de lote por id_lote (rs | bodega) sin mezclas ======
+  // rs: tiene al menos un Proveedor y ninguno con Cliente
+  // bodega: tiene al menos un Cliente y ninguno con Proveedor
+  const tipoPorLote = useMemo(() => {
+    const acc = new Map()
+    for (const r of lotesData) {
+      const id = r.id_lote
+      if (isNoAplica(id)) continue
+      const hasProv = !!r?.Proveedor
+      const hasCli = !!r?.Cliente
+      const prev = acc.get(id) || { anyProv: false, anyCli: false }
+      acc.set(id, {
+        anyProv: prev.anyProv || hasProv,
+        anyCli: prev.anyCli || hasCli,
+      })
+    }
+    // convertimos a un map de id -> 'rs' | 'bodega' | 'mixto' | 'desconocido'
+    const out = new Map()
+    for (const [id, flags] of acc.entries()) {
+      if (flags.anyProv && !flags.anyCli) out.set(id, 'rs')
+      else if (flags.anyCli && !flags.anyProv) out.set(id, 'bodega')
+      else if (flags.anyCli && flags.anyProv) out.set(id, 'mixto')
+      else out.set(id, 'desconocido')
+    }
+    return out
+  }, [lotesData])
+
+  // Filtro base (permisos + búsqueda + tipo) y luego filtro por estado
   const filteredLotes = useMemo(() => {
     let list = lotesData.filter(item => !isNoAplica(item.id_lote))
 
+    // permisos
     if (permisoLotesProveedor && !permisoLotesCliente)
       list = list.filter(i => i.Proveedor !== null)
     if (permisoLotesCliente && !permisoLotesProveedor)
@@ -186,6 +214,7 @@ const Lotes = () => {
     if (permisoLotesProveedor && permisoLotesCliente)
       list = list.filter(i => i.Proveedor !== null || i.Cliente !== null)
 
+    // búsqueda global
     if (globalFilter) {
       const gf = globalFilter.toLowerCase()
       list = list.filter(
@@ -200,6 +229,25 @@ const Lotes = () => {
       )
     }
 
+    // filtro por TIPO (lote completo, sin mezclas)
+    if (tipoFiltro !== 'todos') {
+      const allowed = new Set(
+        [...tipoPorLote.entries()]
+          .filter(([, tipo]) => tipo === tipoFiltro)
+          .map(([id]) => id)
+      )
+      list = list.filter(i => allowed.has(i.id_lote))
+    } else {
+      // si quieres ocultar explícitamente los mixtos cuando está en "todos", descomenta:
+      // const notMixed = new Set(
+      //   [...tipoPorLote.entries()]
+      //     .filter(([, tipo]) => tipo === 'rs' || tipo === 'bodega')
+      //     .map(([id]) => id)
+      // )
+      // list = list.filter(i => notMixed.has(i.id_lote))
+    }
+
+    // filtro por ESTADO (usa inventarioResumen)
     if (estadoFiltro !== 'todos') {
       list = list.filter(i => getEstadoLote(i.id_lote).key === estadoFiltro)
     }
@@ -211,6 +259,8 @@ const Lotes = () => {
     permisoLotesProveedor,
     permisoLotesCliente,
     estadoFiltro,
+    tipoFiltro,
+    tipoPorLote, // ✅ dependencia para el filtro de tipo
     getEstadoLote, // ✅ dependencia correcta para ESLint
   ])
 
@@ -368,7 +418,45 @@ const Lotes = () => {
         <div className='d-flex flex-wrap align-items-center gap-3 mb-3'>
           <h2 className='m-0 me-auto'>Lotes</h2>
 
-          {/* Filtro por estado - estilo más profesional */}
+          {/* Filtro por tipo (RS / Bodega) */}
+          <div
+            className='btn-group'
+            role='group'
+            aria-label='Filtrar tipo de lote'
+          >
+            <button
+              type='button'
+              className={`btn btn-sm ${
+                tipoFiltro === 'todos' ? 'btn-dark' : 'btn-outline-dark'
+              }`}
+              onClick={() => setTipoFiltro('todos')}
+              title='Mostrar todos los lotes'
+            >
+              Todos
+            </button>
+            <button
+              type='button'
+              className={`btn btn-sm ${
+                tipoFiltro === 'rs' ? 'btn-info' : 'btn-outline-info'
+              }`}
+              onClick={() => setTipoFiltro('rs')}
+              title='Solo lotes con Proveedor (RS)'
+            >
+              RS
+            </button>
+            <button
+              type='button'
+              className={`btn btn-sm ${
+                tipoFiltro === 'bodega' ? 'btn-success' : 'btn-outline-success'
+              }`}
+              onClick={() => setTipoFiltro('bodega')}
+              title='Solo lotes con Cliente (Bodega)'
+            >
+              Bodega
+            </button>
+          </div>
+
+          {/* Filtro por estado */}
           <div className='btn-group' role='group' aria-label='Filtrar estados'>
             <button
               type='button'
@@ -543,7 +631,6 @@ const Lotes = () => {
                             <th>Cantidad</th>
                             <th>Peso U. (Kg)</th>
                             <th>Peso Total (Kg)</th>
-                            {/* Se elimina la columna Cliente/Proveedor por fila */}
                             <th>Acciones</th>
                           </tr>
                         </thead>
