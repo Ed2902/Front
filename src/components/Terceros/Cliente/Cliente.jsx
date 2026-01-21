@@ -3,6 +3,7 @@ import {
   getClientes,
   getDocumentosCliente,
   actualizarClienteActivo,
+  getNombrePersonal,
 } from './Cliente_service'
 import './Cliente.css'
 import FormCliente from './FormCliente'
@@ -23,14 +24,19 @@ const Cliente = () => {
     totalPages: 1,
   })
 
-  // buscador + filtro estado
+  // buscador + filtros
   const [globalFilter, setGlobalFilter] = useState('')
   const [estadoFiltro, setEstadoFiltro] = useState('TODOS') // TODOS | ACTIVOS | INACTIVOS
+  const [lineaFiltro, setLineaFiltro] = useState('TODAS') // TODAS | <linea>
+  const [comercialFiltro, setComercialFiltro] = useState('TODOS') // TODOS | <id_personal>
 
   // documentos por cliente
   const [docsByClient, setDocsByClient] = useState({})
   const [docsLoading, setDocsLoading] = useState({})
   const [docsError, setDocsError] = useState({})
+
+  // cache nombres de personal
+  const [nombrePersonalById, setNombrePersonalById] = useState({})
 
   // modales
   const [modalVisible, setModalVisible] = useState(false)
@@ -56,24 +62,92 @@ const Cliente = () => {
     fetchClientes()
   }, [fetchClientes])
 
+  const ensureNombrePersonal = useCallback(
+    async idPersonal => {
+      if (!idPersonal) return
+      const key = String(idPersonal)
+      if (nombrePersonalById[key]) return
+
+      try {
+        const nombre = await getNombrePersonal(idPersonal)
+        setNombrePersonalById(prev => ({
+          ...prev,
+          [key]: nombre || String(idPersonal),
+        }))
+      } catch (e) {
+        console.error('Error al obtener nombre del personal:', e)
+        setNombrePersonalById(prev => ({ ...prev, [key]: String(idPersonal) }))
+      }
+    },
+    [nombrePersonalById]
+  )
+
+  // opciones de filtro: líneas
+  const lineasDisponibles = useMemo(() => {
+    const set = new Set()
+    clientes.forEach(c => {
+      const linea = c?.Linea_servicio ?? c?.linea_servicio
+      if (linea) set.add(String(linea))
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [clientes])
+
+  // opciones de filtro: comerciales (IDs)
+  const idsPersonalDisponibles = useMemo(() => {
+    const set = new Set()
+    clientes.forEach(c => {
+      const id = c?.Id_personal ?? c?.id_personal
+      if (id) set.add(String(id))
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [clientes])
+
+  // precargar nombres para el dropdown de comerciales
+  useEffect(() => {
+    if (!idsPersonalDisponibles.length) return
+    idsPersonalDisponibles.forEach(id => {
+      if (!nombrePersonalById[id]) ensureNombrePersonal(id)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsPersonalDisponibles])
+
   const filteredClientes = useMemo(() => {
     const q = globalFilter.trim().toLowerCase()
 
     return clientes.filter(c => {
-      // filtro por estado
       const isActivo = Boolean(c?.Activo)
+
       if (estadoFiltro === 'ACTIVOS' && !isActivo) return false
       if (estadoFiltro === 'INACTIVOS' && isActivo) return false
 
+      const linea = c?.Linea_servicio ?? c?.linea_servicio ?? ''
+      if (lineaFiltro !== 'TODAS' && String(linea) !== String(lineaFiltro))
+        return false
+
+      const idPersonal = c?.Id_personal ?? c?.id_personal ?? ''
+      if (
+        comercialFiltro !== 'TODOS' &&
+        String(idPersonal) !== String(comercialFiltro)
+      )
+        return false
+
       if (!q) return true
 
-      const valores = [c?.id_Cliente, c?.Nombre, c?.Correo, c?.Celular]
+      const valores = [
+        c?.id_Cliente,
+        c?.Nombre,
+        c?.Correo,
+        c?.Celular,
+        linea,
+        c?.Direccion,
+        c?.Observaciones,
+      ]
         .filter(Boolean)
         .map(v => String(v).toLowerCase())
 
       return valores.some(v => v.includes(q))
     })
-  }, [clientes, globalFilter, estadoFiltro])
+  }, [clientes, globalFilter, estadoFiltro, lineaFiltro, comercialFiltro])
 
   const loadDocsForClient = async idCliente => {
     if (Array.isArray(docsByClient[idCliente])) return
@@ -94,6 +168,23 @@ const Cliente = () => {
     } finally {
       setDocsLoading(prev => ({ ...prev, [idCliente]: false }))
     }
+  }
+
+  const invalidateDocsCache = idCliente => {
+    setDocsByClient(prev => {
+      const copy = { ...prev }
+      delete copy[idCliente]
+      return copy
+    })
+    setDocsError(prev => ({ ...prev, [idCliente]: false }))
+  }
+
+  // ✅ se llama desde el modal al guardar:
+  // - refresca clientes
+  // - invalida cache de docs del cliente actualizado (evita usar URLs viejas)
+  const handleClienteUpdated = async idCliente => {
+    await fetchClientes()
+    if (idCliente) invalidateDocsCache(idCliente)
   }
 
   const toggleActivo = async (cliente, nuevoEstado) => {
@@ -139,19 +230,22 @@ const Cliente = () => {
         </button>
       </div>
 
-      {/* buscador + filtro estado */}
+      {/* barra búsqueda + filtros */}
       <div className='row g-2 mb-3'>
-        <div className='col-12 col-md-8'>
+        <div className='col-12 col-md-4'>
           <input
             type='text'
             className='form-control buscador-pequeno'
             placeholder='Buscar por nombre, correo, celular o ID'
             value={globalFilter}
-            onChange={e => setGlobalFilter(e.target.value)}
+            onChange={e => {
+              setGlobalFilter(e.target.value)
+              setPage(1)
+            }}
           />
         </div>
 
-        <div className='col-12 col-md-4'>
+        <div className='col-12 col-md-2'>
           <select
             className='form-select'
             value={estadoFiltro}
@@ -165,6 +259,42 @@ const Cliente = () => {
             <option value='INACTIVOS'>Solo inactivos</option>
           </select>
         </div>
+
+        <div className='col-12 col-md-3'>
+          <select
+            className='form-select'
+            value={lineaFiltro}
+            onChange={e => {
+              setLineaFiltro(e.target.value)
+              setPage(1)
+            }}
+          >
+            <option value='TODAS'>Todas las líneas</option>
+            {lineasDisponibles.map(l => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className='col-12 col-md-3'>
+          <select
+            className='form-select'
+            value={comercialFiltro}
+            onChange={e => {
+              setComercialFiltro(e.target.value)
+              setPage(1)
+            }}
+          >
+            <option value='TODOS'>Todos los comerciales</option>
+            {idsPersonalDisponibles.map(id => (
+              <option key={id} value={id}>
+                {nombrePersonalById[id] || `ID ${id}`}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -176,6 +306,15 @@ const Cliente = () => {
           ) : (
             filteredClientes.map((cliente, index) => {
               const isActivo = Boolean(cliente?.Activo)
+
+              const idPersonal =
+                cliente?.Id_personal ?? cliente?.id_personal ?? null
+              const lineaServicio =
+                cliente?.Linea_servicio ?? cliente?.linea_servicio ?? null
+              const nombreComercial = idPersonal
+                ? nombrePersonalById[String(idPersonal)]
+                : ''
+
               return (
                 <div className='accordion-item' key={cliente.id_Cliente}>
                   <h2 className='accordion-header' id={`heading-${index}`}>
@@ -188,7 +327,10 @@ const Cliente = () => {
                       data-bs-target={`#collapse-${index}`}
                       aria-expanded='false'
                       aria-controls={`collapse-${index}`}
-                      onClick={() => loadDocsForClient(cliente.id_Cliente)}
+                      onClick={() => {
+                        loadDocsForClient(cliente.id_Cliente)
+                        ensureNombrePersonal(idPersonal)
+                      }}
                     >
                       {cliente.Nombre}{' '}
                       <span className='ms-2 text-muted'>
@@ -216,6 +358,24 @@ const Cliente = () => {
                       </p>
                       <p>
                         <strong>Celular:</strong> {cliente.Celular}
+                      </p>
+
+                      {/* ✅ ahora sí visibles */}
+                      <p>
+                        <strong>Dirección:</strong> {cliente.Direccion ?? '—'}
+                      </p>
+                      <p>
+                        <strong>Observaciones:</strong>{' '}
+                        {cliente.Observaciones ?? '—'}
+                      </p>
+
+                      <p>
+                        <strong>Comercial a cargo:</strong>{' '}
+                        {idPersonal ? nombreComercial || 'Cargando...' : '—'}
+                      </p>
+                      <p>
+                        <strong>Línea de servicio:</strong>{' '}
+                        {lineaServicio ?? '—'}
                       </p>
 
                       <p>
@@ -251,7 +411,6 @@ const Cliente = () => {
                         <h6 className='mb-0'>📄 Documentos:</h6>
 
                         <div className='d-flex align-items-center gap-3'>
-                          {/* Switch sin modal */}
                           <div className='form-check form-switch m-0'>
                             <input
                               className='form-check-input'
@@ -261,7 +420,7 @@ const Cliente = () => {
                               checked={isActivo}
                               onChange={e => {
                                 const nuevoEstado = e.target.checked
-                                e.target.checked = !nuevoEstado // revert visual
+                                e.target.checked = !nuevoEstado
                                 toggleActivo(cliente, nuevoEstado)
                               }}
                             />
@@ -295,11 +454,7 @@ const Cliente = () => {
                           <button
                             className='btn btn-outline-secondary btn-sm'
                             onClick={() => {
-                              setDocsByClient(prev => {
-                                const copy = { ...prev }
-                                delete copy[cliente.id_Cliente]
-                                return copy
-                              })
+                              invalidateDocsCache(cliente.id_Cliente)
                               loadDocsForClient(cliente.id_Cliente)
                             }}
                           >
@@ -338,7 +493,7 @@ const Cliente = () => {
         </div>
       )}
 
-      {/* ✅ PAGINACIÓN AL FINAL (como pediste) */}
+      {/* paginación */}
       <div className='d-flex flex-wrap gap-2 align-items-center mt-3'>
         <button
           className='btn btn-outline-secondary btn-sm'
@@ -390,7 +545,7 @@ const Cliente = () => {
                 setModalVisible(false)
                 setClienteSeleccionado(null)
               }}
-              onSuccess={fetchClientes}
+              onSuccess={handleClienteUpdated}
             />
           </div>
         </div>

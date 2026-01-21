@@ -159,8 +159,7 @@ export const eliminarDocumentoCliente = async (idCliente, campo) => {
 }
 
 /**
- * 🔁 Mantengo tu endpoint anterior (por si todavía lo usas)
- * PUT /cliente/:id/con-documentos
+ * ✅ PUT /cliente/:id/con-documentos
  */
 export const actualizarClienteConDocumentos = async (idCliente, formData) => {
   const response = await axios.put(
@@ -173,4 +172,58 @@ export const actualizarClienteConDocumentos = async (idCliente, formData) => {
     }
   )
   return response.data
+}
+
+/**
+ * ✅ NUEVO: actualiza datos y (si hay) documentos en UNA sola función
+ * - Si hay docs -> usa /con-documentos (FormData)
+ * - Si no hay docs -> usa /:id (JSON)
+ *
+ * payload: { Nombre, Correo, Celular, Direccion?, Linea_servicio?, Id_personal? }
+ * formDataDocs: FormData con archivos (keys: rut, camara_comercio, ...)
+ */
+export const actualizarClienteAuto = async (
+  idCliente,
+  payload,
+  formDataDocs
+) => {
+  const hasDocs =
+    formDataDocs instanceof FormData &&
+    typeof formDataDocs.entries === 'function' &&
+    Array.from(formDataDocs.entries()).length > 0
+
+  if (!hasDocs) {
+    return await actualizarClienteDatos(idCliente, payload)
+  }
+
+  // construir FormData final (campos + archivos)
+  const fd = new FormData()
+
+  // campos de texto -> FormData
+  Object.entries(payload || {}).forEach(([k, v]) => {
+    // si es null/undefined no lo mandes
+    if (v === undefined || v === null) return
+    fd.append(k, String(v))
+  })
+
+  // archivos (ya vienen con key backend correcta)
+  for (const [k, v] of formDataDocs.entries()) {
+    fd.append(k, v)
+  }
+
+  return await actualizarClienteConDocumentos(idCliente, fd)
+}
+
+// ✅ Traer nombre del personal desde /personal
+export const getNombrePersonal = async idPersonal => {
+  if (!idPersonal) return ''
+  const response = await api.get(`/personal/${idPersonal}`, {
+    headers: authHeaders(),
+  })
+
+  const p = response.data
+  const nombre = p?.Nombre || p?.nombre || ''
+  const apellido = p?.Apellido || p?.apellido || ''
+  const full = `${nombre} ${apellido}`.trim()
+  return full || String(idPersonal)
 }
