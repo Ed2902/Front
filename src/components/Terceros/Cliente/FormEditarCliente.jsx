@@ -32,28 +32,86 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
-  // ✅ LOS 15 DOCUMENTOS (correo + extra)
-  const documentosOpcionales = [
-    // obligatorios del correo (en editar pasan a opcionales)
-    { campo: 'cedula_url', backend: 'cedula' },
-    { campo: 'camara_comercio_url', backend: 'camara_comercio' },
-    { campo: 'rut_url', backend: 'rut' },
-    { campo: 'certificacion_bancaria_url', backend: 'certificacion_bancaria' },
-    { campo: 'acuerdo_seguridad_url', backend: 'acuerdo_seguridad' },
+  // Mostrar nombre del comercial
+  const idPersonalWatch = watch('Id_personal')
+  const [nombreComercial, setNombreComercial] = useState('')
+
+  useEffect(() => {
+    let cancel = false
+    const run = async () => {
+      const id = String(idPersonalWatch ?? '').trim()
+      if (!id) {
+        setNombreComercial('')
+        return
+      }
+      try {
+        const nombre = await getNombrePersonal(id)
+        if (!cancel) setNombreComercial(nombre || '')
+      } catch (e) {
+        console.error('Error trayendo nombre del personal:', e)
+        if (!cancel) setNombreComercial('')
+      }
+    }
+    run()
+    return () => {
+      cancel = true
+    }
+  }, [idPersonalWatch])
+
+  // docs (todos opcionales en actualización)
+  const documentos = [
+    { campo: 'rut_url', backend: 'rut', label: 'RUT' },
+    {
+      campo: 'camara_comercio_url',
+      backend: 'camara_comercio',
+      label: 'Cámara de comercio',
+    },
+    { campo: 'cedula_url', backend: 'cedula', label: 'Fotocopia de la cédula' },
+    {
+      campo: 'certificacion_bancaria_url',
+      backend: 'certificacion_bancaria',
+      label: 'Certificación bancaria',
+    },
+    {
+      campo: 'acuerdo_seguridad_url',
+      backend: 'acuerdo_seguridad',
+      label: 'Acuerdo de seguridad',
+    },
     {
       campo: 'tratamiento_datos_personales_url',
       backend: 'tratamiento_datos_personales',
+      label: 'Tratamiento de datos personales',
     },
-
-    // opcionales del correo
-    { campo: 'visita_seguridad_url', backend: 'visita_seguridad' },
+    {
+      campo: 'circular_170_url',
+      backend: 'circular_170',
+      label: 'Circular 170',
+    },
     {
       campo: 'certificacion_comercial_url',
       backend: 'certificacion_comercial',
+      label: 'Certificación comercial',
     },
-    { campo: 'estados_financieros_url', backend: 'estados_financieros' },
-    { campo: 'lista_clinton_url', backend: 'lista_clinton' },
-    { campo: 'certificacion_judicial_url', backend: 'certificacion_judicial' },
+    {
+      campo: 'estados_financieros_url',
+      backend: 'estados_financieros',
+      label: 'Estados financieros',
+    },
+    {
+      campo: 'visita_seguridad_url',
+      backend: 'visita_seguridad',
+      label: 'Visita de seguridad',
+    },
+    {
+      campo: 'lista_clinton_url',
+      backend: 'lista_clinton',
+      label: 'Lista Clinton',
+    },
+    {
+      campo: 'certificacion_judicial_url',
+      backend: 'certificacion_judicial',
+      label: 'Certificación judicial',
+    },
     {
       campo: 'certificacion_contraloria_url',
       backend: 'certificacion_contraloria',
@@ -64,10 +122,11 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       backend: 'certificacion_procuraduria',
       label: 'Certificación Procuraduría',
     },
-    { campo: 'circular_170_url', backend: 'circular_170' },
-
-    // extra (se mantiene)
-    { campo: 'certificado_contadora_url', backend: 'certificado_contadora' },
+    {
+      campo: 'certificado_contadora_url',
+      backend: 'certificado_contadora',
+      label: 'Certificado contadora',
+    },
   ]
 
   const MAX_FILE_SIZE_MB = 10
@@ -79,7 +138,7 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       }
     }
 
-    documentosOpcionales.forEach(({ campo }) => {
+    documentos.forEach(({ campo }) => {
       if (data[campo]?.[0]) revisar(data[campo][0], campo)
     })
 
@@ -98,22 +157,42 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         return
       }
 
-      // 1️⃣ Actualizar datos básicos
-      await actualizarClienteDatos(cliente.id_Cliente, {
+      // payload para backend
+      const payload = {
         Nombre: data.Nombre,
         Correo: data.Correo,
         Celular: data.Celular,
-        Direccion: data.Direccion || null,
+      }
+
+      const dir = String(data.Direccion ?? '').trim()
+      payload.Direccion = dir === '' ? null : dir
+
+      const linea = String(data.Linea_servicio ?? '').trim()
+      payload.Linea_servicio = linea === '' ? null : linea
+
+      const idp = String(data.Id_personal ?? '').trim()
+      payload.Id_personal = idp === '' ? null : idp
+
+      // FormData de docs (solo archivos)
+      const formDataDocs = new FormData()
+      documentos.forEach(({ campo, backend }) => {
+        const file = data[campo]?.[0]
+        if (file instanceof File) {
+          formDataDocs.append(backend, file)
+        }
       })
 
-      // 2️⃣ Cambiar activo si aplica
+      // 1) actualizar datos (+docs si hay)
+      await actualizarClienteAuto(cliente.id_Cliente, payload, formDataDocs)
+
+      // 2) activo
       const activoInicial = Boolean(cliente.Activo)
       const activoNuevo = Boolean(data.Activo)
       if (activoNuevo !== activoInicial) {
         await actualizarClienteActivo(cliente.id_Cliente, activoNuevo)
       }
 
-      // 3️⃣ Actualizar observaciones si aplica
+      // 3) observaciones
       const obsInicial = cliente.Observaciones || ''
       const obsNuevo = data.Observaciones || ''
       if (obsNuevo !== obsInicial) {
@@ -123,20 +202,9 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         )
       }
 
-      // 4️⃣ Subir SOLO documentos adjuntados
-      const formDataDocs = new FormData()
-      let hayDocs = false
-
-      documentosOpcionales.forEach(({ campo, backend }) => {
-        const file = data[campo]?.[0]
-        if (file instanceof File) {
-          formDataDocs.append(backend, file)
-          hayDocs = true
-        }
-      })
-
-      if (hayDocs) {
-        await actualizarSoloDocumentosCliente(cliente.id_Cliente, formDataDocs)
+      // ✅ IMPORTANTE: primero refrescar en el padre y luego cerrar modal
+      if (onSuccess) {
+        await onSuccess(cliente.id_Cliente)
       }
       onClose?.()
     } catch (error) {
