@@ -11,7 +11,7 @@ import {
   LabelList,
   Cell,
 } from 'recharts'
-import { FaDesktop, FaClock, FaLock, FaHourglassHalf } from 'react-icons/fa'
+import { FaDesktop, FaClock, FaLock } from 'react-icons/fa'
 
 // =============== Helpers ==================
 const pad2 = n => String(n).padStart(2, '0')
@@ -38,6 +38,12 @@ const BAR_COLORS = [
   '#EF6C00',
   '#D81B60',
 ]
+
+// Alias de apps (normaliza nombres “feos”)
+// 👇 aquí mapeamos applicationframehost.exe → WhatsApp
+const APP_ALIASES = new Map([['applicationframehost.exe', 'WhatsApp']])
+
+const appAlias = exe => APP_ALIASES.get(String(exe || '').toLowerCase()) || exe
 
 // Apps tipo “documentos”
 const DOC_APPS = new Map([
@@ -91,12 +97,6 @@ export default function DetalleActividad({ row, onClose }) {
   const rowOk = !!(row && row.metrics)
   const m = rowOk ? row.metrics : {}
   const human = m?.human || {}
-
-  // 👇 Total en pantalla = Operando + Espera (en segundos)
-  const seconds = m?.seconds || {}
-  const totalPantallaHMS = toHMS(
-    (seconds.operando || 0) + (seconds.espera || 0)
-  )
 
   const topApps = m?.top?.apps
   const topWeb = m?.top?.web
@@ -173,7 +173,7 @@ export default function DetalleActividad({ row, onClose }) {
       }))
     }
     return appsSorted.slice(0, 8).map(a => ({
-      name: trunc(a.app),
+      name: trunc(appAlias(a.app)),
       value: Math.floor(a.total_sec || 0),
     }))
   }, [activeTab, appsSorted, webSorted, docsAgg])
@@ -198,20 +198,13 @@ export default function DetalleActividad({ row, onClose }) {
           </Card.Header>
 
           <Card.Body>
-            {/* KPIs (5 tarjetas, la última es Total en pantalla) */}
-            <Row className='mb-3 g-3 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-5'>
+            {/* KPIs (4 tarjetas: sin Espera y sin Total en pantalla) */}
+            <Row className='mb-3 g-3 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4'>
               <Col>
                 <Card className='text-center p-2 h-100'>
                   <FaClock className='text-primary mb-1' />
                   <div className='fw-bold fs-5'>{hmsText(human?.operando)}</div>
                   <div className='small text-muted'>Operando</div>
-                </Card>
-              </Col>
-              <Col>
-                <Card className='text-center p-2 h-100'>
-                  <FaHourglassHalf className='text-warning mb-1' />
-                  <div className='fw-bold fs-5'>{hmsText(human?.espera)}</div>
-                  <div className='small text-muted'>Espera (cargas)</div>
                 </Card>
               </Col>
               <Col>
@@ -232,14 +225,13 @@ export default function DetalleActividad({ row, onClose }) {
                   <div className='small text-muted'>Bloqueado</div>
                 </Card>
               </Col>
-              {/* ✅ Total en pantalla (Operando + Espera) */}
               <Col>
                 <Card className='text-center p-2 h-100'>
                   <FaDesktop className='text-success mb-1' />
-                  <div className='fw-bold fs-5 text-success'>
-                    {totalPantallaHMS}
+                  <div className='fw-bold fs-5'>
+                    {hmsText(m?.human?.context_time || '')}
                   </div>
-                  <div className='small text-muted'>Total en pantalla</div>
+                  <div className='small text-muted'>Observado</div>
                 </Card>
               </Col>
             </Row>
@@ -349,7 +341,7 @@ export default function DetalleActividad({ row, onClose }) {
                           ) : (
                             apps.map((a, i) => (
                               <tr key={i}>
-                                <td className='font-mono'>{a.app}</td>
+                                <td className='font-mono'>{appAlias(a.app)}</td>
                                 <td className='text-end'>
                                   {toHMS(a.total_sec)}
                                 </td>

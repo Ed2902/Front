@@ -5,15 +5,6 @@ import { Button } from 'react-bootstrap'
 import DetalleActividad from './DetalleActividad'
 
 // ===== Helpers =====
-const pad2 = n => String(n).padStart(2, '0')
-const toHMS = secFloat => {
-  const s = Math.max(0, Math.floor(Number(secFloat) || 0))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  return `${pad2(h)}:${pad2(m)}:${pad2(sec)}`
-}
-
 function BadgePct({ value }) {
   const pct = Number(value) || 0
   let variant = 'secondary'
@@ -21,6 +12,59 @@ function BadgePct({ value }) {
   else if (pct >= 40) variant = 'warning'
   else variant = 'danger'
   return <span className={`badge bg-${variant}`}>{pct.toFixed(1)}%</span>
+}
+
+const safeNum = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
+const unique = arr => Array.from(new Set(arr))
+
+// % Operando = Operando / (Operando + Inactividad)
+const calcPctOperando = r => {
+  const op = safeNum(r?.metrics?.seconds?.operando)
+  const ina = safeNum(r?.metrics?.seconds?.inactividad_real)
+  const denom = op + ina
+  if (denom <= 0) return 0
+  return (op / denom) * 100
+}
+
+// Conteos
+const countApps = r => {
+  const apps = Array.isArray(r?.metrics?.top?.apps) ? r.metrics.top.apps : []
+  const names = apps.map(a => String(a.app || '').toLowerCase()).filter(Boolean)
+  return unique(names).length
+}
+
+const countUrls = r => {
+  const web = Array.isArray(r?.metrics?.top?.web) ? r.metrics.top.web : []
+  const domains = web
+    .map(w => String(w.domain || '').toLowerCase())
+    .filter(Boolean)
+  return unique(domains).length
+}
+
+// Misma lógica que "Documentos" del DetalleActividad (solo apps de documentos)
+const DOC_APPS = new Set([
+  'excel.exe',
+  'winword.exe',
+  'powerpnt.exe',
+  'acrord32.exe',
+  'pdf.exe',
+  'notepad.exe',
+  'photos.exe',
+])
+
+const countDocuments = r => {
+  const apps = Array.isArray(r?.metrics?.top?.apps) ? r.metrics.top.apps : []
+  const titles = []
+  for (const a of apps) {
+    const exe = String(a?.app || '').toLowerCase()
+    if (!DOC_APPS.has(exe)) continue
+    const ts = Array.isArray(a?.top_titles) ? a.top_titles : []
+    for (const t of ts) {
+      const s = String(t || '').trim()
+      if (s) titles.push(s)
+    }
+  }
+  return unique(titles).length
 }
 
 export default function TablaUsuariosTiempos({
@@ -57,7 +101,7 @@ export default function TablaUsuariosTiempos({
         name: 'Usuario',
         selector: r => r.user,
         sortable: true,
-        width: '100px',
+        width: '110px',
         wrap: true,
       },
       {
@@ -65,7 +109,7 @@ export default function TablaUsuariosTiempos({
         selector: r => r.hostname,
         sortable: true,
         grow: 2,
-        maxWidth: '130px',
+        maxWidth: '160px',
         wrap: true,
       },
       {
@@ -76,50 +120,20 @@ export default function TablaUsuariosTiempos({
       },
       {
         name: 'Operando',
-        selector: r => r.metrics?.seconds?.operando ?? 0, // ordena por segundos
+        selector: r => safeNum(r?.metrics?.seconds?.operando), // ordena por segundos
         width: '110px',
         right: true,
-        cell: r => r.metrics?.human?.operando || '00:00:00',
-      },
-      {
-        name: 'Espera',
-        selector: r => r.metrics?.seconds?.espera ?? 0,
-        width: '100px',
-        right: true,
-        cell: r => r.metrics?.human?.espera || '00:00:00',
-      },
-      {
-        // Título en 2 líneas
-        name: (
-          <div className='d-flex flex-column lh-1 text-end'>
-            <span>Total</span>
-            <small className='text-muted'>en pantalla</small>
-          </div>
-        ),
-        width: '120px',
-        right: true,
-        selector: r => {
-          const op = r.metrics?.seconds?.operando || 0
-          const esp = r.metrics?.seconds?.espera || 0
-          return op + esp
-        },
-        cell: r => {
-          const op = r.metrics?.seconds?.operando || 0
-          const esp = r.metrics?.seconds?.espera || 0
-          return (
-            <span className='text-success fw-semibold'>{toHMS(op + esp)}</span>
-          )
-        },
+        cell: r => r?.metrics?.human?.operando || '00:00:00',
       },
       {
         name: 'Inactividad',
         sortable: true,
         width: '120px',
-        selector: r => r.metrics?.seconds?.inactividad_real ?? 0,
+        selector: r => safeNum(r?.metrics?.seconds?.inactividad_real),
         cell: r => (
           <div className='w-100 text-center'>
             <span className='text-danger fw-semibold'>
-              {r.metrics?.human?.inactividad_real || '00:00:00'}
+              {r?.metrics?.human?.inactividad_real || '00:00:00'}
             </span>
           </div>
         ),
@@ -128,26 +142,41 @@ export default function TablaUsuariosTiempos({
         name: 'Bloqueado',
         sortable: true,
         width: '120px',
-        selector: r => r.metrics?.seconds?.bloqueado ?? 0,
+        selector: r => safeNum(r?.metrics?.seconds?.bloqueado),
         cell: r => (
           <div className='w-100 text-center'>
             <span className='text-danger fw-semibold'>
-              {r.metrics?.human?.bloqueado || '00:00:00'}
+              {r?.metrics?.human?.bloqueado || '00:00:00'}
             </span>
           </div>
         ),
       },
-
+      // --- Nuevos contadores ---
+      {
+        name: 'Apps',
+        selector: r => countApps(r),
+        width: '80px',
+        right: true,
+      },
+      {
+        name: 'URLs',
+        selector: r => countUrls(r),
+        width: '80px',
+        right: true,
+      },
+      {
+        name: 'Documentos',
+        selector: r => countDocuments(r),
+        width: '115px',
+        right: true,
+      },
+      // % Operando = Operando / (Operando + Inactividad)
       {
         name: '% Operando',
-        selector: r => r.metrics?.percent_of_total_observado?.operando ?? 0,
-        width: '110px',
+        selector: r => calcPctOperando(r),
+        width: '120px',
         right: true,
-        cell: r => (
-          <BadgePct
-            value={r.metrics?.percent_of_total_observado?.operando ?? 0}
-          />
-        ),
+        cell: r => <BadgePct value={calcPctOperando(r)} />,
       },
       {
         name: 'Acciones',
@@ -183,7 +212,7 @@ export default function TablaUsuariosTiempos({
     cells: {
       style: {
         display: 'flex',
-        alignItems: 'center', // ← centra vertical
+        alignItems: 'center',
         whiteSpace: 'normal',
         lineHeight: 1.2,
         paddingTop: '0.35rem',

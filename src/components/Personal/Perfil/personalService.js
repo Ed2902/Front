@@ -2,7 +2,7 @@
 import axios from 'axios'
 
 const API_URL_2 = import.meta.env.VITE_API_URL_2
-const API_URL = import.meta.env.VITE_API_URL // 👈 base para historial
+const API_URL = import.meta.env.VITE_API_URL
 
 export const getPersonalListado = async token => {
   const headers = {}

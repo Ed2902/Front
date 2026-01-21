@@ -1,8 +1,8 @@
 // src/services/seguimientoService.js
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL // ej: http://localhost:3000/api
-const API_URL_2 = import.meta.env.VITE_API_URL_2 // ej: https://loqueuses/api
+const API_URL = import.meta.env.VITE_API_URL
+const API_URL_2 = import.meta.env.VITE_API_URL_2
 
 const authHeaders = token => ({
   Authorization: `Bearer ${token}`,
