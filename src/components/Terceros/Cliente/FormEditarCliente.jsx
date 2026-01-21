@@ -50,28 +50,10 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
     {
       campo: 'certificacion_comercial_url',
       backend: 'certificacion_comercial',
-      label: 'Certificación comercial',
     },
-    {
-      campo: 'estados_financieros_url',
-      backend: 'estados_financieros',
-      label: 'Estados financieros',
-    },
-    {
-      campo: 'visita_seguridad_url',
-      backend: 'visita_seguridad',
-      label: 'Visita de seguridad',
-    },
-    {
-      campo: 'lista_clinton_url',
-      backend: 'lista_clinton',
-      label: 'Lista Clinton',
-    },
-    {
-      campo: 'certificacion_judicial_url',
-      backend: 'certificacion_judicial',
-      label: 'Certificación judicial',
-    },
+    { campo: 'estados_financieros_url', backend: 'estados_financieros' },
+    { campo: 'lista_clinton_url', backend: 'lista_clinton' },
+    { campo: 'certificacion_judicial_url', backend: 'certificacion_judicial' },
     {
       campo: 'certificacion_contraloria_url',
       backend: 'certificacion_contraloria',
@@ -82,22 +64,6 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       backend: 'certificacion_procuraduria',
       label: 'Certificación Procuraduría',
     },
-    {
-      campo: 'certificado_contadora_url',
-      backend: 'certificado_contadora',
-      label: 'Certificado contadora',
-    },
-    { campo: 'estados_financieros_url', backend: 'estados_financieros' },
-    { campo: 'lista_clinton_url', backend: 'lista_clinton' },
-    { campo: 'certificacion_judicial_url', backend: 'certificacion_judicial' },
-    {
-      campo: 'certificacion_contraloria_url',
-      backend: 'certificacion_contraloria',
-    },
-    {
-      campo: 'certificacion_procuraduria_url',
-      backend: 'certificacion_procuraduria',
-    },
     { campo: 'circular_170_url', backend: 'circular_170' },
 
     // extra (se mantiene)
@@ -105,7 +71,6 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
   ]
 
   const MAX_FILE_SIZE_MB = 10
-
   const validarTamanos = data => {
     const errores = []
     const revisar = (archivo, nombreCampo) => {
@@ -138,24 +103,7 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
         Nombre: data.Nombre,
         Correo: data.Correo,
         Celular: data.Celular,
-      }
-
-      const dir = String(data.Direccion ?? '').trim()
-      payload.Direccion = dir === '' ? null : dir
-
-      const linea = String(data.Linea_servicio ?? '').trim()
-      payload.Linea_servicio = linea === '' ? null : linea
-
-      const idp = String(data.Id_personal ?? '').trim()
-      payload.Id_personal = idp === '' ? null : idp
-
-      // FormData de docs (solo archivos)
-      const formDataDocs = new FormData()
-      documentos.forEach(({ campo, backend }) => {
-        const file = data[campo]?.[0]
-        if (file instanceof File) {
-          formDataDocs.append(backend, file)
-        }
+        Direccion: data.Direccion || null,
       })
 
       // 2️⃣ Cambiar activo si aplica
@@ -171,7 +119,7 @@ const FormEditarCliente = ({ cliente, onClose, onSuccess }) => {
       if (obsNuevo !== obsInicial) {
         await actualizarClienteObservaciones(
           cliente.id_Cliente,
-          obsNuevo || null
+          obsNuevo ? obsNuevo : null
         )
       }
 
