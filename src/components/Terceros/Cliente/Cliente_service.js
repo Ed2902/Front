@@ -20,6 +20,17 @@ const authHeaders = (extra = {}) => ({
 export { getAuthToken }
 
 /**
+ * ✅ NUEVO: Obtener listado de personal
+ * GET /personal
+ */
+export const getPersonal = async () => {
+  const response = await api.get('/personal', {
+    headers: authHeaders(),
+  })
+  return response.data
+}
+
+/**
  * 🚀 Obtener clientes (PAGINADO)
  * Backend devuelve: { data: [], meta: { page, limit, total, totalPages } }
  */
@@ -178,9 +189,6 @@ export const actualizarClienteConDocumentos = async (idCliente, formData) => {
  * ✅ NUEVO: actualiza datos y (si hay) documentos en UNA sola función
  * - Si hay docs -> usa /con-documentos (FormData)
  * - Si no hay docs -> usa /:id (JSON)
- *
- * payload: { Nombre, Correo, Celular, Direccion?, Linea_servicio?, Id_personal? }
- * formDataDocs: FormData con archivos (keys: rut, camara_comercio, ...)
  */
 export const actualizarClienteAuto = async (
   idCliente,
@@ -201,7 +209,6 @@ export const actualizarClienteAuto = async (
 
   // campos de texto -> FormData
   Object.entries(payload || {}).forEach(([k, v]) => {
-    // si es null/undefined no lo mandes
     if (v === undefined || v === null) return
     fd.append(k, String(v))
   })
@@ -214,7 +221,7 @@ export const actualizarClienteAuto = async (
   return await actualizarClienteConDocumentos(idCliente, fd)
 }
 
-// ✅ Traer nombre del personal desde /personal
+// ✅ Traer nombre del personal desde /personal/:id
 export const getNombrePersonal = async idPersonal => {
   if (!idPersonal) return ''
   const response = await api.get(`/personal/${idPersonal}`, {
