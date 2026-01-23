@@ -368,7 +368,7 @@ const Sidebar = ({ onToggleCollapse }) => {
                       isCollapsed && !isMobileOpen ? 'hide-text' : ''
                     }`}
                   >
-                    Tickets Soporte Técnico
+                    Tickets, Proyectos y Operaciones
                   </span>
                 </Link>
               </li>

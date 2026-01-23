@@ -37,6 +37,7 @@ const anyDateToIso = v => {
   return String(v)
 }
 
+// ✅ FIX: ObjectId helper
 const oidToString = v => {
   if (!v) return ''
   if (typeof v === 'string') return v
@@ -563,8 +564,13 @@ const ExpandedComponent = ({
 }) => {
   const estadosMap = maps?.estadosMap || {}
   const cierreInfo = computeCumplimientoUI(data, estadosMap)
-  const prioridadItem = maps?.prioridadesMap?.[data?.prioridad_id] || null
-  const categoriaItem = maps?.categoriasMap?.[data?.categoria_id] || null
+
+  // ✅ FIX: ids pueden venir como {$oid}
+  const prioridadId = oidToString(data?.prioridad_id)
+  const categoriaId = oidToString(data?.categoria_id)
+
+  const prioridadItem = maps?.prioridadesMap?.[prioridadId] || null
+  const categoriaItem = maps?.categoriasMap?.[categoriaId] || null
   const estadoItem = getEstadoItemDesdeHistorial(data, estadosMap)
 
   const asignado = data?.asignado_a || {}
@@ -579,6 +585,13 @@ const ExpandedComponent = ({
 
   const adjuntosTicket = Array.isArray(data?.adjuntos) ? data.adjuntos : []
   const scope = getAsignacionScope(data)
+
+  // ✅ NUEVO: operación visible
+  const isOperacion = String(data?.tipo || '').toLowerCase() === 'operacion'
+  const op = data?.operacion || {}
+  const opCliente = String(op?.cliente || '').trim()
+  const opLote = String(op?.lote || '').trim()
+  const opProducto = String(op?.producto || '').trim()
 
   return (
     <div className='w-100 px-2 py-2'>
@@ -690,6 +703,24 @@ const ExpandedComponent = ({
               )}
             </div>
           </div>
+
+          {/* ✅ Operación */}
+          {isOperacion && (
+            <div className='col-12'>
+              <div className='fw-bold mb-1'>Operación</div>
+              <div className='d-flex flex-wrap gap-2'>
+                <span className='badge bg-white text-dark border'>
+                  <b>Cliente:</b> {opCliente || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Lote:</b> {opLote || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Producto:</b> {opProducto || '—'}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Estado</div>
@@ -931,13 +962,14 @@ const MisCreaciones = () => {
       data = data.filter(t => String(t.orgId || '') === String(f.orgId))
     if (f.tipo) data = data.filter(t => String(t.tipo || '') === String(f.tipo))
 
+    // ✅ FIX: filtros por catálogo soportan {$oid}
     if (f.prioridad_id)
       data = data.filter(
-        t => String(t.prioridad_id || '') === String(f.prioridad_id)
+        t => oidToString(t.prioridad_id) === String(f.prioridad_id)
       )
     if (f.categoria_id)
       data = data.filter(
-        t => String(t.categoria_id || '') === String(f.categoria_id)
+        t => oidToString(t.categoria_id) === String(f.categoria_id)
       )
 
     if (f.estado_id) {
@@ -1033,7 +1065,7 @@ const MisCreaciones = () => {
       {
         name: 'Asignación',
         sortable: true,
-        center: true, // ✅ centra el header
+        center: true,
         grow: 1,
         selector: r => {
           const a = r?.asignado_a
@@ -1046,7 +1078,6 @@ const MisCreaciones = () => {
             return <div className='w-100 text-center'>—</div>
           }
 
-          // PERSONAL
           if (asignado.tipo === 'personal') {
             const info = personaLabel(asignado.id, maps?.personalMap || {})
             return (
@@ -1058,7 +1089,6 @@ const MisCreaciones = () => {
             )
           }
 
-          // TEAM / AREA
           const label = resolveAsignadoNombre(asignado, maps)
           return (
             <div className='w-100 text-center'>
@@ -1108,27 +1138,39 @@ const MisCreaciones = () => {
         name: 'Pri.',
         sortable: true,
         width: '110px',
-        selector: r => maps?.prioridadesMap?.[r?.prioridad_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.prioridadesMap?.[r?.prioridad_id] || null}
-            fallback='—'
-            maxW={100}
-          />
-        ),
+        selector: r => {
+          const id = oidToString(r?.prioridad_id)
+          return maps?.prioridadesMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.prioridad_id)
+          return (
+            <CatalogBadge
+              item={maps?.prioridadesMap?.[id] || null}
+              fallback='—'
+              maxW={100}
+            />
+          )
+        },
       },
       {
         name: 'Cat.',
         sortable: true,
         width: '130px',
-        selector: r => maps?.categoriasMap?.[r?.categoria_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.categoriasMap?.[r?.categoria_id] || null}
-            fallback='—'
-            maxW={120}
-          />
-        ),
+        selector: r => {
+          const id = oidToString(r?.categoria_id)
+          return maps?.categoriasMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.categoria_id)
+          return (
+            <CatalogBadge
+              item={maps?.categoriasMap?.[id] || null}
+              fallback='—'
+              maxW={120}
+            />
+          )
+        },
       },
     ]
   }, [maps])
@@ -1283,7 +1325,7 @@ const MisCreaciones = () => {
               onOpenChat={onOpenChat}
               onOpenAdjuntosEvento={onOpenAdjuntosEvento}
               onOpenEditar={onOpenEditar}
-              onEliminar={confirmarEliminar} // ✅ aquí va la confirmación
+              onEliminar={confirmarEliminar}
               canEditDelete={true}
             />
           )}
@@ -1305,8 +1347,9 @@ const MisCreaciones = () => {
       >
         <CrearTicketWizard
           onClose={() => {
+            // ✅ refresca para ver el nuevo ticket al cerrar el resumen
             setOpenCrear(false)
-            load() // refresca para ver el nuevo ticket
+            load()
           }}
         />
       </AntdModal>

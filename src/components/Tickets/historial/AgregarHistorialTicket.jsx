@@ -1,14 +1,15 @@
-// AgregarHistorialTicket.jsx
 import { useContext, useMemo, useState } from 'react'
 import AuthContext from '../../../context/AuthContext'
 import { agregarHistorialState } from './AgregarHistorialservice'
 
+const MAX_FILES = 20
+
 export default function AgregarHistorialTicket({
   ticketId,
-  orgId, // opcional: para filtrar estados por org si aplica
-  maps, // debe incluir estadosMap (como en MisTareas)
-  onSuccess, // (data) => void
-  onError, // (err) => void
+  orgId,
+  maps,
+  onSuccess,
+  onError,
   className = '',
 }) {
   const { token, user } = useContext(AuthContext)
@@ -16,17 +17,15 @@ export default function AgregarHistorialTicket({
 
   const [estadoId, setEstadoId] = useState('')
   const [nota, setNota] = useState('')
-  const [fechaEstimada, setFechaEstimada] = useState('') // YYYY-MM-DD
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const estados = useMemo(() => {
     const m = maps?.estadosMap || {}
-    const arr = Object.values(m)
+    return Object.values(m)
       .filter(Boolean)
       .filter(s => {
-        // si tu catálogo trae orgId en estado, filtramos; si no trae, no molesta.
         if (!orgId) return true
         if (s.orgId === undefined) return true
         return String(s.orgId) === String(orgId)
@@ -43,23 +42,26 @@ export default function AgregarHistorialTicket({
         order: Number(s.order ?? 9999),
       }))
       .sort((a, b) => a.order - b.order)
-
-    return arr
   }, [maps, orgId])
 
   const onPickFiles = e => {
     const list = Array.from(e.target.files || [])
+
+    if (list.length > MAX_FILES) {
+      setError(`Máximo ${MAX_FILES} adjuntos permitidos.`)
+      setFiles(list.slice(0, MAX_FILES))
+      return
+    }
+
+    setError('')
     setFiles(list)
   }
 
   const resetForm = () => {
     setEstadoId('')
     setNota('')
-    setFechaEstimada('')
     setFiles([])
     setError('')
-    // reset input file visual (si quieres)
-    // no es obligatorio; el usuario puede volver a escoger.
   }
 
   const submit = async e => {
@@ -80,8 +82,6 @@ export default function AgregarHistorialTicket({
         id_personal,
         estado_id: estadoId,
         nota,
-        // si está vacío, NO lo enviamos (para no tocar fecha del ticket)
-        fecha_estimada: fechaEstimada === '' ? undefined : fechaEstimada,
         adjuntos: files,
       })
 
@@ -134,19 +134,9 @@ export default function AgregarHistorialTicket({
         />
 
         <label className='small fw-semibold mt-1'>
-          Fecha estimada (opcional)
+          Adjuntos (opcional)
+          <span className='text-muted ms-1'>— máximo 20</span>
         </label>
-        <input
-          type='date'
-          className='form-control form-control-sm'
-          value={fechaEstimada}
-          onChange={e => setFechaEstimada(e.target.value)}
-        />
-        <div className='text-muted small'>
-          Si la dejas vacía, <b>no</b> se envía (no cambia la fecha del ticket).
-        </div>
-
-        <label className='small fw-semibold mt-1'>Adjuntos (opcional)</label>
         <input
           type='file'
           className='form-control form-control-sm'
@@ -155,7 +145,9 @@ export default function AgregarHistorialTicket({
         />
 
         {files.length > 0 && (
-          <div className='small text-muted'>📎 {files.length} archivo(s)</div>
+          <div className='small text-muted'>
+            📎 {files.length} / {MAX_FILES} archivo(s)
+          </div>
         )}
 
         <div className='d-flex gap-2 mt-2'>

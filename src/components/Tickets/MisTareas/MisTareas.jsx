@@ -106,7 +106,6 @@ const getCierreEvento = (ticket, estadosMap) => {
 }
 
 const diffDaysCeil = (a, b) => {
-  // a - b en días, redondeando hacia arriba
   const ms = a.getTime() - b.getTime()
   return Math.ceil(ms / (1000 * 60 * 60 * 24))
 }
@@ -133,7 +132,6 @@ const computeCumplimientoUI = (ticket, estadosMap) => {
     }
   }
 
-  // si está cerrado y tenemos fechas, calculamos retraso
   if (
     cierreAt &&
     est &&
@@ -145,7 +143,6 @@ const computeCumplimientoUI = (ticket, estadosMap) => {
     return { cerrado: true, raw, cierreAt, retrasoDias: retraso, label }
   }
 
-  // fallback: usar el campo del backend
   return {
     cerrado: true,
     raw,
@@ -273,10 +270,7 @@ const CatalogBadge = ({ item, fallback = '—', maxW = 110 }) => {
   )
 }
 
-// ✅ org rules:
-// FastwaySAS -> naranja
-// GreemWay -> aguamarina
-// MetalHarvest -> verde
+// ✅ org rules
 const orgBadgeStyle = orgId => {
   const org = String(orgId || '')
     .trim()
@@ -324,6 +318,49 @@ const OrgBadge = ({ orgId, maxW = 110 }) => (
     <Ell title={orgId || '—'} maxWidth={Math.max(40, maxW - 18)}>
       {orgId || '—'}
     </Ell>
+  </span>
+)
+
+// ✅ tipo badge (solo color, sin tocar “cabecera”)
+const tipoBadgeStyle = tipo => {
+  const t = String(tipo || '')
+    .trim()
+    .toLowerCase()
+  if (t === 'operacion')
+    return {
+      background: '#E0F2FE',
+      border: '1px solid #BAE6FD',
+      color: '#075985',
+    }
+  if (t === 'proyecto')
+    return {
+      background: '#EDE9FE',
+      border: '1px solid #DDD6FE',
+      color: '#5B21B6',
+    }
+  // tarea (default)
+  return {
+    background: '#ECFDF5',
+    border: '1px solid #BBF7D0',
+    color: '#166534',
+  }
+}
+
+const TipoBadge = ({ tipo }) => (
+  <span
+    className='badge'
+    style={{
+      ...tipoBadgeStyle(tipo),
+      fontWeight: 900,
+      borderRadius: 10,
+      padding: '0.20rem 0.45rem',
+      fontSize: 12,
+      display: 'inline-flex',
+      alignItems: 'center',
+    }}
+    title={tipo || '—'}
+  >
+    {tipo || '—'}
   </span>
 )
 
@@ -433,7 +470,6 @@ const hashString = str => {
 const textColorForUser = changedBy => {
   const k = String(changedBy || '').trim() || '—'
   const hue = hashString(k) % 360
-  // más suave, legible
   return `hsl(${hue} 45% 35%)`
 }
 
@@ -486,11 +522,7 @@ const CreatorName = ({ ticket, maps }) => {
   )
 }
 
-/**
- * ✅ resolver nombre para team/area
- * - team: nombre_norm (desde teamsMap por id)
- * - area: nombre (desde areasMap por id)
- */
+// ✅ resolver nombre para team/area
 const resolveAsignadoNombre = (asignado, maps) => {
   const tipo = asignado?.tipo
   const id = asignado?.id
@@ -520,8 +552,13 @@ const ExpandedComponent = ({
 }) => {
   const estadosMap = maps?.estadosMap || {}
   const cierreInfo = computeCumplimientoUI(data, estadosMap)
-  const prioridadItem = maps?.prioridadesMap?.[data?.prioridad_id] || null
-  const categoriaItem = maps?.categoriasMap?.[data?.categoria_id] || null
+
+  // ✅ FIX: ids pueden venir como {$oid}
+  const prioridadId = oidToString(data?.prioridad_id)
+  const categoriaId = oidToString(data?.categoria_id)
+
+  const prioridadItem = maps?.prioridadesMap?.[prioridadId] || null
+  const categoriaItem = maps?.categoriasMap?.[categoriaId] || null
   const estadoItem = getEstadoItemDesdeHistorial(data, estadosMap)
 
   const asignado = data?.asignado_a || {}
@@ -537,9 +574,30 @@ const ExpandedComponent = ({
   const adjuntosTicket = Array.isArray(data?.adjuntos) ? data.adjuntos : []
   const scope = getAsignacionScope(data)
 
+  const isOperacion = String(data?.tipo || '').toLowerCase() === 'operacion'
+  const op = data?.operacion || {}
+  const opCliente = String(op?.cliente || '').trim()
+  const opLote = String(op?.lote || '').trim()
+  const opProducto = String(op?.producto || '').trim()
+
+  const tipo = String(data?.tipo || '')
+    .trim()
+    .toLowerCase()
+  const tipoAccent =
+    tipo === 'operacion'
+      ? '#0ea5e9'
+      : tipo === 'proyecto'
+        ? '#7c3aed'
+        : '#22c55e'
+
   return (
     <div className='w-100 px-2 py-2'>
-      <div className='border rounded bg-light p-3'>
+      <div
+        className='border rounded bg-light p-3'
+        style={{
+          borderLeft: `3px solid ${tipoAccent}`, // ✅ solo color por tipo
+        }}
+      >
         <div className='d-flex flex-wrap gap-2 justify-content-end mb-3'>
           <button
             type='button'
@@ -616,6 +674,24 @@ const ExpandedComponent = ({
               )}
             </div>
           </div>
+
+          {/* ✅ NUEVO: Operación */}
+          {isOperacion && (
+            <div className='col-12'>
+              <div className='fw-bold mb-1'>Operación</div>
+              <div className='d-flex flex-wrap gap-2'>
+                <span className='badge bg-white text-dark border'>
+                  <b>Cliente:</b> {opCliente || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Lote:</b> {opLote || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Producto:</b> {opProducto || '—'}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Estado</div>
@@ -792,11 +868,9 @@ const MisTareas = () => {
   const [filtersApplied, setFiltersApplied] = useState({})
   const [showFilters, setShowFilters] = useState(false)
 
-  // ✅ Modal historial
   const [openActualizar, setOpenActualizar] = useState(false)
   const [ticketActualizar, setTicketActualizar] = useState(null)
 
-  // ✅ Modal adjuntos reutilizable (ticket o evento)
   const [openAdjuntos, setOpenAdjuntos] = useState(false)
   const [ticketAdjuntos, setTicketAdjuntos] = useState(null)
   const [adjuntosModalTitle, setAdjuntosModalTitle] = useState('Adjuntos')
@@ -871,13 +945,14 @@ const MisTareas = () => {
     if (f.activo === 'true') data = data.filter(t => t.activo === true)
     if (f.activo === 'false') data = data.filter(t => t.activo === false)
 
+    // ✅ FIX: comparar contra oidToString
     if (f.prioridad_id)
       data = data.filter(
-        t => String(t.prioridad_id || '') === String(f.prioridad_id)
+        t => oidToString(t.prioridad_id) === String(f.prioridad_id)
       )
     if (f.categoria_id)
       data = data.filter(
-        t => String(t.categoria_id || '') === String(f.categoria_id)
+        t => oidToString(t.categoria_id) === String(f.categoria_id)
       )
 
     if (f.estado_id) {
@@ -973,7 +1048,7 @@ const MisTareas = () => {
       {
         name: 'Creador',
         sortable: true,
-        width: '190px',
+        width: '170px',
         center: true,
         selector: r => String(r?.creado_por || ''),
         cell: r => <CreatorName ticket={r} maps={maps} />,
@@ -988,10 +1063,10 @@ const MisTareas = () => {
       },
       {
         name: 'Tipo',
-        selector: r => r.tipo,
+        selector: r => String(r.tipo || ''),
         sortable: true,
-        width: '78px',
-        cell: r => ellipsis(r.tipo, r.tipo),
+        width: '110px',
+        cell: r => <TipoBadge tipo={r.tipo} />,
       },
       {
         name: 'Estado',
@@ -1016,27 +1091,39 @@ const MisTareas = () => {
         name: 'Pri.',
         sortable: true,
         width: '110px',
-        selector: r => maps?.prioridadesMap?.[r?.prioridad_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.prioridadesMap?.[r?.prioridad_id] || null}
-            fallback='—'
-            maxW={100}
-          />
-        ),
+        selector: r => {
+          const id = oidToString(r?.prioridad_id)
+          return maps?.prioridadesMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.prioridad_id)
+          return (
+            <CatalogBadge
+              item={maps?.prioridadesMap?.[id] || null}
+              fallback='—'
+              maxW={100}
+            />
+          )
+        },
       },
       {
         name: 'Cat.',
         sortable: true,
         width: '130px',
-        selector: r => maps?.categoriasMap?.[r?.categoria_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.categoriasMap?.[r?.categoria_id] || null}
-            fallback='—'
-            maxW={120}
-          />
-        ),
+        selector: r => {
+          const id = oidToString(r?.categoria_id)
+          return maps?.categoriasMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.categoria_id)
+          return (
+            <CatalogBadge
+              item={maps?.categoriasMap?.[id] || null}
+              fallback='—'
+              maxW={120}
+            />
+          )
+        },
       },
     ]
   }, [maps])

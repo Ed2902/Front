@@ -14,6 +14,25 @@ const ASSIGN_TYPES = [
   { value: 'team', label: 'Team', desc: 'Asignar a un equipo.' },
 ]
 
+// ✅ Tipos de ticket
+const TICKET_TYPES = [
+  {
+    value: 'tarea',
+    label: 'Tarea',
+    desc: 'Trabajo puntual / requerimiento.',
+  },
+  {
+    value: 'proyecto',
+    label: 'Proyecto',
+    desc: 'Igual a tarea, pero con enfoque de proyecto.',
+  },
+  {
+    value: 'operacion',
+    label: 'Operación',
+    desc: 'Incluye cliente + lote + producto (si aplica).',
+  },
+]
+
 const norm = v =>
   String(v ?? '')
     .trim()
@@ -114,12 +133,121 @@ export default function Paso1OrgAsignacion({
     }))
   }
 
+  const onSelectTipo = tipo => {
+    setData(s => ({
+      ...s,
+      tipo,
+    }))
+  }
+
+  const seleccionLabel =
+    data.asignado_tipo === 'area'
+      ? 'Seleccionar área'
+      : data.asignado_tipo === 'team'
+        ? 'Seleccionar team'
+        : 'Seleccionar personal'
+
+  const placeholderLabel =
+    data.asignado_tipo === 'area'
+      ? '-- selecciona un área --'
+      : data.asignado_tipo === 'team'
+        ? '-- selecciona un team --'
+        : '-- selecciona una persona --'
+
   return (
     <div>
-      <h6 className='fw-bold mb-2'>Paso 1 — Organización y asignación</h6>
+      <h6 className='fw-bold mb-2'>Paso 1 — Tipo, organización y asignación</h6>
       <p className='text-muted small mb-3'>
-        Define para cuál organización es el ticket y quién lo recibe.
+        Elige qué vas a crear, para qué organización y a quién se asigna.
       </p>
+
+      {/* Tipo de ticket */}
+      <div className='mb-3'>
+        <div className='fw-bold mb-2'>Tipo de ticket</div>
+
+        <div className='row g-2'>
+          {TICKET_TYPES.map(t => {
+            const selected = (data.tipo || 'tarea') === t.value
+
+            const style = selected
+              ? {
+                  border: '2px solid #2563eb',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  boxShadow: '0 8px 18px rgba(37,99,235,.18)',
+                  transform: 'translateY(-1px)',
+                }
+              : {
+                  border: '1px solid rgba(37,99,235,.18)',
+                  background: '#eff6ff',
+                  color: '#0f172a',
+                }
+
+            return (
+              <div className='col-12 col-md-4' key={t.value}>
+                <div
+                  className='card h-100'
+                  role='button'
+                  onClick={() => onSelectTipo(t.value)}
+                  style={{
+                    ...style,
+                    cursor: 'pointer',
+                    transition: 'all .15s ease',
+                    borderRadius: 14,
+                    minHeight: 64,
+                  }}
+                >
+                  <div className='card-body py-2 px-3'>
+                    <div className='d-flex align-items-start justify-content-between'>
+                      <div>
+                        <div className='fw-bold' style={{ lineHeight: 1.1 }}>
+                          {t.label}
+                        </div>
+                        <div
+                          className='small'
+                          style={{
+                            opacity: selected ? 0.9 : 0.75,
+                            fontSize: 12,
+                          }}
+                        >
+                          {t.desc}
+                        </div>
+                      </div>
+
+                      <span
+                        className='badge'
+                        style={{
+                          borderRadius: 999,
+                          fontWeight: 700,
+                          background: selected
+                            ? 'rgba(255,255,255,.22)'
+                            : '#dbeafe',
+                          color: selected ? '#fff' : '#1e3a8a',
+                          border: selected
+                            ? '1px solid rgba(255,255,255,.35)'
+                            : '1px solid rgba(30,58,138,.12)',
+                        }}
+                      >
+                        {selected ? 'Elegido' : 'Elegir'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className='text-muted small mt-2'>
+          <span>
+            <b>Proyecto</b> funciona igual que tarea (solo cambia el tipo).
+          </span>
+          <br />
+          <span>
+            <b>Operación</b> habilita cliente/lote/producto en el Paso 2.
+          </span>
+        </div>
+      </div>
 
       {/* Organización */}
       <div className='mb-3'>
@@ -132,8 +260,6 @@ export default function Paso1OrgAsignacion({
             const selected = data.orgId === org.value
             const theme = getOrgTheme(org)
 
-            // NO negrillas exageradas, NO fondos raros:
-            // Fondo blanco siempre. Borde + texto con color de la org.
             const cardStyle = {
               cursor: 'pointer',
               transition: 'all .15s ease',
@@ -148,7 +274,7 @@ export default function Paso1OrgAsignacion({
 
             const titleStyle = {
               color: theme.accent,
-              fontWeight: 600, // <— moderado (no “orrible”)
+              fontWeight: 600,
               lineHeight: 1.1,
             }
 
@@ -200,7 +326,7 @@ export default function Paso1OrgAsignacion({
                         style={{
                           ...badgeStyle,
                           borderRadius: 999,
-                          fontWeight: 600, // moderado
+                          fontWeight: 600,
                         }}
                       >
                         {selected ? 'Elegida' : 'Elegir'}
@@ -301,7 +427,7 @@ export default function Paso1OrgAsignacion({
 
       {/* Selección */}
       <div className='mb-2'>
-        <div className='fw-bold mb-2'>Seleccionar empleados</div>
+        <div className='fw-bold mb-2'>{seleccionLabel}</div>
 
         <select
           className='form-select'
@@ -316,7 +442,7 @@ export default function Paso1OrgAsignacion({
               : undefined,
           }}
         >
-          <option value=''>-- selecciona --</option>
+          <option value=''>{placeholderLabel}</option>
           {assignOptions.map(op => (
             <option key={op.value} value={op.value}>
               {op.label}

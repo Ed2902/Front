@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const API_URL_5 = import.meta.env.VITE_API_URL_5 // /tikets/...
-const API_URL = import.meta.env.VITE_API_URL // /personal
+const API_URL = import.meta.env.VITE_API_URL // /personal  (y ahora también /cliente, /inventario)
 
 // ---------------------------
 // Utils
@@ -103,7 +103,36 @@ export const fetchPersonal = async (
 }
 
 // =============================
-// AREAS / TEAMS  /tikets/areas  /tikets/teams
+// CLIENTES  /cliente
+// =============================
+export const fetchClientes = async (
+  { page = 1, limit = 200, search, activo = true } = {},
+  token
+) => {
+  const safeLimit = clampLimit(limit, 500, 200)
+  const params = { page, limit: safeLimit }
+  if (search) params.search = search
+  if (activo !== undefined) params.activo = activo
+
+  const { data } = await axios.get(`${API_URL}/cliente`, {
+    headers: buildHeaders(token),
+    params,
+  })
+  return data
+}
+
+// =============================
+// INVENTARIO  /inventario/detalle/completo
+// =============================
+export const fetchInventarioDetalleCompleto = async token => {
+  const { data } = await axios.get(`${API_URL}/inventario/detalle/completo`, {
+    headers: buildHeaders(token),
+  })
+  return data
+}
+
+// =============================
+// AREAS / TEAMS
 // =============================
 export const fetchAreas = async (
   { page = 1, limit = 100, search } = {},
@@ -136,10 +165,7 @@ export const fetchTeams = async (
 }
 
 // =============================
-// LISTADOS DE TICKETS (bundles)
-// /tikets/tickets/mine
-// /tikets/tickets/assigned
-// /tikets/tickets/count
+// LISTADOS (bundles)
 // =============================
 export const fetchMisCreacionesBundle = async (
   {
@@ -270,6 +296,12 @@ export const createTicket = async (
     nota_estado,
     watchers = [],
     files = [],
+
+    // operación (solo IDs)
+    subtipo, // comercio | bodega
+    id_cliente,
+    id_lote,
+    id_producto,
   } = {},
   token
 ) => {
@@ -294,6 +326,21 @@ export const createTicket = async (
     file => file instanceof File && fd.append('files', file)
   )
 
+  // ✅ CORREGIDO: el backend valida operacion.cliente / operacion.lote / operacion.producto
+  if ((tipo ?? 'tarea') === 'operacion') {
+    if (subtipo) fd.append('operacion[subtipo]', String(subtipo))
+
+    // enviar IDs dentro de los campos que el backend espera
+    if (id_cliente) fd.append('operacion[cliente]', String(id_cliente))
+    if (id_lote) fd.append('operacion[lote]', String(id_lote))
+    if (id_producto) fd.append('operacion[producto]', String(id_producto))
+
+    // (opcional) mantenemos compat por si algún día lo usas
+    // fd.append('operacion[id_cliente]', String(id_cliente))
+    // fd.append('operacion[id_lote]', String(id_lote))
+    // fd.append('operacion[id_producto]', String(id_producto))
+  }
+
   const { data } = await axios.post(`${API_URL_5}/tickets`, fd, {
     headers: buildHeaders(token, true),
   })
@@ -301,7 +348,7 @@ export const createTicket = async (
 }
 
 // ======================================================
-// ✅ ALIASES (compatibilidad con imports existentes)
+// ALIASES
 // ======================================================
 export const listarAreas = fetchAreas
 export const listarTeams = fetchTeams
@@ -317,3 +364,6 @@ export const listarEstados = (orgId, token) =>
 
 export const obtenerEstadoNuevoId = fetchEstadoNuevoId
 export const crearTicket = createTicket
+
+export const listarClientes = fetchClientes
+export const listarInventarioDetalleCompleto = fetchInventarioDetalleCompleto

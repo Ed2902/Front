@@ -398,6 +398,8 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
   const [dir, setDir] = useState('next')
 
   const [data, setData] = useState({
+    tipo: 'tarea',
+
     orgId: ORGS[0].value,
     orgLabel: ORGS[0].label,
 
@@ -415,10 +417,14 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
 
     estado_id: '',
 
+    operacion_subtipo: '',
+    operacion_cliente_id: '',
+    operacion_lote_id: '',
+    operacion_producto_id: '',
+
     titulo: '',
     descripcion: '',
 
-    // ✅ AGREGADOS
     fecha_estimada: '',
     watchers: [],
 
@@ -444,18 +450,40 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
 
-  // ✅ Resumen modal
   const [showOk, setShowOk] = useState(false)
   const [createdTicket, setCreatedTicket] = useState(null)
 
+  useEffect(() => {
+    if (data.tipo === 'operacion') return
+    setData(s => ({
+      ...s,
+      operacion_subtipo: '',
+      operacion_cliente_id: '',
+      operacion_lote_id: '',
+      operacion_producto_id: '',
+    }))
+  }, [data.tipo])
+
+  const isOperacion = data.tipo === 'operacion'
+
   const step1Valid = Boolean(
-    data.orgId && data.asignado_tipo && data.asignado_id
+    data.tipo && data.orgId && data.asignado_tipo && data.asignado_id
   )
+
+  const step2OperacionValid = isOperacion
+    ? Boolean(data.operacion_subtipo && data.operacion_cliente_id)
+    : true
+
   const step2Valid = Boolean(
-    data.categoria_id && data.prioridad_id && (data.estado_id || estadoNuevoId)
+    data.categoria_id &&
+    data.prioridad_id &&
+    (data.estado_id || estadoNuevoId) &&
+    step2OperacionValid
   )
+
   const step3Valid =
     data.titulo.trim().length >= 3 && data.descripcion.trim().length >= 5
+
   const canNext = step === 1 ? step1Valid : step === 2 ? step2Valid : step3Valid
 
   useEffect(() => {
@@ -634,27 +662,33 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
 
     try {
       setLoading(true)
-      const res = await createTicket(
-        {
-          orgId: data.orgId,
-          tipo: 'tarea',
-          titulo: data.titulo,
-          descripcion: data.descripcion,
-          categoria_id: data.categoria_id,
-          prioridad_id: data.prioridad_id,
-          estado_id: data.estado_id || estadoNuevoId,
-          creado_por: creadoPor,
-          asignado_tipo: data.asignado_tipo,
-          asignado_id: data.asignado_id,
 
-          // ✅ AGREGADOS
-          fecha_estimada: data.fecha_estimada,
-          watchers: data.watchers,
+      const payload = {
+        orgId: data.orgId,
+        tipo: data.tipo,
+        titulo: data.titulo,
+        descripcion: data.descripcion,
+        categoria_id: data.categoria_id,
+        prioridad_id: data.prioridad_id,
+        estado_id: data.estado_id || estadoNuevoId,
+        creado_por: creadoPor,
+        asignado_tipo: data.asignado_tipo,
+        asignado_id: data.asignado_id,
 
-          files: data.files,
-        },
-        tokenResolved
-      )
+        fecha_estimada: data.fecha_estimada,
+        watchers: data.watchers,
+
+        files: data.files,
+      }
+
+      if (data.tipo === 'operacion') {
+        payload.subtipo = data.operacion_subtipo
+        payload.id_cliente = data.operacion_cliente_id
+        payload.id_lote = data.operacion_lote_id
+        payload.id_producto = data.operacion_producto_id
+      }
+
+      const res = await createTicket(payload, tokenResolved)
 
       const tk = extractTicketFromResponse(res) || null
       setCreatedTicket(tk)
@@ -694,8 +728,6 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
   }, [createdTicket, data])
 
   const closeAfterSummary = useCallback(() => {
-    // ✅ NO ocultamos showOk (evita que se vea el wizard detrás / “vuelva al paso 1”)
-    // ✅ Cerramos el modal padre directamente
     onClose?.(createdTicket)
   }, [onClose, createdTicket])
 
@@ -728,6 +760,7 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
           loading={loading}
           cats={cats}
           pris={pris}
+          token={tokenResolved} // ✅ AQUÍ
         />
       )
     }
@@ -738,7 +771,7 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
         setData={setData}
         loading={loading}
         creadoPorLabel={creadoPorLabel}
-        personal={personal} // ✅ para watchers
+        personal={personal}
         resumen={{
           org: data.orgLabel || data.orgId,
           asignado: data.asignado_label || data.asignado_id,
@@ -765,9 +798,9 @@ export default function CrearTicketWizard({ token: tokenProp, onClose }) {
     cats,
     pris,
     creadoPorLabel,
+    tokenResolved,
   ])
 
-  // ✅ Paso 3 sin animación para evitar blur
   const wrapperClass =
     step === 3
       ? 'wizard-step wizard-static'
