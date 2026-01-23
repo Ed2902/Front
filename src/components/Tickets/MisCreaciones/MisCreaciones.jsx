@@ -2,11 +2,17 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import DataTable from 'react-data-table-component'
 import { Modal as AntdModal } from 'antd'
 import AuthContext from '../../../context/AuthContext'
-import { fetchMisTareasBundle } from './service.MisTareas'
-import FiltrosMisTareas from './FiltrosMisTareas.jsx'
-import SecureArchivotikects from '../SecureArchivotikects.jsx'
 
-// ✅ NUEVO: componente del modal para agregar historial
+import {
+  fetchMisCreacionesBundle,
+  putTicket,
+  deactivateTicket,
+} from './service.MisCreaciones'
+
+import CrearTicketWizard from '../CrearTicket/CrearTicketWizard.jsx'
+
+import FiltrosMisTareas from '../MisTareas/FiltrosMisTareas.jsx'
+import SecureArchivotikects from '../SecureArchivotikects.jsx'
 import AgregarHistorialTicket from '../historial/AgregarHistorialTicket.jsx'
 
 const fmtDate = iso => {
@@ -22,7 +28,6 @@ const fmtDate = iso => {
   })
 }
 
-// ✅ soporta Date ISO, {$date} y variantes
 const anyDateToIso = v => {
   if (!v) return ''
   if (v instanceof Date) return v.toISOString()
@@ -32,7 +37,6 @@ const anyDateToIso = v => {
   return String(v)
 }
 
-// ✅ soporta ObjectId string, {$oid}, y objetos raros
 const oidToString = v => {
   if (!v) return ''
   if (typeof v === 'string') return v
@@ -61,7 +65,6 @@ const norm = s =>
     .trim()
     .toLowerCase()
 
-// ✅ “Cerrado” puede cambiar de id, así que lo detectamos por name/name_norm
 const buildClosedEstadoIds = estadosMap => {
   const ids = new Set()
   for (const it of Object.values(estadosMap || {})) {
@@ -78,7 +81,6 @@ const isTicketCerrado = (ticket, estadosMap) => {
   const currentId = oidToString(ticket?.estado_id)
   if (currentId && closedIds.has(currentId)) return true
 
-  // fallback: último estado por historial
   const last = getUltimoHist(ticket)
   const lastId = oidToString(last?.estado_id)
   return !!(lastId && closedIds.has(lastId))
@@ -106,7 +108,6 @@ const getCierreEvento = (ticket, estadosMap) => {
 }
 
 const diffDaysCeil = (a, b) => {
-  // a - b en días, redondeando hacia arriba
   const ms = a.getTime() - b.getTime()
   return Math.ceil(ms / (1000 * 60 * 60 * 24))
 }
@@ -133,7 +134,6 @@ const computeCumplimientoUI = (ticket, estadosMap) => {
     }
   }
 
-  // si está cerrado y tenemos fechas, calculamos retraso
   if (
     cierreAt &&
     est &&
@@ -145,7 +145,6 @@ const computeCumplimientoUI = (ticket, estadosMap) => {
     return { cerrado: true, raw, cierreAt, retrasoDias: retraso, label }
   }
 
-  // fallback: usar el campo del backend
   return {
     cerrado: true,
     raw,
@@ -273,10 +272,6 @@ const CatalogBadge = ({ item, fallback = '—', maxW = 110 }) => {
   )
 }
 
-// ✅ org rules:
-// FastwaySAS -> naranja
-// GreemWay -> aguamarina
-// MetalHarvest -> verde
 const orgBadgeStyle = orgId => {
   const org = String(orgId || '')
     .trim()
@@ -327,29 +322,17 @@ const OrgBadge = ({ orgId, maxW = 110 }) => (
   </span>
 )
 
-// ---------- asignación ----------
 const getAsignacionScope = ticket => {
   const a = ticket?.asignado_a
   if (!a?.tipo)
     return { label: '—', key: 'none', cls: 'badge bg-light text-dark' }
 
-  if (a.tipo === 'personal') {
-    return {
-      label: 'Personal',
-      key: 'personal',
-      cls: 'badge bg-primary',
-      detail: a.id,
-    }
-  }
+  if (a.tipo === 'personal')
+    return { label: 'Personal', key: 'personal', cls: 'badge bg-primary' }
   if (a.tipo === 'team')
-    return { label: 'Team', key: 'team', cls: 'badge bg-success', detail: a.id }
+    return { label: 'Team', key: 'team', cls: 'badge bg-success' }
   if (a.tipo === 'area')
-    return {
-      label: 'Área',
-      key: 'area',
-      cls: 'badge bg-info text-dark',
-      detail: a.id,
-    }
+    return { label: 'Área', key: 'area', cls: 'badge bg-info text-dark' }
 
   return { label: '—', key: 'none', cls: 'badge bg-light text-dark' }
 }
@@ -368,10 +351,7 @@ const personaLabel = (id, personalMap) => {
   const apellido = String(p?.Apellido || '').trim()
   const full = [nombre, apellido].filter(Boolean).join(' ').trim() || String(id)
 
-  return {
-    title: full,
-    raw: String(p?.Id_personal ?? id),
-  }
+  return { title: full, raw: String(p?.Id_personal ?? id) }
 }
 
 const resolveEstadoItem = (estado_id, estadosMap) => {
@@ -384,10 +364,8 @@ const getEstadoItemDesdeHistorial = (ticket, estadosMap) => {
   const last = getUltimoHist(ticket)
   const item = resolveEstadoItem(last?.estado_id, estadosMap)
   if (item) return item
-
   const id = oidToString(last?.estado_id)
   if (!id) return null
-
   return { _id: id, name: '—' }
 }
 
@@ -406,7 +384,6 @@ const changedByLabel = (changedBy, personalMap) => {
   return full || v
 }
 
-// ✅ URL absoluta
 const TICKETS_API = import.meta.env.VITE_API_URL_5 || ''
 const ticketsOrigin = (base => {
   if (!base) return ''
@@ -424,7 +401,6 @@ const toTicketAbsolute = relOrAbs => {
   return `${ticketsOrigin}${s.startsWith('/') ? '' : '/'}${s}`
 }
 
-// ✅ color determinístico por persona (SOLO color de texto, suave)
 const hashString = str => {
   let h = 0
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
@@ -433,18 +409,15 @@ const hashString = str => {
 const textColorForUser = changedBy => {
   const k = String(changedBy || '').trim() || '—'
   const hue = hashString(k) % 360
-  // más suave, legible
   return `hsl(${hue} 45% 35%)`
 }
 
-// ✅ “Asig.” column badge only (centrado)
 const AsigBadge = ({ ticket }) => {
   const s = getAsignacionScope(ticket)
   return (
     <div className='w-100 d-flex justify-content-center'>
       <span
         className={s.cls}
-        title={s.detail || ''}
         style={{
           fontSize: 12,
           fontWeight: 900,
@@ -460,13 +433,10 @@ const AsigBadge = ({ ticket }) => {
   )
 }
 
-// ✅ columna Creador (usa creado_por + personalMap)
 const CreatorName = ({ ticket, maps }) => {
   const personalMap = maps?.personalMap || {}
   const creadorId = ticket?.creado_por
-
   if (!creadorId) return <span className='text-muted'>—</span>
-
   const info = personaLabel(creadorId, personalMap)
   return (
     <div
@@ -486,28 +456,98 @@ const CreatorName = ({ ticket, maps }) => {
   )
 }
 
-/**
- * ✅ resolver nombre para team/area
- * - team: nombre_norm (desde teamsMap por id)
- * - area: nombre (desde areasMap por id)
- */
 const resolveAsignadoNombre = (asignado, maps) => {
   const tipo = asignado?.tipo
   const id = asignado?.id
-
   if (!tipo || !id) return '—'
-
   if (tipo === 'team') {
     const t = maps?.teamsMap?.[String(id)] || null
     return t?.nombre_norm || t?.nombre || String(id)
   }
-
   if (tipo === 'area') {
     const a = maps?.areasMap?.[String(id)] || null
     return a?.nombre || a?.name || String(id)
   }
-
   return String(id)
+}
+
+// ✅ mini form de edición (simple y seguro con validator.put)
+const EditarTicketForm = ({ ticket, token, id_personal, onSaved }) => {
+  const [titulo, setTitulo] = useState(ticket?.titulo || '')
+  const [descripcion, setDescripcion] = useState(ticket?.descripcion || '')
+  const [fecha_estimada, setFechaEstimada] = useState(() => {
+    const iso = anyDateToIso(ticket?.fecha_estimada)
+    if (!iso) return ''
+    return String(iso).slice(0, 10)
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const onSubmit = async e => {
+    e.preventDefault()
+    try {
+      setSaving(true)
+      setErr(null)
+
+      const payload = {
+        id_personal: String(id_personal),
+        titulo,
+        descripcion,
+        fecha_estimada: fecha_estimada ? `${fecha_estimada}T00:00:00.000Z` : '',
+      }
+
+      await putTicket(ticket?._id, payload, token)
+      onSaved?.()
+    } catch (e2) {
+      console.error(e2)
+      setErr('No se pudo editar el ticket.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className='d-flex flex-column gap-2'>
+      {err && <div className='alert alert-danger py-2 mb-1'>{err}</div>}
+
+      <div>
+        <label className='form-label fw-semibold'>Título</label>
+        <input
+          className='form-control'
+          value={titulo}
+          onChange={e => setTitulo(e.target.value)}
+          required
+        />
+      </div>
+
+      <div>
+        <label className='form-label fw-semibold'>Descripción</label>
+        <textarea
+          className='form-control'
+          rows={4}
+          value={descripcion}
+          onChange={e => setDescripcion(e.target.value)}
+          required
+        />
+      </div>
+
+      <div>
+        <label className='form-label fw-semibold'>Fecha estimada</label>
+        <input
+          type='date'
+          className='form-control'
+          value={fecha_estimada}
+          onChange={e => setFechaEstimada(e.target.value)}
+        />
+      </div>
+
+      <div className='d-flex justify-content-end gap-2 mt-2'>
+        <button className='btn btn-primary' type='submit' disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      </div>
+    </form>
+  )
 }
 
 const ExpandedComponent = ({
@@ -517,6 +557,9 @@ const ExpandedComponent = ({
   onOpenUpdate,
   onOpenChat,
   onOpenAdjuntosEvento,
+  onOpenEditar,
+  onEliminar,
+  canEditDelete,
 }) => {
   const estadosMap = maps?.estadosMap || {}
   const cierreInfo = computeCumplimientoUI(data, estadosMap)
@@ -582,6 +625,38 @@ const ExpandedComponent = ({
           >
             Agregar al historial
           </button>
+
+          <button
+            type='button'
+            className='btn btn-sm btn-warning'
+            onClick={() => onOpenEditar?.(data)}
+            disabled={!canEditDelete || cierreInfo.cerrado}
+            title={
+              !canEditDelete
+                ? 'Solo el creador puede editar'
+                : cierreInfo.cerrado
+                  ? 'Ticket cerrado: edición deshabilitada'
+                  : 'Editar ticket'
+            }
+          >
+            Editar
+          </button>
+
+          <button
+            type='button'
+            className='btn btn-sm btn-danger'
+            onClick={() => onEliminar?.(data)}
+            disabled={!canEditDelete || !data?.activo}
+            title={
+              !canEditDelete
+                ? 'Solo el creador puede eliminar'
+                : !data?.activo
+                  ? 'Ya está desactivado'
+                  : 'Eliminar (desactivar)'
+            }
+          >
+            Eliminar
+          </button>
         </div>
 
         <div className='row g-3'>
@@ -595,7 +670,6 @@ const ExpandedComponent = ({
             <div className='d-flex align-items-start gap-2 flex-wrap'>
               <span
                 className={scope.cls}
-                title={scope.detail || ''}
                 style={{
                   fontWeight: 900,
                   borderRadius: 10,
@@ -662,24 +736,8 @@ const ExpandedComponent = ({
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Cumplimiento</div>
-            <div className='text-muted'>{cierreInfo.label || '—'}</div>
-          </div>
-
-          <div className='col-6 col-md-3'>
-            <div className='fw-bold mb-1'>cierre</div>
             <div className='text-muted'>
-              {cierreInfo.cierreAt
-                ? fmtDate(cierreInfo.cierreAt.toISOString())
-                : '—'}
-            </div>
-          </div>
-
-          <div className='col-6 col-md-3'>
-            <div className='fw-bold mb-1'>Días de retraso</div>
-            <div className='text-muted'>
-              {typeof cierreInfo.retrasoDias === 'number'
-                ? cierreInfo.retrasoDias
-                : '—'}
+              {computeCumplimientoUI(data, estadosMap).label || '—'}
             </div>
           </div>
 
@@ -729,7 +787,6 @@ const ExpandedComponent = ({
                                   adjuntos: adjuntosEvento,
                                 })
                               }
-                              title='Ver adjuntos de este cambio'
                               style={{ padding: '2px 8px' }}
                             >
                               📎({adjuntosEvento.length})
@@ -772,7 +829,7 @@ const ExpandedComponent = ({
   )
 }
 
-const MisTareas = () => {
+const MisCreaciones = () => {
   const { token, user } = useContext(AuthContext)
   const id_personal = user?.personal?.id_personal
 
@@ -792,14 +849,18 @@ const MisTareas = () => {
   const [filtersApplied, setFiltersApplied] = useState({})
   const [showFilters, setShowFilters] = useState(false)
 
-  // ✅ Modal historial
   const [openActualizar, setOpenActualizar] = useState(false)
   const [ticketActualizar, setTicketActualizar] = useState(null)
 
-  // ✅ Modal adjuntos reutilizable (ticket o evento)
   const [openAdjuntos, setOpenAdjuntos] = useState(false)
   const [ticketAdjuntos, setTicketAdjuntos] = useState(null)
   const [adjuntosModalTitle, setAdjuntosModalTitle] = useState('Adjuntos')
+
+  const [openEditar, setOpenEditar] = useState(false)
+  const [ticketEditar, setTicketEditar] = useState(null)
+
+  // ✅ Modal crear (Wizard)
+  const [openCrear, setOpenCrear] = useState(false)
 
   const empresas = useMemo(
     () => [
@@ -816,7 +877,7 @@ const MisTareas = () => {
       setLoading(true)
       setError(null)
 
-      const bundle = await fetchMisTareasBundle(
+      const bundle = await fetchMisCreacionesBundle(
         {
           id_personal,
           page: 1,
@@ -839,7 +900,7 @@ const MisTareas = () => {
       )
     } catch (e) {
       console.error(e)
-      setError('No se pudo cargar Mis Tickets Asignados.')
+      setError('No se pudo cargar Mis Creaciones.')
       setRawRows([])
     } finally {
       setLoading(false)
@@ -854,22 +915,21 @@ const MisTareas = () => {
     let data = [...rawRows]
     const f = filtersApplied || {}
 
+    // ✅ NO mostrar activo=false
     data = data.filter(t => t?.activo !== false)
 
+    // ✅ SOLO lo que yo creé
     const pid = String(id_personal || '').trim()
     if (pid) {
       data = data.filter(t => {
         const creador = String(t?.creado_por || t?.createdBy || '').trim()
-        return creador !== pid
+        return creador === pid
       })
     }
 
     if (f.orgId)
       data = data.filter(t => String(t.orgId || '') === String(f.orgId))
     if (f.tipo) data = data.filter(t => String(t.tipo || '') === String(f.tipo))
-
-    if (f.activo === 'true') data = data.filter(t => t.activo === true)
-    if (f.activo === 'false') data = data.filter(t => t.activo === false)
 
     if (f.prioridad_id)
       data = data.filter(
@@ -971,13 +1031,45 @@ const MisTareas = () => {
         cell: r => <AsigBadge ticket={r} />,
       },
       {
-        name: 'Creador',
+        name: 'Asignación',
         sortable: true,
-        width: '190px',
-        center: true,
-        selector: r => String(r?.creado_por || ''),
-        cell: r => <CreatorName ticket={r} maps={maps} />,
+        center: true, // ✅ centra el header
+        grow: 1,
+        selector: r => {
+          const a = r?.asignado_a
+          if (!a?.tipo) return '—'
+          return `${a.tipo}:${a.id || ''}`
+        },
+        cell: r => {
+          const asignado = r?.asignado_a
+          if (!asignado?.tipo || !asignado?.id) {
+            return <div className='w-100 text-center'>—</div>
+          }
+
+          // PERSONAL
+          if (asignado.tipo === 'personal') {
+            const info = personaLabel(asignado.id, maps?.personalMap || {})
+            return (
+              <div className='w-100 text-center'>
+                <Ell maxWidth={220} title={info.title}>
+                  {info.title}
+                </Ell>
+              </div>
+            )
+          }
+
+          // TEAM / AREA
+          const label = resolveAsignadoNombre(asignado, maps)
+          return (
+            <div className='w-100 text-center'>
+              <Ell maxWidth={220} title={label}>
+                {label}
+              </Ell>
+            </div>
+          )
+        },
       },
+
       {
         name: 'Título',
         selector: r => r.titulo,
@@ -1065,9 +1157,7 @@ const MisTareas = () => {
       adjuntos: Array.isArray(adjuntos) ? adjuntos : [],
     })
     setAdjuntosModalTitle(
-      `Adjuntos del cambio ${
-        ticket?.code ? `- ${ticket.code}` : ''
-      } (${estadoLabel} · ${when})`
+      `Adjuntos del cambio ${ticket?.code ? `- ${ticket.code}` : ''} (${estadoLabel} · ${when})`
     )
     setOpenAdjuntos(true)
   }
@@ -1075,6 +1165,41 @@ const MisTareas = () => {
   const onApplyFilters = f => {
     setFiltersApplied(f || {})
     setShowFilters(false)
+  }
+
+  const onOpenEditar = ticket => {
+    setTicketEditar(ticket)
+    setOpenEditar(true)
+  }
+
+  // ✅ CONFIRMACIÓN ANTD (centrada, NO navegador)
+  const confirmarEliminar = ticket => {
+    if (!ticket?._id) return
+    AntdModal.confirm({
+      centered: true,
+      title: 'Confirmar eliminación',
+      content: (
+        <div>
+          ¿Seguro que deseas <b>eliminar (desactivar)</b> este ticket?
+          <div className='text-muted' style={{ marginTop: 6 }}>
+            {ticket?.code ? `Código: ${ticket.code}` : ''}{' '}
+            {ticket?.titulo ? `· ${ticket.titulo}` : ''}
+          </div>
+        </div>
+      ),
+      okText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await deactivateTicket(ticket._id, { id_personal }, token)
+          await load()
+        } catch (e) {
+          console.error(e)
+          setError('No se pudo eliminar (desactivar) el ticket.')
+        }
+      },
+    })
   }
 
   const adjuntosModal = Array.isArray(ticketAdjuntos?.adjuntos)
@@ -1086,11 +1211,23 @@ const MisTareas = () => {
     <div className='card'>
       <div className='card-header d-flex align-items-end'>
         <div className='me-auto'>
-          <strong>Mis Tickets Asignados</strong>
+          <strong>Mis Creaciones</strong>
           <div className='text-muted small'>
-            Tabla compacta (fechas dentro del desplegable).
+            Solo tickets creados por mí (con editar / eliminar). (No muestra
+            activo=false)
           </div>
         </div>
+
+        <button
+          className='btn btn-sm btn-primary'
+          onClick={() => setOpenCrear(true)}
+          disabled={!token || !id_personal}
+          title={
+            !token || !id_personal ? 'Falta sesión/ID personal' : 'Crear ticket'
+          }
+        >
+          Crear ticket
+        </button>
       </div>
 
       <div className='card-body'>
@@ -1145,6 +1282,9 @@ const MisTareas = () => {
               onOpenUpdate={onOpenUpdate}
               onOpenChat={onOpenChat}
               onOpenAdjuntosEvento={onOpenAdjuntosEvento}
+              onOpenEditar={onOpenEditar}
+              onEliminar={confirmarEliminar} // ✅ aquí va la confirmación
+              canEditDelete={true}
             />
           )}
           noDataComponent={
@@ -1153,7 +1293,25 @@ const MisTareas = () => {
         />
       </div>
 
-      {/* ✅ Modal: Agregar al historial */}
+      {/* ✅ MODAL: CREAR TICKET (Wizard) */}
+      <AntdModal
+        open={openCrear}
+        title='Crear ticket'
+        onCancel={() => setOpenCrear(false)}
+        footer={null}
+        centered
+        width={980}
+        destroyOnClose
+      >
+        <CrearTicketWizard
+          onClose={() => {
+            setOpenCrear(false)
+            load() // refresca para ver el nuevo ticket
+          }}
+        />
+      </AntdModal>
+
+      {/* Modal: Agregar al historial */}
       <AntdModal
         open={openActualizar}
         title={`Agregar al historial ${ticketActualizar?.code || ''}`}
@@ -1177,7 +1335,31 @@ const MisTareas = () => {
         )}
       </AntdModal>
 
-      {/* Modal adjuntos (reusable: ticket o evento) */}
+      {/* Modal: Editar */}
+      <AntdModal
+        open={openEditar}
+        title={`Editar ${ticketEditar?.code || ''}`}
+        onCancel={() => setOpenEditar(false)}
+        footer={null}
+        centered
+        width={760}
+      >
+        {!ticketEditar?._id ? (
+          <div className='text-muted'>Selecciona un ticket.</div>
+        ) : (
+          <EditarTicketForm
+            ticket={ticketEditar}
+            token={token}
+            id_personal={id_personal}
+            onSaved={() => {
+              setOpenEditar(false)
+              load()
+            }}
+          />
+        )}
+      </AntdModal>
+
+      {/* Modal adjuntos */}
       <AntdModal
         open={openAdjuntos}
         title={adjuntosModalTitle}
@@ -1193,9 +1375,8 @@ const MisTareas = () => {
           <div className='d-flex flex-column gap-3'>
             {adjuntosModal.map((a, idx) => {
               const rel = a?.url
-              const abs = toTicketAbsolute(a?.url)
               const rutaRelativa = /^https?:\/\//i.test(String(rel || ''))
-                ? abs
+                ? toTicketAbsolute(rel)
                 : rel
               const title = a?.name || a?.fileId || `Adjunto ${idx + 1}`
 
@@ -1240,4 +1421,4 @@ const MisTareas = () => {
   )
 }
 
-export default MisTareas
+export default MisCreaciones

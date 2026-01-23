@@ -4,9 +4,7 @@ import { Modal as AntdModal } from 'antd'
 import AuthContext from '../../../context/AuthContext'
 import { fetchMisCreacionesBundle } from './service.CrearTicket'
 import Filtros from './Filtros.jsx'
-
-// ✅ IMPORTA el form (misma carpeta)
-import CrearTicketForm from './CrearTicketForm.jsx'
+import CrearTicketWizard from './CrearTicketWizard.jsx'
 
 const fmtDate = iso => {
   if (!iso) return '—'
@@ -21,7 +19,6 @@ const fmtDate = iso => {
   })
 }
 
-// último item del historial (ordenado por changedAt)
 const getUltimoHist = ticket => {
   const h = Array.isArray(ticket?.estado_historial)
     ? ticket.estado_historial
@@ -62,7 +59,6 @@ const badgeClass = name => {
   return 'badge bg-light text-dark'
 }
 
-// Org badge pastel
 const orgBadgeStyle = orgId => {
   const org = String(orgId || '').toLowerCase()
   if (org === 'fastway')
@@ -119,16 +115,6 @@ const ExpandedComponent = ({ data, maps, onOpenUpdate, onOpenChat }) => {
     areaObj?.name ||
     (asignado?.id ? `${asignado.tipo}: ${asignado.id}` : '—')
 
-  const teamMembers =
-    teamObj?.personal_ids ||
-    teamObj?.personalIds ||
-    teamObj?.miembros ||
-    teamObj?.members ||
-    teamObj?.integrantes ||
-    []
-
-  const watchers = Array.isArray(data?.watchers) ? data.watchers : []
-
   const historial = Array.isArray(data?.estado_historial)
     ? data.estado_historial
     : []
@@ -165,23 +151,6 @@ const ExpandedComponent = ({ data, maps, onOpenUpdate, onOpenChat }) => {
           <div className='col-12 col-md-6'>
             <div className='fw-bold mb-1'>Asignado a</div>
             <div className='text-muted'>{asignadoLabel}</div>
-
-            {asignado.tipo === 'team' && (
-              <div className='mt-2'>
-                <div className='fw-bold mb-1'>Equipo (IDs en el team)</div>
-                {Array.isArray(teamMembers) && teamMembers.length > 0 ? (
-                  <ul className='mb-0'>
-                    {teamMembers.map((id, idx) => (
-                      <li key={`${id}-${idx}`} className='text-muted'>
-                        {id}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className='text-muted'>—</div>
-                )}
-              </div>
-            )}
           </div>
 
           <div className='col-6 col-md-3'>
@@ -238,47 +207,6 @@ const ExpandedComponent = ({ data, maps, onOpenUpdate, onOpenChat }) => {
               <div className='text-muted'>—</div>
             )}
           </div>
-
-          <div className='col-12'>
-            <div className='fw-bold mb-1'>Watchers (IDs)</div>
-            {watchers.length ? (
-              <div className='d-flex flex-wrap gap-2'>
-                {watchers.map((w, idx) => (
-                  <span
-                    key={`${w}-${idx}`}
-                    className='badge bg-dark-subtle text-dark'
-                  >
-                    {w}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className='text-muted'>—</div>
-            )}
-          </div>
-
-          {data?.tipo === 'operacion' && (
-            <div className='col-12'>
-              <div className='fw-bold mb-2'>Operación</div>
-              <div className='row g-2'>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Cliente:</b> {data?.operacion?.cliente || '—'}
-                  </div>
-                </div>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Lote:</b> {data?.operacion?.lote || '—'}
-                  </div>
-                </div>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Producto:</b> {data?.operacion?.producto || '—'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -301,16 +229,13 @@ const TablaCrearTicket = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // ✅ filtros aplicados (solo cambian cuando das Aplicar)
   const [filtersApplied, setFiltersApplied] = useState({})
   const [showFilters, setShowFilters] = useState(false)
 
-  // ✅ Modales
   const [openCrear, setOpenCrear] = useState(false)
   const [openActualizar, setOpenActualizar] = useState(false)
   const [ticketActualizar, setTicketActualizar] = useState(null)
 
-  // empresas temporales (cuando tengas endpoint real, lo cambias)
   const empresas = useMemo(
     () => [
       { orgId: 'Fastway', name: 'Fastway' },
@@ -326,7 +251,6 @@ const TablaCrearTicket = () => {
       setLoading(true)
       setError(null)
 
-      // 🔥 pedimos bundle normal (mis creaciones)
       const bundle = await fetchMisCreacionesBundle(
         { id_personal, page: 1, limit: 100 },
         token
@@ -355,7 +279,6 @@ const TablaCrearTicket = () => {
     load()
   }, [load])
 
-  // ✅ filtrado REAL (usando IDs correctos)
   const rows = useMemo(() => {
     let data = [...rawRows]
     const f = filtersApplied || {}
@@ -376,26 +299,9 @@ const TablaCrearTicket = () => {
         t => String(t.categoria_id || '') === String(f.categoria_id)
       )
 
-    // ✅ estado por último historial (ID)
     if (f.estado_id) {
       data = data.filter(
         t => String(getUltimoHist(t)?.estado_id || '') === String(f.estado_id)
-      )
-    }
-
-    // ✅ asignado_a por team/area
-    if (f.team_id) {
-      data = data.filter(
-        t =>
-          t?.asignado_a?.tipo === 'team' &&
-          String(t?.asignado_a?.id || '') === String(f.team_id)
-      )
-    }
-    if (f.area_id) {
-      data = data.filter(
-        t =>
-          t?.asignado_a?.tipo === 'area' &&
-          String(t?.asignado_a?.id || '') === String(f.area_id)
       )
     }
 
@@ -410,15 +316,6 @@ const TablaCrearTicket = () => {
             .toLowerCase()
             .includes(q) ||
           String(t.descripcion || '')
-            .toLowerCase()
-            .includes(q) ||
-          String(t.operacion?.cliente || '')
-            .toLowerCase()
-            .includes(q) ||
-          String(t.operacion?.producto || '')
-            .toLowerCase()
-            .includes(q) ||
-          String(t.operacion?.lote || '')
             .toLowerCase()
             .includes(q)
       )
@@ -437,7 +334,6 @@ const TablaCrearTicket = () => {
         cell: r => <OrgBadge orgId={r.orgId} />,
       },
       { name: 'Code', selector: r => r.code, sortable: true, width: '95px' },
-
       {
         name: 'Título',
         selector: r => r.titulo,
@@ -459,9 +355,7 @@ const TablaCrearTicket = () => {
           </span>
         ),
       },
-
       { name: 'Tipo', selector: r => r.tipo, sortable: true, width: '105px' },
-
       {
         name: 'Estado',
         selector: r => getEstadoNombreDesdeHistorial(r, maps?.estadosMap),
@@ -472,14 +366,12 @@ const TablaCrearTicket = () => {
           return <span className={badgeClass(est)}>{est}</span>
         },
       },
-
       {
         name: 'Pri.',
         selector: r => maps?.prioridadesMap?.[r?.prioridad_id]?.name || '—',
         sortable: true,
         width: '90px',
       },
-
       {
         name: 'Cat.',
         selector: r => maps?.categoriasMap?.[r?.categoria_id]?.name || '—',
@@ -503,7 +395,6 @@ const TablaCrearTicket = () => {
           )
         },
       },
-
       {
         name: 'Creado',
         selector: r => r.createdAt,
@@ -528,7 +419,6 @@ const TablaCrearTicket = () => {
 
   const onOpenChat = () => {}
 
-  // ✅ aplicar filtros (y cerrar panel)
   const onApplyFilters = f => {
     setFiltersApplied(f || {})
     setShowFilters(false)
@@ -548,7 +438,6 @@ const TablaCrearTicket = () => {
       <div className='card-body'>
         {error && <div className='alert alert-danger py-2 mb-3'>{error}</div>}
 
-        {/* Toolbar */}
         <div className='d-flex flex-wrap gap-2 align-items-center mb-2'>
           <button
             className='btn btn-sm btn-outline-primary'
@@ -575,7 +464,6 @@ const TablaCrearTicket = () => {
           </div>
         </div>
 
-        {/* Panel filtros (oculto/visible) */}
         {showFilters && (
           <div className='mb-2'>
             <Filtros
@@ -616,7 +504,7 @@ const TablaCrearTicket = () => {
         />
       </div>
 
-      {/* ✅ MODAL CREAR (con el form real) */}
+      {/* ✅ MODAL CREAR */}
       <AntdModal
         open={openCrear}
         title='Crear ticket'
@@ -626,7 +514,13 @@ const TablaCrearTicket = () => {
         width={980}
         destroyOnClose
       >
-        <CrearTicketForm token={token} />
+        <CrearTicketWizard
+          token={token}
+          onClose={async () => {
+            setOpenCrear(false)
+            await load()
+          }}
+        />
       </AntdModal>
 
       {/* MODAL ACTUALIZAR */}

@@ -1,4 +1,4 @@
-// src/components/Tickets/MisTareas/service.MisTareas.js
+// src/components/Tickets/MisCreaciones/service.MisCreaciones.js
 import axios from 'axios'
 
 const API_URL_5 = import.meta.env.VITE_API_URL_5 // http://localhost:4000/tikets
@@ -84,21 +84,18 @@ export const listarAreas = async (
 
 // ✅ PERSONAL (desde OTRO SERVER) -> ideal para resolver Nombre + Apellido
 export const listarPersonal = async token => {
-  if (!API_URL) {
-    // Si no está seteada la env, devolvemos vacío para no romper
-    return []
-  }
+  if (!API_URL) return []
   const { data } = await axios.get(`${API_URL}/personal`, {
-    // por si ese server también usa Bearer, lo mandamos si existe
     headers: buildHeaders(token),
   })
   return data
 }
 
-// ✅ Endpoint: /tickets/assigned
-export const listarTicketsAssigned = async (
+// ✅ Endpoint: /tickets/mine
+export const listarTicketsMine = async (
   {
     id_personal,
+    scope, // opcional (si luego lo usas)
     page = 1,
     limit = 100,
     sortBy = 'updatedAt',
@@ -107,27 +104,49 @@ export const listarTicketsAssigned = async (
   token
 ) => {
   const params = { id_personal, page, limit, sortBy, sortDir }
-  const { data } = await axios.get(`${API_URL_5}/tickets/assigned`, {
+  if (scope) params.scope = scope
+  const { data } = await axios.get(`${API_URL_5}/tickets/mine`, {
     headers: buildHeaders(token),
     params,
   })
   return data
 }
 
+// ✅ EDITAR (PUT /tickets/:id)
+export const putTicket = async (ticketId, payload, token) => {
+  if (!ticketId) throw new Error('putTicket: ticketId requerido')
+  const { data } = await axios.put(
+    `${API_URL_5}/tickets/${ticketId}`,
+    payload,
+    {
+      headers: buildHeaders(token),
+    }
+  )
+  return data
+}
+
+// ✅ ELIMINAR (soft delete) PATCH /tickets/:id/deactivate
+export const deactivateTicket = async (ticketId, { id_personal }, token) => {
+  if (!ticketId) throw new Error('deactivateTicket: ticketId requerido')
+  const { data } = await axios.patch(
+    `${API_URL_5}/tickets/${ticketId}/deactivate`,
+    { id_personal },
+    { headers: buildHeaders(token) }
+  )
+  return data
+}
+
 // ✅ BUNDLE PARA TABLA
-export const fetchMisTareasBundle = async (
+export const fetchMisCreacionesBundle = async (
   { id_personal, page = 1, limit = 100, orgId = '' } = {},
   token
 ) => {
-  const resTickets = await listarTicketsAssigned(
+  const resTickets = await listarTicketsMine(
     { id_personal, page, limit, sortBy: 'updatedAt', sortDir: 'desc' },
     token
   )
-  const rows = pickItems(resTickets)
 
-  // orgId para maps:
-  // - si el usuario eligió empresa en filtros, usamos ese
-  // - si no, usamos la primera del resultado
+  const rows = pickItems(resTickets)
   const effectiveOrgId = orgId || rows?.[0]?.orgId || ''
 
   const [resTeams, resAreas, resPersonal] = await Promise.all([
@@ -138,8 +157,6 @@ export const fetchMisTareasBundle = async (
 
   const teams = pickItems(resTeams)
   const areas = pickItems(resAreas)
-
-  // /personal normalmente viene como array directo
   const personal = Array.isArray(resPersonal)
     ? resPersonal
     : pickItems(resPersonal)
@@ -159,7 +176,6 @@ export const fetchMisTareasBundle = async (
     categorias = pickItems(resC)
   }
 
-  // ✅ mapa de personal por Id_personal para resolver Nombre/Apellido rápido
   const personalMap = Object.fromEntries(
     (personal || [])
       .filter(p => p && p.Id_personal !== undefined && p.Id_personal !== null)
@@ -184,16 +200,4 @@ export const fetchMisTareasBundle = async (
     meta: resTickets?.meta || null,
     orgId: effectiveOrgId,
   }
-}
-// ✅ Obtener 1 item de catálogo por id (útil si necesitas resolver name cuando cambia el _id)
-export const getCatalogItemById = async ({ id, orgId } = {}, token) => {
-  if (!id) throw new Error('getCatalogItemById: id es requerido')
-  const params = {}
-  if (orgId) params.orgId = orgId
-
-  const { data } = await axios.get(`${API_URL_5}/catalog/${id}`, {
-    headers: buildHeaders(token),
-    params,
-  })
-  return data
 }

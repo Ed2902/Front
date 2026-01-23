@@ -121,12 +121,24 @@ const SECCIONES = [
     ],
   },
   {
-    nombre: 'Tickets Soporte Técnico',
+    nombre: 'Tickets',
     icono: <BiBuilding />,
     permisos: [
+      // Acceso base
       { clave: 'tickets', label: 'Acceso general' },
-      { clave: 'crearTicket', label: 'Crear Ticket', padre: 'tickets' },
-      { clave: 'soporteTicket', label: 'Soporte Ticket', padre: 'tickets' },
+
+      // Módulos de tickets (frontend)
+      { clave: 'misCreaciones', label: 'Mis Creaciones', padre: 'tickets' },
+      { clave: 'misTareas', label: 'Mis Tareas', padre: 'tickets' },
+
+      // Administración de tickets
+      {
+        clave: 'adminCatalogos',
+        label: 'Administrar Catálogos',
+        padre: 'tickets',
+      },
+      { clave: 'adminAreas', label: 'Administrar Áreas', padre: 'tickets' },
+      { clave: 'adminTeams', label: 'Administrar Teams', padre: 'tickets' },
     ],
   },
 

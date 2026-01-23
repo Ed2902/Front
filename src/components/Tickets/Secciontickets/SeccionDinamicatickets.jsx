@@ -1,11 +1,20 @@
 import './SeccionDinamicatickets.css'
 import { usePermisos } from '../../../hooks/usePermisos'
 
-// ✅ módulo real existente
-import TablaCrearTicket from '../CrearTicket/TablaCrearTicket'
-
-// ✅ NUEVO: Mis Tareas
+// ✅ Mis Tareas
 import MisTareas from '../MisTareas/MisTareas'
+
+// ✅ Mis Creaciones
+import MisCreaciones from '../MisCreaciones/MisCreaciones'
+
+// ✅ Áreas
+import AreasTable from '../areas/AreasTable.jsx'
+
+// ✅ Catálogos
+import Catalogos from '../catalogo/Catalogos.jsx'
+
+// ✅ Teams
+import Teams from '../teams/Teams.jsx'
 
 const SeccionDinamicaTickets = ({ selectedSection }) => {
   const { tienePermiso } = usePermisos()
@@ -16,72 +25,40 @@ const SeccionDinamicaTickets = ({ selectedSection }) => {
     </div>
   )
 
-  const Hola = ({ titulo }) => (
-    <div className='tickets-seccion__placeholder'>
-      <h3>{titulo}</h3>
-      <p>Hola mundo 🚧</p>
-    </div>
-  )
-
-  const renderTablaCreaciones = () => (
-    <TablaCrearTicket
-      rows={[]}
-      loading={false}
-      maps={{
-        estadosMap: {},
-        prioridadesMap: {},
-        categoriasMap: {},
-        areasMap: {},
-        teamsMap: {},
-      }}
-      options={{ estados: [] }}
-      onRefresh={() => {}}
-      onOpenChat={() => {}}
-    />
-  )
-
   let contenido
 
   switch (selectedSection) {
     case 'misCreaciones':
-      contenido = tienePermiso('tickets') ? (
-        renderTablaCreaciones()
+      contenido = tienePermiso('misCreaciones') ? (
+        <MisCreaciones />
       ) : (
         <NoAutorizado />
       )
       break
 
     case 'misTareas':
-      contenido = tienePermiso('MisTareas') ? <MisTareas /> : <NoAutorizado />
+      contenido = tienePermiso('misTareas') ? <MisTareas /> : <NoAutorizado />
       break
 
     case 'adminCatalogos':
-      contenido = tienePermiso('perfilAdmin') ? (
-        <Hola titulo='Administrar Catálogos' />
+      contenido = tienePermiso('adminCatalogos') ? (
+        <Catalogos />
       ) : (
         <NoAutorizado />
       )
       break
 
     case 'adminAreas':
-      contenido = tienePermiso('perfilAdmin') ? (
-        <Hola titulo='Administrar Áreas' />
-      ) : (
-        <NoAutorizado />
-      )
+      contenido = tienePermiso('adminAreas') ? <AreasTable /> : <NoAutorizado />
       break
 
     case 'adminTeams':
-      contenido = tienePermiso('perfilAdmin') ? (
-        <Hola titulo='Administrar Teams' />
-      ) : (
-        <NoAutorizado />
-      )
+      contenido = tienePermiso('adminTeams') ? <Teams /> : <NoAutorizado />
       break
 
     default:
-      contenido = tienePermiso('tickets') ? (
-        renderTablaCreaciones()
+      contenido = tienePermiso('misCreaciones') ? (
+        <MisCreaciones />
       ) : (
         <NoAutorizado />
       )
