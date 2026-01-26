@@ -25,8 +25,8 @@ const Proveedor = () => {
 
   // buscador + filtros
   const [globalFilter, setGlobalFilter] = useState('')
-  const [estadoFiltro, setEstadoFiltro] = useState('TODOS') // TODOS | ACTIVOS | INACTIVOS
-  const [tipoFiltro, setTipoFiltro] = useState('TODOS') // TODOS | RS | INSUMOS
+  const [estadoFiltro, setEstadoFiltro] = useState('TODOS')
+  const [tipoFiltro, setTipoFiltro] = useState('TODOS')
 
   // documentos por proveedor (cache estable)
   const [docsByProveedor, setDocsByProveedor] = useState({})
@@ -62,6 +62,7 @@ const Proveedor = () => {
 
   const filteredProveedores = useMemo(() => {
     const q = globalFilter.trim().toLowerCase()
+    const tipoFiltroNorm = (tipoFiltro || 'TODOS').toUpperCase()
 
     return proveedores.filter(p => {
       const isActivo = Boolean(p?.Activo)
@@ -72,7 +73,7 @@ const Proveedor = () => {
       if (estadoFiltro === 'INACTIVOS' && isActivo) return false
 
       // filtro tipo
-      if (tipoFiltro !== 'TODOS' && tipo !== tipoFiltro) return false
+      if (tipoFiltroNorm !== 'TODOS' && tipo !== tipoFiltroNorm) return false
 
       // filtro texto
       if (!q) return true
@@ -195,7 +196,10 @@ const Proveedor = () => {
           >
             <option value='TODOS'>Todos (Tipo)</option>
             <option value='RS'>Solo RS</option>
-            <option value='INSUMOS'>Solo INSUMOS</option>
+            <option value='Logistica internacional'>
+              Logistica internacional
+            </option>
+            <option value='Bodega'>Solo Bodega</option>
           </select>
         </div>
       </div>

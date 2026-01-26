@@ -1,26 +1,9 @@
 import { useForm } from 'react-hook-form'
-import { useState } from 'react'
-import { crearCliente, getAuthToken } from './Cliente_service'
+import { useEffect, useState } from 'react'
+import { crearCliente, getPersonal } from './Cliente_service'
 import './FormCliente.css'
 
 const LINEAS_SERVICIO = ['Logistica internacional', 'Bodega', 'RS']
-
-const getIdPersonalFromToken = () => {
-  try {
-    const token = getAuthToken()
-    if (!token) return null
-    const payloadBase64 = token.split('.')[1]
-    const payloadJson = atob(
-      payloadBase64.replace(/-/g, '+').replace(/_/g, '/')
-    )
-    const payload = JSON.parse(payloadJson)
-
-    // En tu login llega como id_personal (y también viene user.personal.id_personal)
-    return payload?.id_personal || payload?.user?.personal?.id_personal || null
-  } catch {
-    return null
-  }
-}
 
 const FormCliente = ({ onClose, onSuccess }) => {
   const {
@@ -32,11 +15,27 @@ const FormCliente = ({ onClose, onSuccess }) => {
     defaultValues: {
       Activo: true,
       Linea_servicio: 'Bodega',
+      Id_personal: '', // ✅ nuevo: select (vacío por defecto)
     },
   })
 
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [personal, setPersonal] = useState([])
+
+  // ✅ cargar personal desde /personal (con token en headers)
+  useEffect(() => {
+    const cargar = async () => {
+      try {
+        const data = await getPersonal()
+        setPersonal(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error('❌ Error cargando personal:', e)
+        setPersonal([])
+      }
+    }
+    cargar()
+  }, [])
 
   // ✅ Mapeo frontend => backend (NO se cambian los existentes)
   const documentosObligatorios = [
@@ -57,9 +56,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
       backend: 'acuerdo_seguridad',
       label: 'Acuerdo de seguridad',
     },
-
-    // ✅ NUEVO (obligatorio según el correo)
-    // Nota: la clave backend es NUEVA; las anteriores NO se modifican.
     {
       campo: 'tratamiento_datos_personales_url',
       backend: 'tratamiento_datos_personales',
@@ -68,7 +64,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
   ]
 
   const documentosOpcionales = [
-    // (existentes)
     {
       campo: 'circular_170_url',
       backend: 'circular_170',
@@ -84,8 +79,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
       backend: 'estados_financieros',
       label: 'Estados financieros',
     },
-
-    // ✅ NUEVOS (opcionales según el correo)
     {
       campo: 'visita_seguridad_url',
       backend: 'visita_seguridad',
@@ -111,8 +104,6 @@ const FormCliente = ({ onClose, onSuccess }) => {
       backend: 'certificacion_procuraduria',
       label: 'Certificación Procuraduría',
     },
-
-    // ✅ EXTRA (se mantiene aunque no esté en el correo)
     {
       campo: 'certificado_contadora_url',
       backend: 'certificado_contadora',
@@ -165,12 +156,11 @@ const FormCliente = ({ onClose, onSuccess }) => {
       if (data.Observaciones)
         formData.append('Observaciones', data.Observaciones)
 
-      // ✅ NUEVO: enum línea de servicio
+      // ✅ enum línea de servicio
       formData.append('Linea_servicio', data.Linea_servicio)
 
-      // ✅ NUEVO: Id_personal automático (no visible)
-      const idPersonal = getIdPersonalFromToken()
-      if (idPersonal) formData.append('Id_personal', idPersonal)
+      // ✅ CLAVE: Id_personal viene DEL SELECT (NO del token)
+      formData.append('Id_personal', data.Id_personal)
 
       // ✅ Envía obligatorios
       documentosObligatorios.forEach(({ campo, backend }) => {
@@ -276,6 +266,25 @@ const FormCliente = ({ onClose, onSuccess }) => {
             ))}
           </select>
           {errors.Linea_servicio && (
+            <p className='text-danger'>Este campo es obligatorio</p>
+          )}
+        </div>
+
+        {/* ✅ NUEVO SELECT: Comercial a cargo */}
+        <div>
+          <label className='form-label'>Comercial a cargo *</label>
+          <select
+            className='form-control mb-2'
+            {...register('Id_personal', { required: true })}
+          >
+            <option value=''>Seleccione un comercial</option>
+            {personal.map(p => (
+              <option key={p.Id_personal} value={p.Id_personal}>
+                {p.Nombre} {p.Apellido} ({p.Id_personal})
+              </option>
+            ))}
+          </select>
+          {errors.Id_personal && (
             <p className='text-danger'>Este campo es obligatorio</p>
           )}
         </div>

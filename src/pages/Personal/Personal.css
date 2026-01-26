@@ -1,21 +1,9 @@
-/* Reutiliza las clases .layout y .main-content que ya usas en GestiónBodega */
-
-.layout {
-  display: flex;
-  min-height: 100vh;
+/* src/pages/Personal/Personal.css */
+.page {
+  width: 100%;
 }
 
-.layout.collapsed .main-content {
-  margin-left: 80px; /* ajusta si ya tienes algo distinto en tu CSS global */
-}
-
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; /* evita scroll doble */
-}
+/* si necesitas scroll interno */
 .personal-seccion {
-  flex: 1;
-  overflow-y: auto;
+  width: 100%;
 }

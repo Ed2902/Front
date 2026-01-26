@@ -6,28 +6,29 @@ const MenuTickets = ({ selectedSection, onSelectSection }) => {
 
   const botones = [
     // Usuario
-    { label: 'Mis Tareas', key: 'misTareas', permiso: 'MisTareas' },
-    { label: 'Mis Creaciones', key: 'misCreaciones', permiso: 'tickets' },
+    { label: 'Mis Tareas', key: 'misTareas', permiso: 'misTareas' },
+    { label: 'Mis Creaciones', key: 'misCreaciones', permiso: 'misCreaciones' },
 
     // Admin
-    { label: 'Catálogos', key: 'adminCatalogos', permiso: 'perfilAdmin' },
-    { label: 'Áreas', key: 'adminAreas', permiso: 'perfilAdmin' },
-    { label: 'Teams', key: 'adminTeams', permiso: 'perfilAdmin' },
+    { label: 'Catálogos', key: 'adminCatalogos', permiso: 'adminCatalogos' },
+    { label: 'Áreas', key: 'adminAreas', permiso: 'adminAreas' },
+    { label: 'Teams', key: 'adminTeams', permiso: 'adminTeams' },
   ]
 
   const visibles = botones.filter(btn => tienePermiso(btn.permiso))
-  const finalBotones = visibles.length
-    ? visibles
-    : botones.filter(b => b.key === 'misTareas')
+
+  // ✅ fallback: si no tiene permisos, intenta Mis Creaciones, si no, Mis Tareas
+  const finalBotones =
+    visibles.length > 0
+      ? visibles
+      : botones.filter(b => b.key === 'misCreaciones' || b.key === 'misTareas')
 
   return (
     <div className='menu-tickets'>
       {finalBotones.map(btn => (
         <button
           key={btn.key}
-          className={`menu-button ${
-            selectedSection === btn.key ? 'active' : ''
-          }`}
+          className={`menu-button ${selectedSection === btn.key ? 'active' : ''}`}
           onClick={() => onSelectSection(btn.key)}
         >
           {btn.label}

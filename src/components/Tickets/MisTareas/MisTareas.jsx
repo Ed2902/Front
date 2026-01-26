@@ -4,18 +4,50 @@ import { Modal as AntdModal } from 'antd'
 import AuthContext from '../../../context/AuthContext'
 import { fetchMisTareasBundle } from './service.MisTareas'
 import FiltrosMisTareas from './FiltrosMisTareas.jsx'
+import SecureArchivotikects from '../SecureArchivotikects.jsx'
+
+// ✅ NUEVO: componente del modal para agregar historial
+import AgregarHistorialTicket from '../historial/AgregarHistorialTicket.jsx'
 
 const fmtDate = iso => {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('es-CO', {
-    year: 'numeric',
+    year: '2-digit',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+// ✅ soporta Date ISO, {$date} y variantes
+const anyDateToIso = v => {
+  if (!v) return ''
+  if (v instanceof Date) return v.toISOString()
+  if (typeof v === 'string') return v
+  if (typeof v === 'object' && v.$date) return String(v.$date)
+  if (typeof v === 'object' && v.date) return anyDateToIso(v.date)
+  return String(v)
+}
+
+// ✅ soporta ObjectId string, {$oid}, y objetos raros
+const oidToString = v => {
+  if (!v) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'object' && v.$oid) return String(v.$oid)
+  if (typeof v === 'object' && v._id) return oidToString(v._id)
+  return String(v)
+}
+const getTicketIdFromQuery = () => {
+  try {
+    const sp = new URLSearchParams(window.location.search)
+    const tid = sp.get('ticketId')
+    return tid ? String(tid).trim() : ''
+  } catch {
+    return ''
+  }
 }
 
 const getUltimoHist = ticket => {
@@ -25,24 +57,156 @@ const getUltimoHist = ticket => {
   if (!h.length) return null
   return h
     .slice()
-    .sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt))
+    .sort(
+      (a, b) =>
+        new Date(anyDateToIso(a.changedAt)) -
+        new Date(anyDateToIso(b.changedAt))
+    )
     .at(-1)
 }
 
-const tableStyles = {
-  headCells: {
-    style: {
-      fontWeight: 600,
-      whiteSpace: 'nowrap',
-      paddingTop: '0.5rem',
-      paddingBottom: '0.5rem',
-    },
-  },
-  cells: { style: { paddingTop: '0.4rem', paddingBottom: '0.4rem' } },
-  rows: { style: { minHeight: '40px' } },
+const norm = s =>
+  String(s || '')
+    .trim()
+    .toLowerCase()
+
+// ✅ “Cerrado” puede cambiar de id, así que lo detectamos por name/name_norm
+const buildClosedEstadoIds = estadosMap => {
+  const ids = new Set()
+  for (const it of Object.values(estadosMap || {})) {
+    const n = norm(it?.name_norm || it?.name || it?.nombre_norm || it?.nombre)
+    if (n === 'cerrado') ids.add(String(it._id))
+  }
+  return ids
 }
 
-// ✅ color utils (para catálogos)
+const isTicketCerrado = (ticket, estadosMap) => {
+  const closedIds = buildClosedEstadoIds(estadosMap)
+  if (!closedIds.size) return false
+
+  const currentId = oidToString(ticket?.estado_id)
+  if (currentId && closedIds.has(currentId)) return true
+
+  // fallback: último estado por historial
+  const last = getUltimoHist(ticket)
+  const lastId = oidToString(last?.estado_id)
+  return !!(lastId && closedIds.has(lastId))
+}
+
+const getCierreEvento = (ticket, estadosMap) => {
+  const closedIds = buildClosedEstadoIds(estadosMap)
+  if (!closedIds.size) return null
+
+  const hist = Array.isArray(ticket?.estado_historial)
+    ? ticket.estado_historial
+    : []
+  if (!hist.length) return null
+
+  const cerradoEvents = hist
+    .filter(h => closedIds.has(oidToString(h?.estado_id)))
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(anyDateToIso(a.changedAt)) -
+        new Date(anyDateToIso(b.changedAt))
+    )
+
+  return cerradoEvents.at(-1) || null
+}
+
+const diffDaysCeil = (a, b) => {
+  const ms = a.getTime() - b.getTime()
+  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+}
+
+const computeCumplimientoUI = (ticket, estadosMap) => {
+  const cierreEv = getCierreEvento(ticket, estadosMap)
+  const cierreAt = cierreEv?.changedAt
+    ? new Date(anyDateToIso(cierreEv.changedAt))
+    : null
+  const est = ticket?.fecha_estimada
+    ? new Date(anyDateToIso(ticket.fecha_estimada))
+    : null
+
+  const cerrado = isTicketCerrado(ticket, estadosMap)
+  const raw = String(ticket?.cumplimiento || '').trim() || '—'
+
+  if (!cerrado) {
+    return {
+      cerrado: false,
+      raw,
+      cierreAt: null,
+      retrasoDias: null,
+      label: raw,
+    }
+  }
+
+  if (
+    cierreAt &&
+    est &&
+    !Number.isNaN(cierreAt.getTime()) &&
+    !Number.isNaN(est.getTime())
+  ) {
+    const retraso = Math.max(0, diffDaysCeil(cierreAt, est))
+    const label = retraso === 0 ? 'cumplido' : `incumplido (+${retraso} días)`
+    return { cerrado: true, raw, cierreAt, retrasoDias: retraso, label }
+  }
+
+  return {
+    cerrado: true,
+    raw,
+    cierreAt: cierreAt && !Number.isNaN(cierreAt.getTime()) ? cierreAt : null,
+    retrasoDias: null,
+    label: raw,
+  }
+}
+
+const tableStyles = {
+  table: { style: { width: '100%' } },
+  headRow: { style: { minHeight: '34px' } },
+  headCells: {
+    style: {
+      fontWeight: 700,
+      fontSize: '12px',
+      paddingTop: '6px',
+      paddingBottom: '6px',
+      paddingLeft: '8px',
+      paddingRight: '8px',
+      whiteSpace: 'nowrap',
+    },
+  },
+  rows: { style: { minHeight: '38px' } },
+  cells: {
+    style: {
+      fontSize: '12px',
+      paddingTop: '6px',
+      paddingBottom: '6px',
+      paddingLeft: '8px',
+      paddingRight: '8px',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+  },
+}
+
+const Ell = ({ children, title, maxWidth = '100%' }) => (
+  <span
+    title={title}
+    style={{
+      display: 'inline-block',
+      maxWidth,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      verticalAlign: 'middle',
+    }}
+  >
+    {children}
+  </span>
+)
+
+// ---------- color utils ----------
 const normalizeHex = hex => {
   const s = String(hex || '').trim()
   if (!s) return ''
@@ -76,105 +240,166 @@ const getContrastingTextColor = bgHex => {
   return luminance > 0.6 ? '#111' : '#fff'
 }
 
-const CatalogBadge = ({ item, fallback = '—' }) => {
-  const label = item?.name || item?.nombre || fallback
+const CatalogBadge = ({ item, fallback = '—', maxW = 110 }) => {
+  const label =
+    item?.name ||
+    item?.name_norm ||
+    item?.nombre ||
+    item?.nombre_norm ||
+    fallback
+
   const bg = normalizeHex(item?.color)
-  if (!bg) {
-    return (
-      <span className='badge bg-light text-dark' title={label}>
-        {label}
-      </span>
-    )
-  }
-  const color = getContrastingTextColor(bg)
+  const style = bg
+    ? {
+        background: bg,
+        color: getContrastingTextColor(bg),
+        border: '1px solid rgba(0,0,0,.15)',
+      }
+    : {}
+
   return (
     <span
-      className='badge'
+      className={bg ? 'badge' : 'badge bg-light text-dark'}
       title={label}
       style={{
-        background: bg,
-        color,
-        border: '1px solid rgba(0,0,0,.15)',
+        ...style,
         borderRadius: 10,
-        padding: '0.25rem 0.5rem',
-        fontWeight: 700,
+        padding: '0.20rem 0.45rem',
+        fontWeight: 800,
+        fontSize: 12,
+        display: 'inline-flex',
+        alignItems: 'center',
+        maxWidth: maxW,
       }}
     >
-      {label}
+      <Ell title={label} maxWidth={Math.max(40, maxW - 18)}>
+        {label}
+      </Ell>
     </span>
   )
 }
 
+// ✅ org rules
 const orgBadgeStyle = orgId => {
-  const org = String(orgId || '').toLowerCase()
-  if (org === 'fastway')
+  const org = String(orgId || '')
+    .trim()
+    .toLowerCase()
+
+  if (org === 'fastwaysas')
     return {
       background: '#FFE3C2',
       color: '#7A3E00',
       border: '1px solid #FFD2A3',
     }
-  if (org === 'harvest')
+
+  if (org === 'greemway' || org === 'greenway')
+    return {
+      background: '#CFF7F3',
+      color: '#075B57',
+      border: '1px solid #AEEDE6',
+    }
+
+  if (org === 'metalharvest')
     return {
       background: '#DFF5D8',
       color: '#1F5A1A',
       border: '1px solid #C9EDBF',
     }
-  if (org === 'greenway')
-    return {
-      background: '#D8EEFF',
-      color: '#0B3D6E',
-      border: '1px solid #C1E4FF',
-    }
+
   return { background: '#EFEFEF', color: '#333', border: '1px solid #E2E2E2' }
 }
 
-const OrgBadge = ({ orgId }) => (
+const OrgBadge = ({ orgId, maxW = 110 }) => (
   <span
     className='badge'
     style={{
       ...orgBadgeStyle(orgId),
-      fontWeight: 700,
+      fontWeight: 800,
       borderRadius: 10,
-      padding: '0.25rem 0.5rem',
+      padding: '0.20rem 0.45rem',
+      fontSize: 12,
+      display: 'inline-flex',
+      alignItems: 'center',
+      maxWidth: maxW,
     }}
     title={orgId || '—'}
   >
-    {orgId || '—'}
+    <Ell title={orgId || '—'} maxWidth={Math.max(40, maxW - 18)}>
+      {orgId || '—'}
+    </Ell>
   </span>
 )
 
-const getAsignacionScope = (ticket, id_personal) => {
+// ✅ tipo badge (solo color, sin tocar “cabecera”)
+const tipoBadgeStyle = tipo => {
+  const t = String(tipo || '')
+    .trim()
+    .toLowerCase()
+  if (t === 'operacion')
+    return {
+      background: '#E0F2FE',
+      border: '1px solid #BAE6FD',
+      color: '#075985',
+    }
+  if (t === 'proyecto')
+    return {
+      background: '#EDE9FE',
+      border: '1px solid #DDD6FE',
+      color: '#5B21B6',
+    }
+  // tarea (default)
+  return {
+    background: '#ECFDF5',
+    border: '1px solid #BBF7D0',
+    color: '#166534',
+  }
+}
+
+const TipoBadge = ({ tipo }) => (
+  <span
+    className='badge'
+    style={{
+      ...tipoBadgeStyle(tipo),
+      fontWeight: 900,
+      borderRadius: 10,
+      padding: '0.20rem 0.45rem',
+      fontSize: 12,
+      display: 'inline-flex',
+      alignItems: 'center',
+    }}
+    title={tipo || '—'}
+  >
+    {tipo || '—'}
+  </span>
+)
+
+// ---------- asignación ----------
+const getAsignacionScope = ticket => {
   const a = ticket?.asignado_a
   if (!a?.tipo)
     return { label: '—', key: 'none', cls: 'badge bg-light text-dark' }
 
   if (a.tipo === 'personal') {
-    const isMe = String(a.id) === String(id_personal)
     return {
-      label: isMe ? 'Personal' : 'Personal',
+      label: 'Personal',
       key: 'personal',
       cls: 'badge bg-primary',
       detail: a.id,
     }
   }
-
-  if (a.tipo === 'team') {
+  if (a.tipo === 'team')
     return { label: 'Team', key: 'team', cls: 'badge bg-success', detail: a.id }
-  }
-
-  if (a.tipo === 'area') {
+  if (a.tipo === 'area')
     return {
       label: 'Área',
       key: 'area',
       cls: 'badge bg-info text-dark',
       detail: a.id,
     }
-  }
 
   return { label: '—', key: 'none', cls: 'badge bg-light text-dark' }
 }
 
-// ✅ personal map helpers
 const getPersonaInfo = (id_personal, personalMap) => {
   const key = String(id_personal ?? '').trim()
   if (!key) return null
@@ -183,73 +408,170 @@ const getPersonaInfo = (id_personal, personalMap) => {
 
 const personaLabel = (id, personalMap) => {
   const p = getPersonaInfo(id, personalMap)
-  if (!p) return { title: String(id), subtitle: '—', raw: String(id) }
+  if (!p) return { title: String(id), raw: String(id) }
 
   const nombre = String(p?.Nombre || '').trim()
   const apellido = String(p?.Apellido || '').trim()
-  const cargo = String(p?.Cargo || '').trim()
-
   const full = [nombre, apellido].filter(Boolean).join(' ').trim() || String(id)
-  const sub = cargo || '—'
-  return { title: full, subtitle: sub, raw: String(p?.Id_personal ?? id) }
+
+  return {
+    title: full,
+    raw: String(p?.Id_personal ?? id),
+  }
 }
 
-// ✅ estado (desde historial) -> item de catálogo
+const resolveEstadoItem = (estado_id, estadosMap) => {
+  const id = oidToString(estado_id)
+  if (!id) return null
+  return estadosMap?.[id] || null
+}
+
 const getEstadoItemDesdeHistorial = (ticket, estadosMap) => {
   const last = getUltimoHist(ticket)
-  const id = last?.estado_id
+  const item = resolveEstadoItem(last?.estado_id, estadosMap)
+  if (item) return item
+
+  const id = oidToString(last?.estado_id)
   if (!id) return null
-  return estadosMap?.[id] || { _id: id, name: id }
+
+  return { _id: id, name: '—' }
 }
 
-// ✅ NUEVO: mostrar "Por:" con nombre si changedBy es id_personal
 const changedByLabel = (changedBy, personalMap) => {
   const v = String(changedBy ?? '').trim()
   if (!v) return '—'
   const p = getPersonaInfo(v, personalMap)
   if (!p) return v
-  const nombre = String(p?.Nombre || '').trim()
-  const apellido = String(p?.Apellido || '').trim()
-  const full = [nombre, apellido].filter(Boolean).join(' ').trim()
+  const full = [
+    String(p?.Nombre || '').trim(),
+    String(p?.Apellido || '').trim(),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
   return full || v
+}
+
+// ✅ URL absoluta
+const TICKETS_API = import.meta.env.VITE_API_URL_5 || ''
+const ticketsOrigin = (base => {
+  if (!base) return ''
+  let b = String(base).replace(/\/+$/, '')
+  b = b.replace(/\/tikets$/i, '')
+  return b
+})(TICKETS_API)
+
+const toTicketAbsolute = relOrAbs => {
+  if (!relOrAbs) return ''
+  const s = String(relOrAbs).trim()
+  if (!s) return ''
+  if (/^https?:\/\//i.test(s)) return s
+  if (!ticketsOrigin) return s
+  return `${ticketsOrigin}${s.startsWith('/') ? '' : '/'}${s}`
+}
+
+// ✅ color determinístico por persona (SOLO color de texto, suave)
+const hashString = str => {
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
+  return h
+}
+const textColorForUser = changedBy => {
+  const k = String(changedBy || '').trim() || '—'
+  const hue = hashString(k) % 360
+  return `hsl(${hue} 45% 35%)`
+}
+
+// ✅ “Asig.” column badge only (centrado)
+const AsigBadge = ({ ticket }) => {
+  const s = getAsignacionScope(ticket)
+  return (
+    <div className='w-100 d-flex justify-content-center'>
+      <span
+        className={s.cls}
+        title={s.detail || ''}
+        style={{
+          fontSize: 12,
+          fontWeight: 900,
+          borderRadius: 10,
+          padding: '0.20rem 0.45rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+        }}
+      >
+        {s.label}
+      </span>
+    </div>
+  )
+}
+
+// ✅ columna Creador (usa creado_por + personalMap)
+const CreatorName = ({ ticket, maps }) => {
+  const personalMap = maps?.personalMap || {}
+  const creadorId = ticket?.creado_por
+
+  if (!creadorId) return <span className='text-muted'>—</span>
+
+  const info = personaLabel(creadorId, personalMap)
+  return (
+    <div
+      className='w-100 d-flex justify-content-center'
+      style={{ minWidth: 0 }}
+    >
+      <div
+        className='d-flex flex-column align-items-center'
+        style={{ minWidth: 0, textAlign: 'center' }}
+        title={info.raw}
+      >
+        <Ell title={info.title} maxWidth={160}>
+          <span className='fw-semibold'>{info.title}</span>
+        </Ell>
+      </div>
+    </div>
+  )
+}
+
+// ✅ resolver nombre para team/area
+const resolveAsignadoNombre = (asignado, maps) => {
+  const tipo = asignado?.tipo
+  const id = asignado?.id
+
+  if (!tipo || !id) return '—'
+
+  if (tipo === 'team') {
+    const t = maps?.teamsMap?.[String(id)] || null
+    return t?.nombre_norm || t?.nombre || String(id)
+  }
+
+  if (tipo === 'area') {
+    const a = maps?.areasMap?.[String(id)] || null
+    return a?.nombre || a?.name || String(id)
+  }
+
+  return String(id)
 }
 
 const ExpandedComponent = ({
   data,
   maps,
+  onOpenAdjuntos,
   onOpenUpdate,
   onOpenChat,
-  id_personal,
+  onOpenAdjuntosEvento,
 }) => {
   const estadosMap = maps?.estadosMap || {}
-  const prioridadItem = maps?.prioridadesMap?.[data?.prioridad_id] || null
-  const categoriaItem = maps?.categoriasMap?.[data?.categoria_id] || null
+  const cierreInfo = computeCumplimientoUI(data, estadosMap)
+
+  // ✅ FIX: ids pueden venir como {$oid}
+  const prioridadId = oidToString(data?.prioridad_id)
+  const categoriaId = oidToString(data?.categoria_id)
+
+  const prioridadItem = maps?.prioridadesMap?.[prioridadId] || null
+  const categoriaItem = maps?.categoriasMap?.[categoriaId] || null
   const estadoItem = getEstadoItemDesdeHistorial(data, estadosMap)
 
   const asignado = data?.asignado_a || {}
-  const teamObj =
-    asignado.tipo === 'team' ? maps?.teamsMap?.[asignado.id] : null
-  const areaObj =
-    asignado.tipo === 'area' ? maps?.areasMap?.[asignado.id] : null
-
-  const asignadoLabel =
-    teamObj?.nombre ||
-    teamObj?.name ||
-    areaObj?.nombre ||
-    areaObj?.name ||
-    (asignado?.id ? `${asignado.tipo}: ${asignado.id}` : '—')
-
-  const assignedMembers =
-    Array.isArray(data?.assignedMembers) && data.assignedMembers.length
-      ? data.assignedMembers
-      : teamObj?.personal_ids ||
-        teamObj?.personalIds ||
-        teamObj?.miembros ||
-        teamObj?.members ||
-        teamObj?.integrantes ||
-        []
-
-  const watchers = Array.isArray(data?.watchers) ? data.watchers : []
+  const personalMap = maps?.personalMap || {}
 
   const historial = Array.isArray(data?.estado_historial)
     ? data.estado_historial
@@ -258,26 +580,74 @@ const ExpandedComponent = ({
     .slice()
     .sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt))
 
-  const scope = getAsignacionScope(data, id_personal)
-  const personalMap = maps?.personalMap || {}
+  const adjuntosTicket = Array.isArray(data?.adjuntos) ? data.adjuntos : []
+  const scope = getAsignacionScope(data)
+
+  const isOperacion = String(data?.tipo || '').toLowerCase() === 'operacion'
+  const op = data?.operacion || {}
+  const opCliente = String(op?.cliente || '').trim()
+  const opLote = String(op?.lote || '').trim()
+  const opProducto = String(op?.producto || '').trim()
+
+  const tipo = String(data?.tipo || '')
+    .trim()
+    .toLowerCase()
+  const tipoAccent =
+    tipo === 'operacion'
+      ? '#0ea5e9'
+      : tipo === 'proyecto'
+        ? '#7c3aed'
+        : '#22c55e'
 
   return (
     <div className='w-100 px-2 py-2'>
-      <div className='border rounded bg-light p-3'>
+      <div
+        className='border rounded bg-light p-3'
+        style={{
+          borderLeft: `3px solid ${tipoAccent}`, // ✅ solo color por tipo
+        }}
+      >
         <div className='d-flex flex-wrap gap-2 justify-content-end mb-3'>
           <button
             type='button'
             className='btn btn-sm btn-outline-primary'
             onClick={() => onOpenChat?.(data)}
+            disabled={cierreInfo.cerrado}
+            title={
+              cierreInfo.cerrado
+                ? 'Ticket cerrado: chat deshabilitado'
+                : 'Abrir chat'
+            }
           >
             Abrir chat
           </button>
+
+          <button
+            type='button'
+            className='btn btn-sm btn-outline-secondary'
+            onClick={() => onOpenAdjuntos?.(data)}
+            disabled={!adjuntosTicket.length}
+            title={
+              !adjuntosTicket.length
+                ? 'Este ticket no tiene adjuntos'
+                : 'Ver adjuntos'
+            }
+          >
+            adjuntos {adjuntosTicket.length ? `(${adjuntosTicket.length})` : ''}
+          </button>
+
           <button
             type='button'
             className='btn btn-sm btn-primary'
             onClick={() => onOpenUpdate?.(data)}
+            disabled={cierreInfo.cerrado}
+            title={
+              cierreInfo.cerrado
+                ? 'Ticket cerrado: no puedes agregar historial'
+                : 'Agregar al historial'
+            }
           >
-            Actualizar
+            Agregar al historial
           </button>
         </div>
 
@@ -289,80 +659,113 @@ const ExpandedComponent = ({
 
           <div className='col-12 col-md-6'>
             <div className='fw-bold mb-1'>Asignación</div>
-            <div className='d-flex align-items-center gap-2'>
-              <span className={scope.cls} title={scope.detail || ''}>
+            <div className='d-flex align-items-start gap-2 flex-wrap'>
+              <span
+                className={scope.cls}
+                title={scope.detail || ''}
+                style={{
+                  fontWeight: 900,
+                  borderRadius: 10,
+                  padding: '0.20rem 0.45rem',
+                }}
+              >
                 {scope.label}
               </span>
-              <span className='text-muted'>{asignadoLabel}</span>
-            </div>
 
-            <div className='mt-2'>
-              <div className='fw-bold mb-1'>Compañeros</div>
-
-              {Array.isArray(assignedMembers) && assignedMembers.length > 0 ? (
-                <div className='d-flex flex-column gap-2'>
-                  {assignedMembers.map((id, idx) => {
-                    const info = personaLabel(id, personalMap)
-                    return (
-                      <div
-                        key={`${id}-${idx}`}
-                        className='border rounded bg-white px-2 py-2'
-                      >
-                        <div className='d-flex align-items-center justify-content-between flex-wrap gap-2'>
-                          <div>
-                            <div className='fw-semibold'>{info.title}</div>
-                            <div className='text-muted small'>
-                              {info.subtitle}
-                            </div>
-                          </div>
-                          <span
-                            className='badge bg-dark-subtle text-dark'
-                            title='id_personal'
-                          >
-                            {info.raw}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+              {asignado?.tipo === 'personal' ? (
+                <span className='text-muted'>
+                  {personaLabel(asignado.id, personalMap).title}
+                </span>
               ) : (
-                <div className='text-muted'>—</div>
+                <span className='text-muted'>
+                  {resolveAsignadoNombre(asignado, maps)}
+                </span>
               )}
             </div>
           </div>
 
+          {/* ✅ NUEVO: Operación */}
+          {isOperacion && (
+            <div className='col-12'>
+              <div className='fw-bold mb-1'>Operación</div>
+              <div className='d-flex flex-wrap gap-2'>
+                <span className='badge bg-white text-dark border'>
+                  <b>Cliente:</b> {opCliente || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Lote:</b> {opLote || '—'}
+                </span>
+                <span className='badge bg-white text-dark border'>
+                  <b>Producto:</b> {opProducto || '—'}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Estado</div>
             <div className='text-muted'>
-              <CatalogBadge item={estadoItem} fallback='—' />
+              <CatalogBadge item={estadoItem} fallback='—' maxW={160} />
             </div>
           </div>
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Categoría</div>
             <div className='text-muted'>
-              <CatalogBadge item={categoriaItem} fallback='—' />
+              <CatalogBadge item={categoriaItem} fallback='—' maxW={160} />
             </div>
           </div>
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Prioridad</div>
             <div className='text-muted'>
-              <CatalogBadge item={prioridadItem} fallback='—' />
+              <CatalogBadge item={prioridadItem} fallback='—' maxW={160} />
             </div>
           </div>
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Org</div>
             <div className='text-muted'>
-              <OrgBadge orgId={data?.orgId} />
+              <OrgBadge orgId={data?.orgId} maxW={160} />
             </div>
+          </div>
+
+          <div className='col-6 col-md-3'>
+            <div className='fw-bold mb-1'>Creado</div>
+            <div className='text-muted'>{fmtDate(data?.createdAt)}</div>
           </div>
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Actualizado</div>
             <div className='text-muted'>{fmtDate(data?.updatedAt)}</div>
+          </div>
+
+          <div className='col-6 col-md-3'>
+            <div className='fw-bold mb-1'>Fecha estimada</div>
+            <div className='text-muted'>{fmtDate(data?.fecha_estimada)}</div>
+          </div>
+
+          <div className='col-6 col-md-3'>
+            <div className='fw-bold mb-1'>Cumplimiento</div>
+            <div className='text-muted'>{cierreInfo.label || '—'}</div>
+          </div>
+
+          <div className='col-6 col-md-3'>
+            <div className='fw-bold mb-1'>cierre</div>
+            <div className='text-muted'>
+              {cierreInfo.cierreAt
+                ? fmtDate(cierreInfo.cierreAt.toISOString())
+                : '—'}
+            </div>
+          </div>
+
+          <div className='col-6 col-md-3'>
+            <div className='fw-bold mb-1'>Días de retraso</div>
+            <div className='text-muted'>
+              {typeof cierreInfo.retrasoDias === 'number'
+                ? cierreInfo.retrasoDias
+                : '—'}
+            </div>
           </div>
 
           <div className='col-12'>
@@ -371,62 +774,74 @@ const ExpandedComponent = ({
             {historialOrdenado.length ? (
               <div className='border rounded bg-white p-2'>
                 {historialOrdenado.map((h, idx) => {
-                  const item = estadosMap?.[h.estado_id] || {
-                    _id: h.estado_id,
-                    name: h.estado_id,
-                  }
+                  const item =
+                    resolveEstadoItem(h?.estado_id, estadosMap) || null
+                  const adjuntosEvento = Array.isArray(h?.adjuntos)
+                    ? h.adjuntos
+                    : []
+
+                  const byText = changedByLabel(h.changedBy, personalMap)
+                  const byColor = textColorForUser(h.changedBy)
+
                   return (
                     <div
-                      key={`${h.estado_id}-${h.changedAt}-${idx}`}
-                      className='py-2 border-bottom'
+                      key={`${oidToString(h?.estado_id)}-${h.changedAt}-${idx}`}
+                      className='py-2'
+                      style={{
+                        borderBottom:
+                          idx === historialOrdenado.length - 1
+                            ? 'none'
+                            : '1px solid #eee',
+                      }}
                     >
-                      <div className='d-flex flex-wrap gap-2 align-items-center'>
-                        <CatalogBadge item={item} fallback={h.estado_id} />
-                        <span className='text-muted'>
-                          <b>Fecha:</b> {fmtDate(h.changedAt)}
-                        </span>
-                        <span className='text-muted'>
-                          <b>Por:</b> {changedByLabel(h.changedBy, personalMap)}
-                        </span>
-                      </div>
-                      <div className='text-muted mt-1'>
-                        <b>Nota:</b> {h.nota?.trim() ? h.nota : '—'}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className='text-muted'>—</div>
-            )}
-          </div>
+                      <div className='d-flex align-items-start justify-content-between gap-3 flex-wrap'>
+                        <div
+                          className='d-flex align-items-center gap-2'
+                          style={{ minWidth: 0 }}
+                        >
+                          <CatalogBadge item={item} fallback='—' maxW={200} />
+                        </div>
 
-          {/* ✅ CAMBIO: Watchers ahora por nombre */}
-          <div className='col-12'>
-            <div className='fw-bold mb-1'>Watchers</div>
+                        <div className='d-flex align-items-start gap-2 flex-wrap justify-content-end'>
+                          {!!adjuntosEvento.length && (
+                            <button
+                              type='button'
+                              className='btn btn-sm btn-outline-secondary'
+                              onClick={() =>
+                                onOpenAdjuntosEvento?.({
+                                  ticket: data,
+                                  evento: h,
+                                  adjuntos: adjuntosEvento,
+                                })
+                              }
+                              title='Ver adjuntos de este cambio'
+                              style={{ padding: '2px 8px' }}
+                            >
+                              📎({adjuntosEvento.length})
+                            </button>
+                          )}
 
-            {watchers.length ? (
-              <div className='d-flex flex-column gap-2'>
-                {watchers.map((w, idx) => {
-                  const info = personaLabel(w, personalMap)
-                  return (
-                    <div
-                      key={`${w}-${idx}`}
-                      className='border rounded bg-white px-2 py-2'
-                    >
-                      <div className='d-flex align-items-center justify-content-between flex-wrap gap-2'>
-                        <div>
-                          <div className='fw-semibold'>{info.title}</div>
-                          <div className='text-muted small'>
-                            {info.subtitle}
+                          <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                            <div
+                              className='text-muted'
+                              style={{ fontSize: 12 }}
+                            >
+                              <span style={{ color: byColor }}>{byText}</span>
+                            </div>
+                            <div
+                              className='text-muted'
+                              style={{ fontSize: 12 }}
+                            >
+                              {fmtDate(h.changedAt)}
+                            </div>
                           </div>
                         </div>
-                        <span
-                          className='badge bg-dark-subtle text-dark'
-                          title='id_personal'
-                        >
-                          {info.raw}
-                        </span>
+                      </div>
+
+                      <div className='mt-2' style={{ paddingLeft: 2 }}>
+                        <div style={{ fontSize: 13, color: '#333' }}>
+                          <b>Nota:</b> {h.nota?.trim() ? h.nota : '—'}
+                        </div>
                       </div>
                     </div>
                   )
@@ -436,29 +851,6 @@ const ExpandedComponent = ({
               <div className='text-muted'>—</div>
             )}
           </div>
-
-          {data?.tipo === 'operacion' && (
-            <div className='col-12'>
-              <div className='fw-bold mb-2'>Operación</div>
-              <div className='row g-2'>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Cliente:</b> {data?.operacion?.cliente || '—'}
-                  </div>
-                </div>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Lote:</b> {data?.operacion?.lote || '—'}
-                  </div>
-                </div>
-                <div className='col-12 col-md-4'>
-                  <div className='text-muted'>
-                    <b>Producto:</b> {data?.operacion?.producto || '—'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -487,12 +879,17 @@ const MisTareas = () => {
 
   const [openActualizar, setOpenActualizar] = useState(false)
   const [ticketActualizar, setTicketActualizar] = useState(null)
+  const [expandedTicketId, setExpandedTicketId] = useState(null)
+
+  const [openAdjuntos, setOpenAdjuntos] = useState(false)
+  const [ticketAdjuntos, setTicketAdjuntos] = useState(null)
+  const [adjuntosModalTitle, setAdjuntosModalTitle] = useState('Adjuntos')
 
   const empresas = useMemo(
     () => [
-      { orgId: 'Fastway', name: 'Fastway' },
-      { orgId: 'Harvest', name: 'Harvest' },
-      { orgId: 'Greenway', name: 'Greenway' },
+      { orgId: 'FastwaySAS', name: 'FastwaySAS' },
+      { orgId: 'GreemWay', name: 'GreemWay' },
+      { orgId: 'MetalHarvest', name: 'MetalHarvest' },
     ],
     []
   )
@@ -537,9 +934,50 @@ const MisTareas = () => {
     load()
   }, [load])
 
+  const markTicketNotificationsRead = useCallback(
+    async ticketId => {
+      const tid = String(ticketId || '').trim()
+      if (!tid || !token || !id_personal) return
+
+      try {
+        // /tikets ya viene incluido en VITE_API_URL_5 según tu proyecto
+        const base = String(import.meta.env.VITE_API_URL_5 || '').replace(
+          /\/+$/,
+          ''
+        )
+
+        await fetch(`${base}/notifications/read-by-ticket`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id_personal: String(id_personal),
+            ticketId: tid,
+          }),
+        })
+      } catch (e) {
+        // silencioso: no debe romper la UI si falla
+        console.warn('No se pudo marcar notificación como leída:', e)
+      }
+    },
+    [token, id_personal]
+  )
+
   const rows = useMemo(() => {
     let data = [...rawRows]
     const f = filtersApplied || {}
+
+    data = data.filter(t => t?.activo !== false)
+
+    const pid = String(id_personal || '').trim()
+    if (pid) {
+      data = data.filter(t => {
+        const creador = String(t?.creado_por || t?.createdBy || '').trim()
+        return creador !== pid
+      })
+    }
 
     if (f.orgId)
       data = data.filter(t => String(t.orgId || '') === String(f.orgId))
@@ -548,18 +986,20 @@ const MisTareas = () => {
     if (f.activo === 'true') data = data.filter(t => t.activo === true)
     if (f.activo === 'false') data = data.filter(t => t.activo === false)
 
+    // ✅ FIX: comparar contra oidToString
     if (f.prioridad_id)
       data = data.filter(
-        t => String(t.prioridad_id || '') === String(f.prioridad_id)
+        t => oidToString(t.prioridad_id) === String(f.prioridad_id)
       )
     if (f.categoria_id)
       data = data.filter(
-        t => String(t.categoria_id || '') === String(f.categoria_id)
+        t => oidToString(t.categoria_id) === String(f.categoria_id)
       )
 
     if (f.estado_id) {
       data = data.filter(
-        t => String(getUltimoHist(t)?.estado_id || '') === String(f.estado_id)
+        t =>
+          oidToString(getUltimoHist(t)?.estado_id || '') === String(f.estado_id)
       )
     }
 
@@ -604,107 +1044,144 @@ const MisTareas = () => {
     }
 
     return data
-  }, [rawRows, filtersApplied])
+  }, [rawRows, filtersApplied, id_personal])
+
+  useEffect(() => {
+    const tid = getTicketIdFromQuery()
+    if (!tid) return
+    if (!rows?.length) return
+
+    const exists = rows.some(r => oidToString(r?._id) === tid)
+    if (!exists) return
+
+    setExpandedTicketId(tid)
+
+    // marcar leído apenas se abre automáticamente
+    markTicketNotificationsRead(tid)
+  }, [rows, markTicketNotificationsRead])
 
   const columns = useMemo(() => {
+    const ellipsis = (text, title) => (
+      <span
+        title={title || text}
+        style={{
+          display: 'inline-block',
+          maxWidth: '100%',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          verticalAlign: 'middle',
+        }}
+      >
+        {text || '—'}
+      </span>
+    )
+
     return [
-      { name: 'Code', selector: r => r.code, sortable: true, width: '90px' },
+      {
+        name: 'Code',
+        selector: r => r.code,
+        sortable: true,
+        width: '76px',
+        cell: r => ellipsis(r.code, r.code),
+      },
       {
         name: 'Org',
         selector: r => r.orgId,
         sortable: true,
-        width: '100px',
-        cell: r => <OrgBadge orgId={r.orgId} />,
+        width: '130px',
+        cell: r => <OrgBadge orgId={r.orgId} maxW={120} />,
       },
       {
-        name: 'Asignación',
+        name: 'Asig.',
         sortable: true,
-        width: '100px',
-        selector: r => getAsignacionScope(r, id_personal).key,
-        cell: r => {
-          const s = getAsignacionScope(r, id_personal)
-          return (
-            <span className={s.cls} title={s.detail || ''}>
-              {s.label}
-            </span>
-          )
-        },
+        width: '82px',
+        center: true,
+        selector: r => getAsignacionScope(r).key,
+        cell: r => <AsigBadge ticket={r} />,
+      },
+      {
+        name: 'Creador',
+        sortable: true,
+        width: '170px',
+        center: true,
+        selector: r => String(r?.creado_por || ''),
+        cell: r => <CreatorName ticket={r} maps={maps} />,
       },
       {
         name: 'Título',
         selector: r => r.titulo,
         sortable: true,
         grow: 2,
-        wrap: false,
-        cell: r => (
-          <span
-            title={r.titulo}
-            style={{
-              display: 'inline-block',
-              maxWidth: '120%',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {r.titulo || '—'}
-          </span>
-        ),
+        minWidth: '220px',
+        cell: r => ellipsis(r.titulo, r.titulo),
       },
-      { name: 'Tipo', selector: r => r.tipo, sortable: true, width: '90px' },
+      {
+        name: 'Tipo',
+        selector: r => String(r.tipo || ''),
+        sortable: true,
+        width: '110px',
+        cell: r => <TipoBadge tipo={r.tipo} />,
+      },
       {
         name: 'Estado',
         sortable: true,
-        width: '110px',
+        width: '120px',
         selector: r => {
           const item = getEstadoItemDesdeHistorial(r, maps?.estadosMap || {})
-          return item?.name || item?.nombre || '—'
+          return (
+            item?.name ||
+            item?.name_norm ||
+            item?.nombre ||
+            item?.nombre_norm ||
+            '—'
+          )
         },
         cell: r => {
           const item = getEstadoItemDesdeHistorial(r, maps?.estadosMap || {})
-          return <CatalogBadge item={item} fallback='—' />
+          return <CatalogBadge item={item} fallback='—' maxW={110} />
         },
       },
       {
         name: 'Pri.',
         sortable: true,
-        width: '100px',
-        selector: r => maps?.prioridadesMap?.[r?.prioridad_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.prioridadesMap?.[r?.prioridad_id] || null}
-            fallback='—'
-          />
-        ),
+        width: '110px',
+        selector: r => {
+          const id = oidToString(r?.prioridad_id)
+          return maps?.prioridadesMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.prioridad_id)
+          return (
+            <CatalogBadge
+              item={maps?.prioridadesMap?.[id] || null}
+              fallback='—'
+              maxW={100}
+            />
+          )
+        },
       },
       {
         name: 'Cat.',
         sortable: true,
-        width: '100px',
-        selector: r => maps?.categoriasMap?.[r?.categoria_id]?.name || '—',
-        cell: r => (
-          <CatalogBadge
-            item={maps?.categoriasMap?.[r?.categoria_id] || null}
-            fallback='—'
-          />
-        ),
-      },
-      {
-        name: 'Creado',
-        selector: r => r.createdAt,
-        sortable: true,
-        width: '105px',
-        cell: r => <span className='text-muted'>{fmtDate(r.createdAt)}</span>,
-      },
-      {
-        name: 'Act.',
-        selector: r => r.updatedAt,
-        sortable: true,
-        width: '105px',
-        cell: r => <span className='text-muted'>{fmtDate(r.updatedAt)}</span>,
+        width: '130px',
+        selector: r => {
+          const id = oidToString(r?.categoria_id)
+          return maps?.categoriasMap?.[id]?.name || '—'
+        },
+        cell: r => {
+          const id = oidToString(r?.categoria_id)
+          return (
+            <CatalogBadge
+              item={maps?.categoriasMap?.[id] || null}
+              fallback='—'
+              maxW={120}
+            />
+          )
+        },
       },
     ]
-  }, [maps, id_personal])
+  }, [maps])
 
   const onOpenUpdate = ticket => {
     setTicketActualizar(ticket)
@@ -713,10 +1190,39 @@ const MisTareas = () => {
 
   const onOpenChat = () => {}
 
+  const onOpenAdjuntos = ticket => {
+    setTicketAdjuntos(ticket)
+    setAdjuntosModalTitle(`Adjuntos ${ticket?.code ? `- ${ticket.code}` : ''}`)
+    setOpenAdjuntos(true)
+  }
+
+  const onOpenAdjuntosEvento = ({ ticket, evento, adjuntos }) => {
+    const when = fmtDate(evento?.changedAt)
+    const name = resolveEstadoItem(evento?.estado_id, maps?.estadosMap || {})
+    const estadoLabel =
+      name?.name || name?.name_norm || name?.nombre || name?.nombre_norm || '—'
+
+    setTicketAdjuntos({
+      code: ticket?.code || '',
+      adjuntos: Array.isArray(adjuntos) ? adjuntos : [],
+    })
+    setAdjuntosModalTitle(
+      `Adjuntos del cambio ${
+        ticket?.code ? `- ${ticket.code}` : ''
+      } (${estadoLabel} · ${when})`
+    )
+    setOpenAdjuntos(true)
+  }
+
   const onApplyFilters = f => {
     setFiltersApplied(f || {})
     setShowFilters(false)
   }
+
+  const adjuntosModal = Array.isArray(ticketAdjuntos?.adjuntos)
+    ? ticketAdjuntos.adjuntos
+    : []
+  const personalMap = maps?.personalMap || {}
 
   return (
     <div className='card'>
@@ -724,7 +1230,7 @@ const MisTareas = () => {
         <div className='me-auto'>
           <strong>Mis Tickets Asignados</strong>
           <div className='text-muted small'>
-            Identifica si la asignación es Personal / Team / Área.
+            Tabla compacta (fechas dentro del desplegable).
           </div>
         </div>
       </div>
@@ -766,22 +1272,29 @@ const MisTareas = () => {
           progressPending={loading}
           pagination
           paginationPerPage={10}
-          paginationRowsPerPageOptions={[
-            10, 20, 30, 40, 50, 60, 70, 80, 90, 100,
-          ]}
+          paginationRowsPerPageOptions={[10, 20, 30, 40, 50, 100]}
           highlightOnHover
           dense
           responsive
           customStyles={tableStyles}
           persistTableHead
           expandableRows
+          expandableRowExpanded={row =>
+            oidToString(row?._id) === expandedTicketId
+          }
+          onRowExpandToggled={(expanded, row) => {
+            const tid = oidToString(row?._id)
+            setExpandedTicketId(expanded ? tid : null)
+            if (expanded) markTicketNotificationsRead(tid)
+          }}
           expandableRowsComponent={props => (
             <ExpandedComponent
               {...props}
               maps={maps}
+              onOpenAdjuntos={onOpenAdjuntos}
               onOpenUpdate={onOpenUpdate}
               onOpenChat={onOpenChat}
-              id_personal={id_personal}
+              onOpenAdjuntosEvento={onOpenAdjuntosEvento}
             />
           )}
           noDataComponent={
@@ -790,14 +1303,88 @@ const MisTareas = () => {
         />
       </div>
 
+      {/* ✅ Modal: Agregar al historial */}
       <AntdModal
         open={openActualizar}
-        title={`Actualizar ticket ${ticketActualizar?.code || ''}`}
+        title={`Agregar al historial ${ticketActualizar?.code || ''}`}
         onCancel={() => setOpenActualizar(false)}
         footer={null}
         centered
+        width={760}
       >
-        <p>Hola mundo 🚧</p>
+        {!ticketActualizar?._id ? (
+          <div className='text-muted'>Selecciona un ticket.</div>
+        ) : (
+          <AgregarHistorialTicket
+            ticketId={ticketActualizar._id}
+            orgId={ticketActualizar.orgId}
+            maps={maps}
+            onSuccess={() => {
+              setOpenActualizar(false)
+              load()
+            }}
+          />
+        )}
+      </AntdModal>
+
+      {/* Modal adjuntos (reusable: ticket o evento) */}
+      <AntdModal
+        open={openAdjuntos}
+        title={adjuntosModalTitle}
+        onCancel={() => setOpenAdjuntos(false)}
+        footer={null}
+        centered
+        width={720}
+        styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+      >
+        {!adjuntosModal.length ? (
+          <div className='text-muted'>No hay adjuntos.</div>
+        ) : (
+          <div className='d-flex flex-column gap-3'>
+            {adjuntosModal.map((a, idx) => {
+              const rel = a?.url
+              const abs = toTicketAbsolute(a?.url)
+              const rutaRelativa = /^https?:\/\//i.test(String(rel || ''))
+                ? abs
+                : rel
+              const title = a?.name || a?.fileId || `Adjunto ${idx + 1}`
+
+              return (
+                <div
+                  key={`${a?.fileId || idx}`}
+                  className='border rounded bg-white p-2'
+                >
+                  <div className='d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2'>
+                    <div style={{ minWidth: 0 }}>
+                      <div className='fw-semibold'>
+                        <Ell title={title} maxWidth='520px'>
+                          {title}
+                        </Ell>
+                      </div>
+                      <div className='text-muted small'>
+                        {a?.mime || '—'} ·{' '}
+                        {typeof a?.size === 'number'
+                          ? `${Math.round(a.size / 1024)} KB`
+                          : '—'}
+                      </div>
+                    </div>
+
+                    <span className='badge bg-dark-subtle text-dark'>
+                      {a?.uploadedBy
+                        ? changedByLabel(a.uploadedBy, personalMap)
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <SecureArchivotikects
+                    rutaRelativa={rutaRelativa}
+                    nombreArchivo={title}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       </AntdModal>
     </div>
   )

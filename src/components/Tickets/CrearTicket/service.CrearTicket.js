@@ -1,13 +1,22 @@
-// src/modules/CrearTicket/service.CrearTicket.js
 import axios from 'axios'
 
-const API_URL_5 = import.meta.env.VITE_API_URL_5
+const API_URL_5 = import.meta.env.VITE_API_URL_5 // /tikets/...
+const API_URL = import.meta.env.VITE_API_URL // /personal  (y ahora también /cliente, /inventario)
 
+// ---------------------------
+// Utils
+// ---------------------------
 const buildHeaders = (token, isFormData = false) => {
   const headers = {}
   if (token) headers.Authorization = `Bearer ${token}`
   if (!isFormData) headers['Content-Type'] = 'application/json'
   return headers
+}
+
+const clampLimit = (limit, max = 100, fallback = 20) => {
+  const n = Number(limit)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.min(n, max)
 }
 
 const pickItems = res => {
@@ -20,52 +29,34 @@ const pickItems = res => {
   return []
 }
 
-// ======================================================
-// GET /tickets/mine
-// ======================================================
-export const listarTicketsMine = async (
-  {
-    id_personal,
-    scope = 'created',
-    page = 1,
-    limit = 100,
-    sortBy = 'createdAt',
-    sortDir = 'desc',
-  } = {},
-  token
-) => {
-  const params = { id_personal, scope, page, limit, sortBy, sortDir }
-  const { data } = await axios.get(`${API_URL_5}/tickets/mine`, {
-    headers: buildHeaders(token),
-    params,
-  })
-  return data
+const norm = s =>
+  String(s ?? '')
+    .trim()
+    .toLowerCase()
+
+const safeGet = async (url, config) => {
+  try {
+    const res = await axios.get(url, config)
+    return { ok: true, data: res.data }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e?.response?.data || e?.message || 'Request error',
+    }
+  }
 }
 
-export const listarMisCreaciones = async (
-  {
-    id_personal,
-    page = 1,
-    limit = 100,
-    sortBy = 'createdAt',
-    sortDir = 'desc',
-  } = {},
-  token
-) =>
-  listarTicketsMine(
-    { id_personal, scope: 'created', page, limit, sortBy, sortDir },
-    token
-  )
-
-// ======================================================
-// CATÁLOGO
-// ======================================================
-export const listarCatalogo = async (
+// =============================
+// CATÁLOGO  /tikets/catalog
+// =============================
+export const fetchCatalog = async (
   { orgId, type, page = 1, limit = 100, active = true } = {},
   token
 ) => {
-  const params = { orgId, type, page, limit }
+  const safeLimit = clampLimit(limit, 100, 100)
+  const params = { orgId, type, page, limit: safeLimit }
   if (active !== undefined) params.active = active
+
   const { data } = await axios.get(`${API_URL_5}/catalog`, {
     headers: buildHeaders(token),
     params,
@@ -73,48 +64,84 @@ export const listarCatalogo = async (
   return data
 }
 
-export const listarEstados = async (orgId, token) =>
-  listarCatalogo(
-    { orgId, type: 'estado', page: 1, limit: 100, active: true },
-    token
-  )
+export const fetchCategorias = (orgId, token, { page = 1, limit = 100 } = {}) =>
+  fetchCatalog({ orgId, type: 'categoria', page, limit, active: true }, token)
 
-export const listarPrioridades = async (orgId, token) =>
-  listarCatalogo(
-    { orgId, type: 'prioridad', page: 1, limit: 100, active: true },
-    token
-  )
+export const fetchPrioridades = (
+  orgId,
+  token,
+  { page = 1, limit = 100 } = {}
+) =>
+  fetchCatalog({ orgId, type: 'prioridad', page, limit, active: true }, token)
 
-export const listarCategorias = async (orgId, token) =>
-  listarCatalogo(
-    { orgId, type: 'categoria', page: 1, limit: 100, active: true },
-    token
-  )
+export const fetchEstados = (orgId, token, { page = 1, limit = 100 } = {}) =>
+  fetchCatalog({ orgId, type: 'estado', page, limit, active: true }, token)
 
-// ======================================================
-// TEAMS / AREAS
-// ======================================================
-export const listarTeams = async (
-  { page = 1, limit = 100, search, activo = true } = {},
+export const fetchEstadoNuevoId = async (orgId, token) => {
+  const res = await fetchEstados(orgId, token, { page: 1, limit: 100 })
+  const items = pickItems(res)
+  const found = items.find(x => norm(x?.name ?? x?.nombre) === 'nuevo')
+  return found?._id || ''
+}
+
+// =============================
+// PERSONAL  /personal
+// =============================
+export const fetchPersonal = async (
+  { page = 1, limit = 100, search } = {},
   token
 ) => {
-  const params = { page, limit }
+  const safeLimit = clampLimit(limit, 100, 50)
+  const params = { page, limit: safeLimit }
   if (search) params.search = search
-  if (activo !== undefined) params.activo = activo
-  const { data } = await axios.get(`${API_URL_5}/teams`, {
+
+  const { data } = await axios.get(`${API_URL}/personal`, {
     headers: buildHeaders(token),
     params,
   })
   return data
 }
 
-export const listarAreas = async (
-  { page = 1, limit = 100, search, activo = true } = {},
+// =============================
+// CLIENTES  /cliente
+// =============================
+export const fetchClientes = async (
+  { page = 1, limit = 200, search, activo = true } = {},
   token
 ) => {
-  const params = { page, limit }
+  const safeLimit = clampLimit(limit, 500, 200)
+  const params = { page, limit: safeLimit }
   if (search) params.search = search
   if (activo !== undefined) params.activo = activo
+
+  const { data } = await axios.get(`${API_URL}/cliente`, {
+    headers: buildHeaders(token),
+    params,
+  })
+  return data
+}
+
+// =============================
+// INVENTARIO  /inventario/detalle/completo
+// =============================
+export const fetchInventarioDetalleCompleto = async token => {
+  const { data } = await axios.get(`${API_URL}/inventario/detalle/completo`, {
+    headers: buildHeaders(token),
+  })
+  return data
+}
+
+// =============================
+// AREAS / TEAMS
+// =============================
+export const fetchAreas = async (
+  { page = 1, limit = 100, search } = {},
+  token
+) => {
+  const safeLimit = clampLimit(limit, 100, 50)
+  const params = { page, limit: safeLimit }
+  if (search) params.search = search
+
   const { data } = await axios.get(`${API_URL_5}/areas`, {
     headers: buildHeaders(token),
     params,
@@ -122,51 +149,166 @@ export const listarAreas = async (
   return data
 }
 
-// ======================================================
-// ✅ POST /tickets (multipart/form-data)
-// - Soporta: todos los tipos + asignación + operación + adjuntos múltiples
-// - Keys compatibles con tu validator:
-//   asignado_a[tipo], asignado_a[id], watchers[], operacion[subtipo], etc.
-// ======================================================
-export const crearTicket = async (
+export const fetchTeams = async (
+  { page = 1, limit = 100, search } = {},
+  token
+) => {
+  const safeLimit = clampLimit(limit, 100, 50)
+  const params = { page, limit: safeLimit }
+  if (search) params.search = search
+
+  const { data } = await axios.get(`${API_URL_5}/teams`, {
+    headers: buildHeaders(token),
+    params,
+  })
+  return data
+}
+
+// =============================
+// LISTADOS (bundles)
+// =============================
+export const fetchMisCreacionesBundle = async (
+  {
+    page = 1,
+    limit = 20,
+    sortBy = 'updatedAt',
+    sortDir = 'desc',
+    activo = true,
+    search,
+    orgId,
+    tipo,
+    estado_id,
+    prioridad_id,
+    categoria_id,
+  } = {},
+  token
+) => {
+  const safeLimit = clampLimit(limit, 100, 20)
+  const params = {
+    page,
+    limit: safeLimit,
+    sortBy,
+    sortDir,
+    activo,
+    ...(search ? { search } : {}),
+    ...(orgId ? { orgId } : {}),
+    ...(tipo ? { tipo } : {}),
+    ...(estado_id ? { estado_id } : {}),
+    ...(prioridad_id ? { prioridad_id } : {}),
+    ...(categoria_id ? { categoria_id } : {}),
+  }
+
+  const headers = buildHeaders(token)
+
+  const list = await safeGet(`${API_URL_5}/tickets/mine`, {
+    headers,
+    params,
+  })
+  const count = await safeGet(`${API_URL_5}/tickets/count`, {
+    headers,
+    params,
+  })
+
+  const items = pickItems(list.ok ? list.data : null)
+  const total =
+    (count.ok
+      ? (count.data?.total ??
+        count.data?.count ??
+        count.data?.data?.total ??
+        count.data?.data?.count)
+      : null) ?? null
+
+  return { items, total, error: list.ok ? null : list.error }
+}
+
+export const fetchMisAsignadosBundle = async (
+  {
+    id_personal,
+    page = 1,
+    limit = 20,
+    sortBy = 'updatedAt',
+    sortDir = 'desc',
+    activo = true,
+    search,
+    orgId,
+    tipo,
+    estado_id,
+    prioridad_id,
+    categoria_id,
+  } = {},
+  token
+) => {
+  const safeLimit = clampLimit(limit, 100, 20)
+  const params = {
+    page,
+    limit: safeLimit,
+    sortBy,
+    sortDir,
+    activo,
+    ...(id_personal ? { id_personal } : {}),
+    ...(search ? { search } : {}),
+    ...(orgId ? { orgId } : {}),
+    ...(tipo ? { tipo } : {}),
+    ...(estado_id ? { estado_id } : {}),
+    ...(prioridad_id ? { prioridad_id } : {}),
+    ...(categoria_id ? { categoria_id } : {}),
+  }
+
+  const headers = buildHeaders(token)
+
+  const list = await safeGet(`${API_URL_5}/assigned`, {
+    headers,
+    params,
+  })
+  const count = await safeGet(`${API_URL_5}/count`, {
+    headers,
+    params,
+  })
+
+  const items = pickItems(list.ok ? list.data : null)
+  const total =
+    (count.ok
+      ? (count.data?.total ??
+        count.data?.count ??
+        count.data?.data?.total ??
+        count.data?.data?.count)
+      : null) ?? null
+
+  return { items, total, error: list.ok ? null : list.error }
+}
+
+// =============================
+// CREATE TICKET  POST /tikets/tickets
+// =============================
+export const createTicket = async (
   {
     orgId,
-    tipo, // tarea | proyecto | operacion
+    tipo = 'tarea',
     titulo,
     descripcion,
     categoria_id,
     prioridad_id,
     estado_id,
-
     creado_por,
-
-    // asignación
-    asignado_tipo, // personal | area | team
-    asignado_id, // id_personal o ObjectId
-
-    // opcionales
-    watchers = [], // array id_personal
-    fecha_estimada, // 'YYYY-MM-DD' o ISO string
+    asignado_tipo = 'personal',
+    asignado_id,
+    fecha_estimada,
     nota_estado,
+    watchers = [],
+    files = [],
 
-    // operacion (si tipo=operacion)
-    operacion_subtipo, // comercio | bodega
-    operacion_cliente,
-    operacion_lote,
-    operacion_producto,
-    operacion_apoyo_ids = [], // array id_personal
-    operacion_servicios_adicionales = [], // array strings
-
-    // archivos
-    files = [], // File[]
+    // operación (solo IDs)
+    subtipo, // comercio | bodega
+    id_cliente,
+    id_lote,
+    id_producto,
   } = {},
   token
 ) => {
   const fd = new FormData()
 
-  // required
   fd.append('orgId', orgId ?? '')
-  fd.append('tipo', tipo ?? '')
+  fd.append('tipo', tipo ?? 'tarea')
   fd.append('titulo', titulo ?? '')
   fd.append('descripcion', descripcion ?? '')
   fd.append('categoria_id', categoria_id ?? '')
@@ -174,96 +316,54 @@ export const crearTicket = async (
   fd.append('estado_id', estado_id ?? '')
   fd.append('creado_por', creado_por ?? '')
 
-  // asignado_a bracket keys
-  fd.append('asignado_a[tipo]', asignado_tipo ?? '')
+  fd.append('asignado_a[tipo]', asignado_tipo ?? 'personal')
   fd.append('asignado_a[id]', asignado_id ?? '')
 
-  // opcionales
   if (fecha_estimada) fd.append('fecha_estimada', fecha_estimada)
   if (nota_estado) fd.append('nota_estado', nota_estado)
-  ;(watchers || []).forEach(x => {
-    if (x) fd.append('watchers[]', String(x))
-  })
+  ;(watchers || []).forEach(x => x && fd.append('watchers[]', String(x)))
+  ;(files || []).forEach(
+    file => file instanceof File && fd.append('files', file)
+  )
 
-  // operacion
-  if (tipo === 'operacion') {
-    fd.append('operacion[subtipo]', operacion_subtipo ?? '')
-    fd.append('operacion[cliente]', operacion_cliente ?? '')
-    if (operacion_lote) fd.append('operacion[lote]', operacion_lote)
-    if (operacion_producto) fd.append('operacion[producto]', operacion_producto)
-    ;(operacion_apoyo_ids || []).forEach(x => {
-      if (x) fd.append('operacion[apoyo_ids][]', String(x))
-    })
-    ;(operacion_servicios_adicionales || []).forEach(x => {
-      if (x) fd.append('operacion[servicios_adicionales][]', String(x))
-    })
+  // ✅ CORREGIDO: el backend valida operacion.cliente / operacion.lote / operacion.producto
+  if ((tipo ?? 'tarea') === 'operacion') {
+    if (subtipo) fd.append('operacion[subtipo]', String(subtipo))
+
+    // enviar IDs dentro de los campos que el backend espera
+    if (id_cliente) fd.append('operacion[cliente]', String(id_cliente))
+    if (id_lote) fd.append('operacion[lote]', String(id_lote))
+    if (id_producto) fd.append('operacion[producto]', String(id_producto))
+
+    // (opcional) mantenemos compat por si algún día lo usas
+    // fd.append('operacion[id_cliente]', String(id_cliente))
+    // fd.append('operacion[id_lote]', String(id_lote))
+    // fd.append('operacion[id_producto]', String(id_producto))
   }
-
-  // Archivos (multer uploadAny.any() captura cualquier key)
-  ;(files || []).forEach(file => {
-    if (file instanceof File) fd.append('files', file)
-  })
 
   const { data } = await axios.post(`${API_URL_5}/tickets`, fd, {
     headers: buildHeaders(token, true),
   })
-
   return data
 }
 
 // ======================================================
-// ✅ BUNDLE PARA TABLA (maps por _id)
+// ALIASES
 // ======================================================
-export const fetchMisCreacionesBundle = async (
-  { id_personal, page = 1, limit = 100 } = {},
-  token
-) => {
-  const resTickets = await listarMisCreaciones(
-    { id_personal, page, limit },
-    token
-  )
-  const rows = pickItems(resTickets)
+export const listarAreas = fetchAreas
+export const listarTeams = fetchTeams
+export const listarPersonal = fetchPersonal
 
-  const orgId = rows?.[0]?.orgId || ''
+export const listarCatalogo = fetchCatalog
+export const listarCategorias = (orgId, token) =>
+  fetchCategorias(orgId, token, { page: 1, limit: 100 })
+export const listarPrioridades = (orgId, token) =>
+  fetchPrioridades(orgId, token, { page: 1, limit: 100 })
+export const listarEstados = (orgId, token) =>
+  fetchEstados(orgId, token, { page: 1, limit: 100 })
 
-  const [resTeams, resAreas] = await Promise.all([
-    listarTeams({ page: 1, limit: 100 }, token),
-    listarAreas({ page: 1, limit: 100 }, token),
-  ])
+export const obtenerEstadoNuevoId = fetchEstadoNuevoId
+export const crearTicket = createTicket
 
-  const teams = pickItems(resTeams)
-  const areas = pickItems(resAreas)
-
-  let estados = []
-  let prioridades = []
-  let categorias = []
-
-  if (orgId) {
-    const [resE, resP, resC] = await Promise.all([
-      listarEstados(orgId, token),
-      listarPrioridades(orgId, token),
-      listarCategorias(orgId, token),
-    ])
-    estados = pickItems(resE)
-    prioridades = pickItems(resP)
-    categorias = pickItems(resC)
-  }
-
-  const maps = {
-    estadosMap: Object.fromEntries((estados || []).map(x => [x._id, x])),
-    prioridadesMap: Object.fromEntries(
-      (prioridades || []).map(x => [x._id, x])
-    ),
-    categoriasMap: Object.fromEntries((categorias || []).map(x => [x._id, x])),
-    teamsMap: Object.fromEntries((teams || []).map(x => [x._id, x])),
-    areasMap: Object.fromEntries((areas || []).map(x => [x._id, x])),
-  }
-
-  return {
-    ok: true,
-    rows,
-    maps,
-    meta: resTickets?.meta || null,
-    orgId,
-  }
-}
+export const listarClientes = fetchClientes
+export const listarInventarioDetalleCompleto = fetchInventarioDetalleCompleto

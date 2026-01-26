@@ -10,20 +10,21 @@ import {
 
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login/Login'
-import Home from './pages/Home/Home'
 import PrivateRoute from './components/PrivateRoute'
+import NoEncontrado from './pages/NoEncontrado'
+
+import Home from './pages/Home/Home'
 import GestionBodega from './pages/GestionBodega/GestionBodega'
 import Operaciones from './pages/operaciones/operaciones'
 import PerfilAdmin from './pages/perfilAdmin/PerfilAdmin'
 import Terceros from './pages/Terceros/Terceros.jsx'
-import NoEncontrado from './pages/NoEncontrado'
 import ControlDeIngresos from './pages/ControlDeIngresos/ControlDeIngresos.jsx'
 import Tickets from './pages/Tickets/TicketsPage.jsx'
 import TiemposPc from './pages/TiemposPc/TiemposPc.jsx'
 import Financiera from './pages/Financiera/Financiera.jsx'
-
-// 👇 IMPORTAMOS LA NUEVA PAGE PERSONAL
 import Personal from './pages/Personal/Personal.jsx'
+
+import AppLayout from './layouts/AppLayout'
 
 function App() {
   return (
@@ -35,91 +36,85 @@ function App() {
   )
 }
 
-// Este componente está dentro del mismo archivo y permite manejar el "from" hacia la 404
 function AppRoutes() {
   const location = useLocation()
 
   return (
     <Routes>
-      {/* Ruta pública */}
       <Route path='/login' element={<Login />} />
 
-      {/* Ruta privada general */}
-      <Route path='/home' element={<PrivateRoute element={<Home />} />} />
+      {/* 🔥 Layout general protegido */}
+      <Route element={<PrivateRoute element={<AppLayout />} />}>
+        <Route path='/home' element={<Home />} />
 
-      {/* Rutas protegidas */}
-      <Route
-        path='/gestion-bodega'
-        element={
-          <PrivateRoute permiso='gestionBodega' element={<GestionBodega />} />
-        }
-      />
+        <Route
+          path='/gestion-bodega'
+          element={
+            <PrivateRoute permiso='gestionBodega' element={<GestionBodega />} />
+          }
+        />
 
-      <Route
-        path='/operaciones'
-        element={
-          <PrivateRoute permiso='operaciones' element={<Operaciones />} />
-        }
-      />
+        <Route
+          path='/operaciones'
+          element={
+            <PrivateRoute permiso='operaciones' element={<Operaciones />} />
+          }
+        />
 
-      <Route
-        path='/perfil-admin'
-        element={
-          <PrivateRoute permiso='perfilAdmin' element={<PerfilAdmin />} />
-        }
-      />
+        <Route
+          path='/perfil-admin'
+          element={
+            <PrivateRoute permiso='perfilAdmin' element={<PerfilAdmin />} />
+          }
+        />
 
-      <Route
-        path='/terceros'
-        element={<PrivateRoute permiso='terceros' element={<Terceros />} />}
-      />
+        <Route
+          path='/terceros'
+          element={<PrivateRoute permiso='terceros' element={<Terceros />} />}
+        />
 
-      {/* ✅ Control de Ingresos */}
-      <Route
-        path='/control-de-ingresos'
-        element={
-          <PrivateRoute
-            permiso='gestioniingresos'
-            element={<ControlDeIngresos />}
-          />
-        }
-      />
+        <Route
+          path='/control-de-ingresos'
+          element={
+            <PrivateRoute
+              permiso='gestioniingresos'
+              element={<ControlDeIngresos />}
+            />
+          }
+        />
 
-      {/* Tickets */}
-      <Route
-        path='/tickets'
-        element={<PrivateRoute permiso='tickets' element={<Tickets />} />}
-      />
+        <Route
+          path='/tickets'
+          element={<PrivateRoute permiso='tickets' element={<Tickets />} />}
+        />
 
-      {/* ✅ Tiempos en PC */}
-      <Route
-        path='/tiempos-pc'
-        element={
-          <PrivateRoute permiso='awTiemposEnPc' element={<TiemposPc />} />
-        }
-      />
+        <Route
+          path='/tiempos-pc'
+          element={
+            <PrivateRoute permiso='awTiemposEnPc' element={<TiemposPc />} />
+          }
+        />
 
-      {/* ✅ Financiera */}
-      <Route
-        path='/financiera'
-        element={<PrivateRoute permiso='financiera' element={<Financiera />} />}
-      />
+        <Route
+          path='/financiera'
+          element={
+            <PrivateRoute permiso='financiera' element={<Financiera />} />
+          }
+        />
 
-      {/* ⭐ NUEVA RUTA: HOJAS DE VIDA (PERSONAL) */}
-      <Route
-        path='/hojas-de-vida'
-        element={
-          <PrivateRoute permiso='hojasDeVidaPersonal' element={<Personal />} />
-        }
-      />
+        <Route
+          path='/hojas-de-vida'
+          element={
+            <PrivateRoute
+              permiso='hojasDeVidaPersonal'
+              element={<Personal />}
+            />
+          }
+        />
+      </Route>
 
-      {/* Redirección inicial */}
       <Route path='/' element={<Navigate to='/login' />} />
-
-      {/* Página 404 */}
       <Route path='/404' element={<NoEncontrado />} />
-
-      {/* Catch-all con "from" */}
       <Route
         path='*'
         element={<Navigate to='/404' state={{ from: location.pathname }} />}

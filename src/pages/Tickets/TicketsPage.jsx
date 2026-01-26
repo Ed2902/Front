@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import Sidebar from '../../components/Sidebar/Sidebar'
+import { useEffect, useState } from 'react'
 import MenuTickets from '../../components/Tickets/Menutickets/Menutickets'
 import SeccionDinamicaTickets from '../../components/Tickets/Secciontickets/SeccionDinamicatickets'
 import './Tickets.css'
@@ -7,19 +6,30 @@ import './Tickets.css'
 export default function Tickets() {
   const [selectedSection, setSelectedSection] = useState(null)
 
-  return (
-    <section className='layout'>
-      <Sidebar />
-      <div className='body'>
-        {/* 🧭 Menú de Tickets */}
-        <MenuTickets
-          selectedSection={selectedSection}
-          onSelectSection={setSelectedSection}
-        />
+  // 🔔 Leer sección desde la URL (push / deep-link)
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      const sectionFromUrl = sp.get('ticketsSection')
 
-        {/* 🔁 Sección dinámica según lo seleccionado */}
-        <SeccionDinamicaTickets selectedSection={selectedSection} />
-      </div>
-    </section>
+      if (sectionFromUrl) {
+        setSelectedSection(sectionFromUrl)
+      } else {
+        setSelectedSection('misTareas')
+      }
+    } catch {
+      setSelectedSection('misTareas')
+    }
+  }, [])
+
+  return (
+    <div className='page'>
+      <MenuTickets
+        selectedSection={selectedSection}
+        onSelectSection={setSelectedSection}
+      />
+
+      <SeccionDinamicaTickets selectedSection={selectedSection} />
+    </div>
   )
 }

@@ -161,8 +161,11 @@ const FormProveedor = ({ onClose, onSuccess }) => {
             className='form-select mb-2'
             {...register('Tipo_proveedor', { required: true })}
           >
-            <option value='INSUMOS'>INSUMOS</option>
             <option value='RS'>RS</option>
+            <option value='Logistica internacional'>
+              Logistica internacional
+            </option>
+            <option value='Bodega'>Bodega</option>
           </select>
           {errors.Tipo_proveedor && (
             <p className='text-danger'>Este campo es obligatorio</p>

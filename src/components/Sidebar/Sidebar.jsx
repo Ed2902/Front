@@ -9,20 +9,19 @@ import {
   BiMenu,
   BiLock,
   BiGitMerge,
-  BiChevronDown,
-  BiChevronUp,
-  BiPackage,
-  BiCog,
   BiSolidUserVoice,
   BiTimeFive,
   BiDollar,
   BiGroup,
   BiIdCard,
   BiDoorOpen,
+  BiPackage,
+  BiSupport,
 } from 'react-icons/bi'
 import AuthContext from '../../context/AuthContext'
 import { usePermisos } from '../../hooks/usePermisos'
 import SecureAvatar from '../Shared/SecureAvatar'
+import NotificationsBell from '../notifications/NotificationsBell'
 import './Sidebar.css'
 
 const Sidebar = ({ onToggleCollapse }) => {
@@ -30,8 +29,7 @@ const Sidebar = ({ onToggleCollapse }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
-  // Submenús
-  const [isBodegaSubmenuOpen, setIsBodegaSubmenuOpen] = useState(false)
+  // Submenú Talento (se mantiene)
   const [isTalentSubmenuOpen, setIsTalentSubmenuOpen] = useState(false)
 
   const { logout, user } = useContext(AuthContext)
@@ -50,12 +48,8 @@ const Sidebar = ({ onToggleCollapse }) => {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Mantener abiertos submenús según la ruta
+  // Mantener abierto Talento según la ruta
   useEffect(() => {
-    if (['/gestion-bodega', '/operaciones'].includes(location.pathname)) {
-      setIsBodegaSubmenuOpen(true)
-    }
-
     if (
       ['/hojas-de-vida', '/control-de-ingresos', '/tiempos-pc'].includes(
         location.pathname
@@ -75,13 +69,11 @@ const Sidebar = ({ onToggleCollapse }) => {
 
       // si colapsa, cerramos submenús para evitar que queden “raros”
       if (newCollapsed) {
-        setIsBodegaSubmenuOpen(false)
         setIsTalentSubmenuOpen(false)
       }
     }
   }
 
-  const toggleBodegaSubmenu = () => setIsBodegaSubmenuOpen(prev => !prev)
   const toggleTalentSubmenu = () => setIsTalentSubmenuOpen(prev => !prev)
 
   const handleLinkClick = () => {
@@ -177,134 +169,39 @@ const Sidebar = ({ onToggleCollapse }) => {
               </Link>
             </li>
 
+            {/* ✅ Bodega: ahora es SOLO link directo (sin desplegable) */}
             {tienePermiso('gestionBodega') && (
               <li
-                className={`has-submenu ${isBodegaSubmenuOpen ? 'open' : ''}`}
+                className={
+                  location.pathname === '/gestion-bodega' ? 'active' : ''
+                }
               >
-                <button
-                  type='button'
-                  className='submenu-toggle'
-                  onClick={toggleBodegaSubmenu}
-                >
-                  <div className='submenu-title'>
-                    <BiHome size={20} />
-                    <span
-                      className={`${
-                        isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                      }`}
-                    >
-                      Bodega
-                    </span>
-                  </div>
-
-                  <span className='chevron-icon'>
-                    {isBodegaSubmenuOpen ? (
-                      <BiChevronUp size={16} />
-                    ) : (
-                      <BiChevronDown size={16} />
-                    )}
-                  </span>
-                </button>
-
-                <ul className='submenu'>
-                  <li
-                    className={
-                      location.pathname === '/gestion-bodega' ? 'active' : ''
-                    }
+                <Link to='/gestion-bodega' onClick={handleLinkClick}>
+                  <BiPackage size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
                   >
-                    <Link to='/gestion-bodega' onClick={handleLinkClick}>
-                      <BiPackage size={18} />
-                      <span>Inventario</span>
-                    </Link>
-                  </li>
-
-                  {tienePermiso('accesoGeneralOperaciones') && (
-                    <li
-                      className={
-                        location.pathname === '/operaciones' ? 'active' : ''
-                      }
-                    >
-                      <Link to='/operaciones' onClick={handleLinkClick}>
-                        <BiCog size={18} />
-                        <span>Operaciones</span>
-                      </Link>
-                    </li>
-                  )}
-                </ul>
+                    Gestión Bodega
+                  </span>
+                </Link>
               </li>
             )}
 
-            {tienePermiso('gestionTalento') && (
-              <li
-                className={`has-submenu ${isTalentSubmenuOpen ? 'open' : ''}`}
-              >
-                <button
-                  type='button'
-                  className='submenu-toggle'
-                  onClick={toggleTalentSubmenu}
-                >
-                  <div className='submenu-title'>
-                    <BiGroup size={20} />
-                    <span
-                      className={`${
-                        isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                      }`}
-                    >
-                      Gestión del Talento
-                    </span>
-                  </div>
-
-                  <span className='chevron-icon'>
-                    {isTalentSubmenuOpen ? (
-                      <BiChevronUp size={16} />
-                    ) : (
-                      <BiChevronDown size={16} />
-                    )}
+            {/* ✅ Tickets de SEGUNDAS + icono acorde */}
+            {tienePermiso('tickets') && (
+              <li className={location.pathname === '/tickets' ? 'active' : ''}>
+                <Link to='/tickets' onClick={handleLinkClick}>
+                  <BiSupport size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Tasks
                   </span>
-                </button>
-
-                <ul className='submenu'>
-                  {tienePermiso('hojasDeVidaPersonal') && (
-                    <li
-                      className={
-                        location.pathname === '/hojas-de-vida' ? 'active' : ''
-                      }
-                    >
-                      <Link to='/hojas-de-vida' onClick={handleLinkClick}>
-                        <BiIdCard size={18} />
-                        <span>Hojas de vida personal</span>
-                      </Link>
-                    </li>
-                  )}
-
-                  {tienePermiso('gestioniingresos') && (
-                    <li
-                      className={
-                        location.pathname === '/control-de-ingresos'
-                          ? 'active'
-                          : ''
-                      }
-                    >
-                      <Link to='/control-de-ingresos' onClick={handleLinkClick}>
-                        <BiDoorOpen size={18} />
-                        <span>Control de Ingresos</span>
-                      </Link>
-                    </li>
-                  )}
-
-                  {tienePermiso('awTiemposEnPc') && (
-                    <li
-                      className={
-                        location.pathname === '/tiempos-pc' ? 'active' : ''
-                      }
-                    >
-                      <Link to='/tiempos-pc' onClick={handleLinkClick}>
-                        <BiTimeFive size={18} />
-                        <span>Tiempos en PC</span>
-                      </Link>
-                    </li>
-                  )}
-                </ul>
+                </Link>
               </li>
             )}
 
@@ -359,18 +256,79 @@ const Sidebar = ({ onToggleCollapse }) => {
               </li>
             )}
 
-            {tienePermiso('tickets') && (
-              <li className={location.pathname === '/tickets' ? 'active' : ''}>
-                <Link to='/tickets' onClick={handleLinkClick}>
-                  <BiGitMerge size={20} />
-                  <span
-                    className={`${
-                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                    }`}
-                  >
-                    Tickets Soporte Técnico
+            {/* ✅ Talento de ÚLTIMAS (misma lógica, solo reordenado) */}
+            {tienePermiso('gestionTalento') && (
+              <li
+                className={`has-submenu ${isTalentSubmenuOpen ? 'open' : ''}`}
+              >
+                <button
+                  type='button'
+                  className='submenu-toggle'
+                  onClick={toggleTalentSubmenu}
+                >
+                  <div className='submenu-title'>
+                    <BiGroup size={20} />
+                    <span
+                      className={`${
+                        isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                      }`}
+                    >
+                      Gestión del Talento
+                    </span>
+                  </div>
+
+                  {/* si está colapsado, el CSS ya oculta chevron */}
+                  <span className='chevron-icon'>
+                    {isTalentSubmenuOpen ? (
+                      <BiChevronLeft size={0} />
+                    ) : (
+                      <BiChevronRight size={0} />
+                    )}
                   </span>
-                </Link>
+                </button>
+
+                <ul className='submenu'>
+                  {tienePermiso('hojasDeVidaPersonal') && (
+                    <li
+                      className={
+                        location.pathname === '/hojas-de-vida' ? 'active' : ''
+                      }
+                    >
+                      <Link to='/hojas-de-vida' onClick={handleLinkClick}>
+                        <BiIdCard size={18} />
+                        <span>Hojas de vida personal</span>
+                      </Link>
+                    </li>
+                  )}
+
+                  {tienePermiso('gestioniingresos') && (
+                    <li
+                      className={
+                        location.pathname === '/control-de-ingresos'
+                          ? 'active'
+                          : ''
+                      }
+                    >
+                      <Link to='/control-de-ingresos' onClick={handleLinkClick}>
+                        <BiDoorOpen size={18} />
+                        <span>Control de Ingresos</span>
+                      </Link>
+                    </li>
+                  )}
+
+                  {tienePermiso('awTiemposEnPc') && (
+                    <li
+                      className={
+                        location.pathname === '/tiempos-pc' ? 'active' : ''
+                      }
+                    >
+                      <Link to='/tiempos-pc' onClick={handleLinkClick}>
+                        <BiTimeFive size={18} />
+                        <span>Tiempos en PC</span>
+                      </Link>
+                    </li>
+                  )}
+                </ul>
               </li>
             )}
           </ul>
@@ -391,10 +349,18 @@ const Sidebar = ({ onToggleCollapse }) => {
         )}
 
         <div className='sidebar-bottom'>
-          <div className='profile-logout'>
-            <a href='#' className='logout' onClick={handleLogout}>
-              <BiLogOut size={24} />
-            </a>
+          <div
+            className={`sidebar-bottom-actions ${isCollapsed ? 'collapsed' : ''}`}
+          >
+            <div className='sidebar-notifications'>
+              <NotificationsBell placement='end' />
+            </div>
+
+            <div className='profile-logout'>
+              <a href='#' className='logout' onClick={handleLogout}>
+                <BiLogOut size={24} />
+              </a>
+            </div>
           </div>
 
           {!isCollapsed && (

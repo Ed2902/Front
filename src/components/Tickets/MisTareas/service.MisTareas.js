@@ -82,7 +82,7 @@ export const listarAreas = async (
   return data
 }
 
-// ✅ NUEVO: PERSONAL (desde OTRO SERVER)
+// ✅ PERSONAL (desde OTRO SERVER) -> ideal para resolver Nombre + Apellido
 export const listarPersonal = async token => {
   if (!API_URL) {
     // Si no está seteada la env, devolvemos vacío para no romper
@@ -95,13 +95,12 @@ export const listarPersonal = async token => {
   return data
 }
 
-// ✅ Endpoint nuevo: /tickets/assigned
+// ✅ Endpoint: /tickets/assigned
 export const listarTicketsAssigned = async (
   {
     id_personal,
     page = 1,
     limit = 100,
-    // si tu backend soporta sort:
     sortBy = 'updatedAt',
     sortDir = 'desc',
   } = {},
@@ -115,7 +114,7 @@ export const listarTicketsAssigned = async (
   return data
 }
 
-// ✅ BUNDLE PARA TABLA (igual estilo que CrearTicket)
+// ✅ BUNDLE PARA TABLA
 export const fetchMisTareasBundle = async (
   { id_personal, page = 1, limit = 100, orgId = '' } = {},
   token
@@ -128,7 +127,7 @@ export const fetchMisTareasBundle = async (
 
   // orgId para maps:
   // - si el usuario eligió empresa en filtros, usamos ese
-  // - si no, usamos la primera del resultado (como tu guía)
+  // - si no, usamos la primera del resultado
   const effectiveOrgId = orgId || rows?.[0]?.orgId || ''
 
   const [resTeams, resAreas, resPersonal] = await Promise.all([
@@ -160,6 +159,7 @@ export const fetchMisTareasBundle = async (
     categorias = pickItems(resC)
   }
 
+  // ✅ mapa de personal por Id_personal para resolver Nombre/Apellido rápido
   const personalMap = Object.fromEntries(
     (personal || [])
       .filter(p => p && p.Id_personal !== undefined && p.Id_personal !== null)
@@ -174,7 +174,7 @@ export const fetchMisTareasBundle = async (
     categoriasMap: Object.fromEntries((categorias || []).map(x => [x._id, x])),
     teamsMap: Object.fromEntries((teams || []).map(x => [x._id, x])),
     areasMap: Object.fromEntries((areas || []).map(x => [x._id, x])),
-    personalMap, // ✅ NUEVO
+    personalMap,
   }
 
   return {
@@ -184,4 +184,16 @@ export const fetchMisTareasBundle = async (
     meta: resTickets?.meta || null,
     orgId: effectiveOrgId,
   }
+}
+// ✅ Obtener 1 item de catálogo por id (útil si necesitas resolver name cuando cambia el _id)
+export const getCatalogItemById = async ({ id, orgId } = {}, token) => {
+  if (!id) throw new Error('getCatalogItemById: id es requerido')
+  const params = {}
+  if (orgId) params.orgId = orgId
+
+  const { data } = await axios.get(`${API_URL_5}/catalog/${id}`, {
+    headers: buildHeaders(token),
+    params,
+  })
+  return data
 }
