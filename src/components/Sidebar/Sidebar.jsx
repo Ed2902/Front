@@ -16,6 +16,7 @@ import {
   BiIdCard,
   BiDoorOpen,
   BiPackage,
+  BiSupport,
 } from 'react-icons/bi'
 import AuthContext from '../../context/AuthContext'
 import { usePermisos } from '../../hooks/usePermisos'
@@ -188,6 +189,74 @@ const Sidebar = ({ onToggleCollapse }) => {
               </li>
             )}
 
+            {/* ✅ Tickets de SEGUNDAS + icono acorde */}
+            {tienePermiso('tickets') && (
+              <li className={location.pathname === '/tickets' ? 'active' : ''}>
+                <Link to='/tickets' onClick={handleLinkClick}>
+                  <BiSupport size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Tasks
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {tienePermiso('financiera') && (
+              <li
+                className={location.pathname === '/financiera' ? 'active' : ''}
+              >
+                <Link to='/financiera' onClick={handleLinkClick}>
+                  <BiDollar size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Financiera
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {tienePermiso('perfilAdmin') && (
+              <li
+                className={
+                  location.pathname === '/perfil-admin' ? 'active' : ''
+                }
+              >
+                <Link to='/perfil-admin' onClick={handleLinkClick}>
+                  <BiLock size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Perfil Admin
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {tienePermiso('terceros') && (
+              <li className={location.pathname === '/terceros' ? 'active' : ''}>
+                <Link to='/terceros' onClick={handleLinkClick}>
+                  <BiGitMerge size={20} />
+                  <span
+                    className={`${
+                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
+                    }`}
+                  >
+                    Gestión de Terceros
+                  </span>
+                </Link>
+              </li>
+            )}
+
+            {/* ✅ Talento de ÚLTIMAS (misma lógica, solo reordenado) */}
             {tienePermiso('gestionTalento') && (
               <li
                 className={`has-submenu ${isTalentSubmenuOpen ? 'open' : ''}`}
@@ -260,72 +329,6 @@ const Sidebar = ({ onToggleCollapse }) => {
                     </li>
                   )}
                 </ul>
-              </li>
-            )}
-
-            {tienePermiso('financiera') && (
-              <li
-                className={location.pathname === '/financiera' ? 'active' : ''}
-              >
-                <Link to='/financiera' onClick={handleLinkClick}>
-                  <BiDollar size={20} />
-                  <span
-                    className={`${
-                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                    }`}
-                  >
-                    Financiera
-                  </span>
-                </Link>
-              </li>
-            )}
-
-            {tienePermiso('perfilAdmin') && (
-              <li
-                className={
-                  location.pathname === '/perfil-admin' ? 'active' : ''
-                }
-              >
-                <Link to='/perfil-admin' onClick={handleLinkClick}>
-                  <BiLock size={20} />
-                  <span
-                    className={`${
-                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                    }`}
-                  >
-                    Perfil Admin
-                  </span>
-                </Link>
-              </li>
-            )}
-
-            {tienePermiso('terceros') && (
-              <li className={location.pathname === '/terceros' ? 'active' : ''}>
-                <Link to='/terceros' onClick={handleLinkClick}>
-                  <BiGitMerge size={20} />
-                  <span
-                    className={`${
-                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                    }`}
-                  >
-                    Gestión de Terceros
-                  </span>
-                </Link>
-              </li>
-            )}
-
-            {tienePermiso('tickets') && (
-              <li className={location.pathname === '/tickets' ? 'active' : ''}>
-                <Link to='/tickets' onClick={handleLinkClick}>
-                  <BiGitMerge size={20} />
-                  <span
-                    className={`${
-                      isCollapsed && !isMobileOpen ? 'hide-text' : ''
-                    }`}
-                  >
-                    Tickets, Proyectos y Operaciones
-                  </span>
-                </Link>
               </li>
             )}
           </ul>

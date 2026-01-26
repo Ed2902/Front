@@ -500,8 +500,7 @@ export default function NotificationsBell({ placement = 'end' }) {
               className='px-3 py-2 border-top text-muted'
               style={{ fontSize: 12 }}
             >
-              * “Desmarcar como no leída” requiere endpoint backend (si lo
-              quieres, lo armamos).
+              Actualiza siempre al ingresar.
             </div>
           </div>,
           document.body
