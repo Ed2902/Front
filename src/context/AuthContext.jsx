@@ -4,7 +4,8 @@ import { registerWebPush } from '../utils/webpushClient'
 // Crear el contexto de autenticación
 const AuthContext = createContext()
 
-const API_BASE_DEFAULT = import.meta.env.VITE_API_URL_4
+// ✅ Tu backend de tikets ya incluye "/tikets" en la base URL
+const API_BASE_DEFAULT = import.meta.env.VITE_API_URL_5
 const ORG_ID = import.meta.env.VITE_ORG_ID
 
 // Componente proveedor
@@ -34,11 +35,12 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.setItem('token', token)
 
-    // 🔑 Normalizar principalId (una sola regla)
+    // 🔑 Normalizar principalId (ID REAL para notificaciones/tickets)
+    // ✅ Prioridad: personal.id_personal (porque tu backend usa ese)
     const principalId =
+      userData?.personal?.id_personal ??
       userData?.principalId ??
-      userData?.id_usuario ??
-      userData?.personal?.id_personal
+      userData?.id_usuario
 
     // 🔔 Registrar Web Push UNA VEZ al iniciar sesión
     try {
@@ -47,7 +49,10 @@ export const AuthProvider = ({ children }) => {
           apiBaseUrl: API_BASE_DEFAULT,
           orgId: ORG_ID,
           principalId: String(principalId),
-          token,
+
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         })
         console.log('🔔 WebPush registrado para principalId:', principalId)
       } else {

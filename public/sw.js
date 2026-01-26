@@ -24,8 +24,8 @@ self.addEventListener('push', event => {
   const options = {
     body,
     // Puedes ajustar estos iconos si los tienes:
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
+    icon: '/public/favicon.ico',
+    badge: '/public/favicon72.ico',
     data: {
       // lo importante: guardar la URL a la que queremos ir
       url: urlFromPayload,

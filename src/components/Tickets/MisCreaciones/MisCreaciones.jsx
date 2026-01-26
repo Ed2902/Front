@@ -46,6 +46,16 @@ const oidToString = v => {
   return String(v)
 }
 
+const getTicketIdFromQuery = () => {
+  try {
+    const sp = new URLSearchParams(window.location.search)
+    const tid = sp.get('ticketId')
+    return tid ? String(tid).trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 const getUltimoHist = ticket => {
   const h = Array.isArray(ticket?.estado_historial)
     ? ticket.estado_historial
@@ -882,6 +892,7 @@ const MisCreaciones = () => {
 
   const [openActualizar, setOpenActualizar] = useState(false)
   const [ticketActualizar, setTicketActualizar] = useState(null)
+  const [expandedTicketId, setExpandedTicketId] = useState(null)
 
   const [openAdjuntos, setOpenAdjuntos] = useState(false)
   const [ticketAdjuntos, setTicketAdjuntos] = useState(null)
@@ -941,6 +952,35 @@ const MisCreaciones = () => {
   useEffect(() => {
     load()
   }, [load])
+
+  const markTicketNotificationsRead = useCallback(
+    async ticketId => {
+      const tid = String(ticketId || '').trim()
+      if (!tid || !token || !id_personal) return
+
+      try {
+        const base = String(import.meta.env.VITE_API_URL_5 || '').replace(
+          /\/+$/,
+          ''
+        )
+
+        await fetch(`${base}/notifications/read-by-ticket`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id_personal: String(id_personal),
+            ticketId: tid,
+          }),
+        })
+      } catch (e) {
+        console.warn('No se pudo marcar notificación como leída:', e)
+      }
+    },
+    [token, id_personal]
+  )
 
   const rows = useMemo(() => {
     let data = [...rawRows]
@@ -1021,6 +1061,18 @@ const MisCreaciones = () => {
 
     return data
   }, [rawRows, filtersApplied, id_personal])
+
+  useEffect(() => {
+    const tid = getTicketIdFromQuery()
+    if (!tid) return
+    if (!rows?.length) return
+
+    const exists = rows.some(r => oidToString(r?._id) === tid)
+    if (!exists) return
+
+    setExpandedTicketId(tid)
+    markTicketNotificationsRead(tid)
+  }, [rows, markTicketNotificationsRead])
 
   const columns = useMemo(() => {
     const ellipsis = (text, title) => (
@@ -1316,6 +1368,15 @@ const MisCreaciones = () => {
           customStyles={tableStyles}
           persistTableHead
           expandableRows
+          // ✅ NUEVO: controlar expansión por ticketId y marcar leído al expandir
+          expandableRowExpanded={row =>
+            oidToString(row?._id) === expandedTicketId
+          }
+          onRowExpandToggled={(expanded, row) => {
+            const tid = oidToString(row?._id)
+            setExpandedTicketId(expanded ? tid : null)
+            if (expanded) markTicketNotificationsRead(tid)
+          }}
           expandableRowsComponent={props => (
             <ExpandedComponent
               {...props}

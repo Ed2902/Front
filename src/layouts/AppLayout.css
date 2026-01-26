@@ -1,0 +1,22 @@
+/* src/layouts/AppLayout.css */
+.app-layout {
+  display: flex;
+  height: 100vh; /* 🔥 fijo a la pantalla */
+  width: 100%;
+  overflow: hidden; /* 🔥 evita que el documento scrollee */
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  height: 100vh; /* 🔥 asegura scroll solo aquí */
+  overflow: auto; /* ✅ aquí vive el scroll */
+  padding: 16px 12px 24px;
+  background: #f5f7fb;
+}
+
+@media (min-width: 992px) {
+  .app-main {
+    padding: 24px;
+  }
+}

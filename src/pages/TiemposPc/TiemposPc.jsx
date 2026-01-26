@@ -1,12 +1,11 @@
 ﻿// src/pages/TiemposPc/TiemposPc.jsx
 import { useEffect, useState } from 'react'
-import Sidebar from '../../components/Sidebar/Sidebar'
 import './TiemposPc.css'
 
-// 👉 importa tu servicio (axios base con VITE_API_URL_3)
+// 👉 importa tu servicio
 import TiemposPcSrv from '../../components/TiemposPc/service.TiemposPc'
 
-// 👉 importa los 3 componentes que te pasé antes
+// 👉 componentes
 import FiltroFechasBusqueda from '../../components/TiemposPc/FiltroFechasBusqueda'
 import TablaUsuariosTiempos from '../../components/TiemposPc/TablaUsuariosTiempos'
 import ModalDetalleApps from '../../components/TiemposPc/DetalleActividad.jsx'
@@ -17,7 +16,7 @@ const toYMD = d =>
   `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 const yesterday = () => {
   const d = new Date()
-  d.setDate(d.getDate() - 1) // reporte un día atrás
+  d.setDate(d.getDate() - 1)
   d.setHours(0, 0, 0, 0)
   return toYMD(d)
 }
@@ -37,7 +36,7 @@ export default function TiemposPc() {
   const [detalleOpen, setDetalleOpen] = useState(false)
   const [detalleRow, setDetalleRow] = useState(null)
 
-  // carga lista de usuarios al montar
+  // carga lista de usuarios
   useEffect(() => {
     let cancel = false
     ;(async () => {
@@ -54,7 +53,6 @@ export default function TiemposPc() {
     }
   }, [])
 
-  // acción: cargar métricas para la fecha seleccionada
   const cargar = async () => {
     setLoading(true)
     setError('')
@@ -63,14 +61,12 @@ export default function TiemposPc() {
       const out = []
       for (const user of users) {
         try {
-          // usamos latest solo para conocer hostname actual del usuario
           const latest = await TiemposPcSrv.getLatest(user)
           const hostname = latest?.hostname || null
           if (!hostname) {
             out.push({ user, date, error: 'Sin hostname en /reports/latest' })
             continue
           }
-          // reporte canónico por user + fecha (del filtro) + hostname
           const report = await TiemposPcSrv.getReportByDateHost({
             user,
             date,
@@ -79,7 +75,6 @@ export default function TiemposPc() {
           const metrics = TiemposPcSrv.computeMetrics(report)
           out.push({ user, hostname, date, metrics })
         } catch (err) {
-          console.error('User fail', user, err)
           out.push({ user, date, error: String(err?.message || err) })
         }
       }
@@ -98,40 +93,37 @@ export default function TiemposPc() {
   }
 
   return (
-    <section className='layout'>
-      <Sidebar />
-      <div className='body'>
-        <h2 className='mb-3'>Tiempos en PC</h2>
+    <div className='page'>
+      <h2 className='mb-3'>Tiempos en PC</h2>
 
-        {/* Filtros y acciones */}
-        <div className='card p-3 mb-3'>
-          <FiltroFechasBusqueda
-            date={date}
-            search={search}
-            onDateChange={setDate}
-            onSearchChange={setSearch}
-            onCargar={cargar}
-          />
-        </div>
-
-        {/* Tabla principal */}
-        <div className='card p-3'>
-          <TablaUsuariosTiempos
-            rows={rows}
-            loading={loading}
-            error={error}
-            search={search}
-            onVerDetalle={verDetalle}
-          />
-        </div>
-
-        {/* Modal detalle por apps/dominos */}
-        <ModalDetalleApps
-          open={detalleOpen}
-          onClose={() => setDetalleOpen(false)}
-          row={detalleRow}
+      {/* Filtros */}
+      <div className='card p-3 mb-3'>
+        <FiltroFechasBusqueda
+          date={date}
+          search={search}
+          onDateChange={setDate}
+          onSearchChange={setSearch}
+          onCargar={cargar}
         />
       </div>
-    </section>
+
+      {/* Tabla */}
+      <div className='card p-3'>
+        <TablaUsuariosTiempos
+          rows={rows}
+          loading={loading}
+          error={error}
+          search={search}
+          onVerDetalle={verDetalle}
+        />
+      </div>
+
+      {/* Modal */}
+      <ModalDetalleApps
+        open={detalleOpen}
+        onClose={() => setDetalleOpen(false)}
+        row={detalleRow}
+      />
+    </div>
   )
 }
