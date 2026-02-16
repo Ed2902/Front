@@ -35,45 +35,110 @@ export default function FiltrosMisTareas({
     return []
   }
 
+  const empresaOptions = useMemo(() => {
+    const opts = (empresas || []).map(e => ({
+      value: e?.orgId || e?._id || '',
+      label: e?.name || e?.nombre || e?.orgId || e?._id || '',
+    }))
+    return [{ value: '', label: 'Todas' }, ...opts]
+  }, [empresas])
+
+  const orgIdsDisponibles = useMemo(() => {
+    // si el usuario elige una empresa => solo esa
+    if (orgId) return [orgId]
+    // si es "todas" => todas las empresas declaradas
+    return (empresas || [])
+      .map(e => e?.orgId || e?._id || '')
+      .map(x => String(x || '').trim())
+      .filter(Boolean)
+  }, [orgId, empresas])
+
+  // Carga catálogos y deps. Ya NO depende de que orgId exista.
   useEffect(() => {
     const loadDeps = async () => {
       setError('')
+      setLoading(false)
+
+      // Reseteamos listas (pero NO borramos selección del usuario)
       setEstados([])
       setPrioridades([])
       setCategorias([])
-      setAreas([])
-      setTeams([])
-      setEstadoId('')
-      setPrioridadId('')
-      setCategoriaId('')
-      setAsignadoTipo('')
-      setAsignadoId('')
 
       if (!token) return
-      if (!orgId) return // Todas
 
       try {
         setLoading(true)
 
-        const [resE, resP, resC, resA, resT] = await Promise.all([
-          listarCatalogo({ orgId, type: 'estado', page: 1, limit: 100 }, token),
-          listarCatalogo(
-            { orgId, type: 'prioridad', page: 1, limit: 100 },
-            token
-          ),
-          listarCatalogo(
-            { orgId, type: 'categoria', page: 1, limit: 100 },
-            token
-          ),
-          listarAreas({ page: 1, limit: 100 }, token),
-          listarTeams({ page: 1, limit: 100 }, token),
+        // Teams/Areas NO dependen de orgId, así que siempre las cargamos
+        const [resA, resT] = await Promise.all([
+          listarAreas({ page: 1, limit: 200 }, token),
+          listarTeams({ page: 1, limit: 200 }, token),
         ])
-
-        setEstados(pickItems(resE))
-        setPrioridades(pickItems(resP))
-        setCategorias(pickItems(resC))
         setAreas(pickItems(resA))
         setTeams(pickItems(resT))
+
+        // Si no hay empresas configuradas, no podemos cargar catálogo
+        if (!orgIdsDisponibles.length) {
+          setEstados([])
+          setPrioridades([])
+          setCategorias([])
+          return
+        }
+
+        // Cargamos catálogos de 1 o N orgs y los unimos
+        const catPromises = orgIdsDisponibles.map(oid =>
+          Promise.all([
+            listarCatalogo(
+              { orgId: oid, type: 'estado', page: 1, limit: 200 },
+              token
+            ),
+            listarCatalogo(
+              { orgId: oid, type: 'prioridad', page: 1, limit: 200 },
+              token
+            ),
+            listarCatalogo(
+              { orgId: oid, type: 'categoria', page: 1, limit: 200 },
+              token
+            ),
+          ]).then(([e, p, c]) => ({
+            orgId: oid,
+            estados: pickItems(e),
+            prioridades: pickItems(p),
+            categorias: pickItems(c),
+          }))
+        )
+
+        const results = await Promise.all(catPromises)
+
+        // Unimos y quitamos duplicados por _id (si se repiten)
+        const estadosMap = new Map()
+        const prioridadesMap = new Map()
+        const categoriasMap = new Map()
+
+        for (const r of results) {
+          for (const x of r.estados || []) {
+            const id = String(x?._id || '').trim()
+            if (!id) continue
+            if (!estadosMap.has(id))
+              estadosMap.set(id, { ...x, __orgId: r.orgId })
+          }
+          for (const x of r.prioridades || []) {
+            const id = String(x?._id || '').trim()
+            if (!id) continue
+            if (!prioridadesMap.has(id))
+              prioridadesMap.set(id, { ...x, __orgId: r.orgId })
+          }
+          for (const x of r.categorias || []) {
+            const id = String(x?._id || '').trim()
+            if (!id) continue
+            if (!categoriasMap.has(id))
+              categoriasMap.set(id, { ...x, __orgId: r.orgId })
+          }
+        }
+
+        setEstados([...estadosMap.values()])
+        setPrioridades([...prioridadesMap.values()])
+        setCategorias([...categoriasMap.values()])
       } catch (e) {
         setError(
           e?.response?.data?.errors?.[0] ||
@@ -87,36 +152,29 @@ export default function FiltrosMisTareas({
     }
 
     loadDeps()
-  }, [orgId, token])
+  }, [token, orgIdsDisponibles])
 
   useEffect(() => {
     setAsignadoId('')
   }, [asignadoTipo])
 
-  const empresaOptions = useMemo(() => {
-    const opts = (empresas || []).map(e => ({
-      value: e?.orgId || e?._id || '',
-      label: e?.name || e?.nombre || e?.orgId || e?._id || '',
-    }))
-    return [{ value: '', label: 'Todas' }, ...opts]
-  }, [empresas])
-
   const buildFilters = () => {
     const f = {}
 
+    // ✅ ya NO obligamos orgId
     if (orgId) f.orgId = orgId
+
     if (search.trim()) f.search = search.trim()
     if (tipo) f.tipo = tipo
     if (activo !== '') f.activo = activo
 
-    if (orgId) {
-      if (estado_id) f.estado_id = estado_id
-      if (prioridad_id) f.prioridad_id = prioridad_id
-      if (categoria_id) f.categoria_id = categoria_id
+    // ✅ estado/prioridad/categoría se pueden mandar aun sin orgId
+    if (estado_id) f.estado_id = estado_id
+    if (prioridad_id) f.prioridad_id = prioridad_id
+    if (categoria_id) f.categoria_id = categoria_id
 
-      if (asignadoTipo === 'team' && asignadoId) f.team_id = asignadoId
-      if (asignadoTipo === 'area' && asignadoId) f.area_id = asignadoId
-    }
+    if (asignadoTipo === 'team' && asignadoId) f.team_id = asignadoId
+    if (asignadoTipo === 'area' && asignadoId) f.area_id = asignadoId
 
     return f
   }
@@ -135,8 +193,6 @@ export default function FiltrosMisTareas({
   }
 
   const aplicar = () => onApply?.(buildFilters())
-
-  const disabledDeps = !orgId || loading
 
   return (
     <div className='tickets-filtros'>
@@ -199,12 +255,13 @@ export default function FiltrosMisTareas({
             className='form-select form-select-sm'
             value={estado_id}
             onChange={e => setEstadoId(e.target.value)}
-            disabled={disabledDeps}
+            disabled={loading}
           >
             <option value=''>Todos</option>
             {estados.map(x => (
-              <option key={x._id} value={x._id}>
+              <option key={`${x.__orgId || 'x'}::${x._id}`} value={x._id}>
                 {x.name || x.nombre}
+                {orgId ? '' : x.__orgId ? ` (${x.__orgId})` : ''}
               </option>
             ))}
           </select>
@@ -216,12 +273,13 @@ export default function FiltrosMisTareas({
             className='form-select form-select-sm'
             value={prioridad_id}
             onChange={e => setPrioridadId(e.target.value)}
-            disabled={disabledDeps}
+            disabled={loading}
           >
             <option value=''>Todas</option>
             {prioridades.map(x => (
-              <option key={x._id} value={x._id}>
+              <option key={`${x.__orgId || 'x'}::${x._id}`} value={x._id}>
                 {x.name || x.nombre}
+                {orgId ? '' : x.__orgId ? ` (${x.__orgId})` : ''}
               </option>
             ))}
           </select>
@@ -233,12 +291,13 @@ export default function FiltrosMisTareas({
             className='form-select form-select-sm'
             value={categoria_id}
             onChange={e => setCategoriaId(e.target.value)}
-            disabled={disabledDeps}
+            disabled={loading}
           >
             <option value=''>Todas</option>
             {categorias.map(x => (
-              <option key={x._id} value={x._id}>
+              <option key={`${x.__orgId || 'x'}::${x._id}`} value={x._id}>
                 {x.name || x.nombre}
+                {orgId ? '' : x.__orgId ? ` (${x.__orgId})` : ''}
               </option>
             ))}
           </select>
@@ -250,7 +309,7 @@ export default function FiltrosMisTareas({
             className='form-select form-select-sm'
             value={asignadoTipo}
             onChange={e => setAsignadoTipo(e.target.value)}
-            disabled={disabledDeps}
+            disabled={loading}
           >
             <option value=''>—</option>
             <option value='team'>Team</option>
@@ -271,7 +330,7 @@ export default function FiltrosMisTareas({
               className='form-select form-select-sm'
               value={asignadoId}
               onChange={e => setAsignadoId(e.target.value)}
-              disabled={disabledDeps}
+              disabled={loading}
             >
               <option value=''>—</option>
               {teams.map(t => (
@@ -285,7 +344,7 @@ export default function FiltrosMisTareas({
               className='form-select form-select-sm'
               value={asignadoId}
               onChange={e => setAsignadoId(e.target.value)}
-              disabled={disabledDeps}
+              disabled={loading}
             >
               <option value=''>—</option>
               {areas.map(a => (
@@ -320,8 +379,8 @@ export default function FiltrosMisTareas({
       {!!error && <div className='tickets-filtros__error'>{error}</div>}
       {!orgId && (
         <div className='tickets-filtros__hint'>
-          * Selecciona una Empresa para habilitar
-          Estado/Prioridad/Categoría/Asignado.
+          * Estás en <b>Todas</b>. Los catálogos se cargan combinando las
+          empresas disponibles.
         </div>
       )}
     </div>

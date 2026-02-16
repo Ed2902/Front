@@ -11,6 +11,7 @@ export default function AgregarHistorialTicket({
   onSuccess,
   onError,
   className = '',
+  hideCerrado = false, // ✅ NUEVO
 }) {
   const { token, user } = useContext(AuthContext)
   const id_personal = user?.personal?.id_personal
@@ -23,26 +24,37 @@ export default function AgregarHistorialTicket({
 
   const estados = useMemo(() => {
     const m = maps?.estadosMap || {}
-    return Object.values(m)
-      .filter(Boolean)
-      .filter(s => {
-        if (!orgId) return true
-        if (s.orgId === undefined) return true
-        return String(s.orgId) === String(orgId)
-      })
-      .map(s => ({
-        _id: String(s._id),
-        label:
-          s.name ||
-          s.name_norm ||
-          s.nombre ||
-          s.nombre_norm ||
-          s.code ||
-          String(s._id),
-        order: Number(s.order ?? 9999),
-      }))
-      .sort((a, b) => a.order - b.order)
-  }, [maps, orgId])
+
+    return (
+      Object.values(m)
+        .filter(Boolean)
+        .filter(s => {
+          if (!orgId) return true
+          if (s.orgId === undefined) return true
+          return String(s.orgId) === String(orgId)
+        })
+        // ✅ SOLO filtra Cerrado si hideCerrado=true
+        .filter(s => {
+          if (!hideCerrado) return true
+          const labelRaw =
+            s.name || s.name_norm || s.nombre || s.nombre_norm || s.code || ''
+          const label = String(labelRaw).trim().toLowerCase()
+          return label !== 'cerrado'
+        })
+        .map(s => ({
+          _id: String(s._id),
+          label:
+            s.name ||
+            s.name_norm ||
+            s.nombre ||
+            s.nombre_norm ||
+            s.code ||
+            String(s._id),
+          order: Number(s.order ?? 9999),
+        }))
+        .sort((a, b) => a.order - b.order)
+    )
+  }, [maps, orgId, hideCerrado])
 
   const onPickFiles = e => {
     const list = Array.from(e.target.files || [])
