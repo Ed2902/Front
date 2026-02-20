@@ -4,6 +4,7 @@ import axios from 'axios'
 import AuthContext from '../../../../context/AuthContext'
 import { crearAlistamiento } from './alistamiento_service'
 import { getInventarioResumen } from '../../Inventario/salida_service'
+import UbicarProductoInventario from './UbicarProductoInventario'
 
 const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
 
@@ -57,6 +58,9 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
   const [invOpciones, setInvOpciones] = useState([])
   const [opcionSeleccionadaKey, setOpcionSeleccionadaKey] = useState('')
   const [cantidadDisponibleItem, setCantidadDisponibleItem] = useState(null)
+
+  // ✅ NUEVO: para “esperar” a que invOpciones esté lista y ahí sí seleccionar bodega/ubicación
+  const [posPendienteKey, setPosPendienteKey] = useState('')
 
   const evidenciaRef = useRef(null)
   const [evidenciaPreviewName, setEvidenciaPreviewName] = useState('')
@@ -190,6 +194,22 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
     }
   }, [idLoteItem, productoItem, invResumen, setValueItem])
 
+  // ✅ NUEVO: cuando invOpciones ya está lista, aplicar la selección pendiente (si viene del buscador)
+  useEffect(() => {
+    if (!posPendienteKey) return
+    if (!invOpciones.length) return
+
+    const op = invOpciones.find(o => o.key === posPendienteKey)
+    if (!op) return
+
+    setOpcionSeleccionadaKey(op.key)
+    setCantidadDisponibleItem(toNumberCO(op.cantidad))
+    setValueItem('id_bodega_origen', op.id_bodega)
+    setValueItem('id_ubicacion_origen', op.id_ubicacion)
+
+    setPosPendienteKey('')
+  }, [posPendienteKey, invOpciones, setValueItem])
+
   const totalCantidad = useMemo(
     () => items.reduce((sum, it) => sum + toNumberCO(it.cantidad), 0),
     [items]
@@ -199,6 +219,27 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
     () => items.length > 0 && items.every(it => !!it.verificado),
     [items]
   )
+
+  // ✅ NUEVO: cuando eliges desde el buscador
+  const onPickFromSearch = op => {
+    setStatusMessage(null)
+
+    const lote = String(op?.id_lote || '')
+    const prod = String(op?.id_producto || '')
+    const keyPos = `${op?.id_bodega || ''}|${op?.id_ubicacion || ''}`
+
+    // 1) Lote
+    setIdLoteItem(lote)
+
+    // 2) Producto (RHF) -> esto dispara el effect que genera invOpciones
+    setValueItem('id_producto_item', prod, {
+      shouldValidate: true,
+      shouldDirty: true,
+    })
+
+    // 3) Guardar key de posición para que el otro effect la seleccione cuando exista
+    setPosPendienteKey(keyPos)
+  }
 
   const onAddItem = data => {
     setStatusMessage(null)
@@ -215,16 +256,26 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
       return setStatusMessage('Cantidad supera la disponible en esa posición')
     }
 
-    // no duplicar lote+producto
-    const dup = items.some(
-      it =>
-        String(it.id_lote) === String(idLoteItem) &&
-        String(it.id_producto) === String(id_producto)
-    )
-    if (dup)
-      return setStatusMessage('Ese lote + producto ya está en el alistamiento')
-
     const op = invOpciones.find(o => o.key === opcionSeleccionadaKey)
+
+    // ✅ FIX: permitir mismo lote+producto si cambia bodega/ubicación
+    // Bloquear SOLO si es exactamente la MISMA posición
+    const dup = items.some(it => {
+      const sameLote = String(it.id_lote) === String(idLoteItem)
+      const sameProd = String(it.id_producto) === String(id_producto)
+      const sameBodega =
+        String(it.id_bodega_origen || '') === String(op?.id_bodega || '')
+      const sameUbic =
+        String(it.id_ubicacion_origen || '') === String(op?.id_ubicacion || '')
+      return sameLote && sameProd && sameBodega && sameUbic
+    })
+
+    if (dup) {
+      return setStatusMessage(
+        'Ese lote + producto ya existe en la misma bodega/ubicación'
+      )
+    }
+
     const productoNombre =
       productosDisponibles.find(p => p.id === id_producto)?.name || id_producto
 
@@ -304,6 +355,7 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
       setInvOpciones([])
       setOpcionSeleccionadaKey('')
       setCantidadDisponibleItem(null)
+      setPosPendienteKey('')
       setEvidenciaPreviewName('')
       if (evidenciaRef.current) evidenciaRef.current.value = ''
       reset()
@@ -413,13 +465,22 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
         <div className='card mb-3'>
           <div className='card-body'>
             <div className='d-flex align-items-center justify-content-between mb-2'>
-              <h6 className='mb-0'>Agregar ítems desde inventario</h6>
               <div className='text-muted small'>
                 Total ítems: <b>{items.length}</b> · Total cantidad:{' '}
                 <b>{totalCantidad.toLocaleString('es-CO')}</b>
               </div>
             </div>
 
+            <div className='row g-2'>
+              <div className='row justify-content-center'>
+                <div className='col-4 p-3'>
+                  <UbicarProductoInventario
+                    invResumen={invResumen}
+                    onSelect={onPickFromSearch}
+                  />
+                </div>
+              </div>
+            </div>
             <div className='row g-2'>
               <div className='col-12 col-md-3'>
                 <label className='form-label small mb-1'>Lote *</label>
@@ -429,6 +490,7 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
                   onChange={e => {
                     setIdLoteItem(e.target.value)
                     setValueItem('id_producto_item', '')
+                    setPosPendienteKey('')
                   }}
                 >
                   <option value=''>Selecciona lote</option>
@@ -472,6 +534,8 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
                     setCantidadDisponibleItem(
                       op ? toNumberCO(op.cantidad) : null
                     )
+                    setValueItem('id_bodega_origen', op?.id_bodega || '')
+                    setValueItem('id_ubicacion_origen', op?.id_ubicacion || '')
                   }}
                   disabled={!invOpciones.length}
                 >
@@ -504,15 +568,17 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
                 ) : null}
               </div>
 
-              <div className='col-12'>
-                <label className='form-label small mb-1'>
-                  Comentario ítem (opcional)
-                </label>
-                <input
-                  className='form-control form-control-sm'
-                  placeholder='Notas del item...'
-                  {...registerItem('comentario_item')}
-                />
+              <div className='row justify-content-center'>
+                <div className='col-4 p-3'>
+                  <label className='form-label small mb-1'>
+                    Comentario ítem (opcional)
+                  </label>
+                  <input
+                    className='form-control form-control-sm'
+                    placeholder='Notas del item...'
+                    {...registerItem('comentario_item')}
+                  />
+                </div>
               </div>
 
               <div className='col-12 d-flex justify-content-end'>
@@ -555,7 +621,9 @@ const FormAlistamiento = ({ onSuccess, onClose }) => {
                     </tr>
                   ) : (
                     items.map((it, idx) => (
-                      <tr key={`${it.id_lote}-${it.id_producto}`}>
+                      <tr
+                        key={`${it.id_lote}-${it.id_producto}-${it.id_bodega_origen}-${it.id_ubicacion_origen}`}
+                      >
                         <td className='fw-semibold'>{it.id_lote}</td>
                         <td>
                           {it.producto_nombre}{' '}

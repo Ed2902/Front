@@ -131,6 +131,9 @@ const SECCIONES = [
       { clave: 'misCreaciones', label: 'Mis Creaciones', padre: 'tickets' },
       { clave: 'misTareas', label: 'Mis Tareas', padre: 'tickets' },
 
+      //  Supervisor
+      { clave: 'seguimiento', label: 'Seguimiento', padre: 'tickets' },
+
       // Administración de tickets
       {
         clave: 'adminCatalogos',
