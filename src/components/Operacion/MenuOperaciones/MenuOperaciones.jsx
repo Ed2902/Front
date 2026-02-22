@@ -1,12 +1,13 @@
 // src/components/Operaciones/MenuOperaciones/MenuOperaciones.jsx
 import './MenuOperaciones.css'
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 import AuthContext from '../../../context/AuthContext'
 import { usePermisos } from '../../../hooks/usePermisos'
 
 const MenuOperaciones = ({ selectedSection, onSelectSection }) => {
   const { user } = useContext(AuthContext)
   const { tienePermiso } = usePermisos()
+  const [openMobile, setOpenMobile] = useState(false)
 
   // DEBUG: inspecciona lo que ve este componente
   console.log('MenuOperaciones.user.permisos (raw):', user?.permisos)
@@ -20,22 +21,44 @@ const MenuOperaciones = ({ selectedSection, onSelectSection }) => {
     { label: 'Operador', key: 'operador', permiso: 'operador' },
   ]
 
+  const handleSelect = key => {
+    onSelectSection(key)
+    setOpenMobile(false)
+  }
+
   return (
-    <div className='menu-operaciones'>
-      {botones
-        .filter(btn => tienePermiso(btn.permiso))
-        .map(btn => (
-          <button
-            key={btn.key}
-            className={`menu-button ${
-              selectedSection === btn.key ? 'active' : ''
-            }`}
-            onClick={() => onSelectSection(btn.key)}
-          >
-            {btn.label}
-          </button>
-        ))}
-    </div>
+    <>
+      <button
+        type='button'
+        className='operaciones-submenu-toggle'
+        aria-label='Abrir menú de Operaciones'
+        aria-expanded={openMobile}
+        onClick={() => setOpenMobile(v => !v)}
+      >
+        ☰
+      </button>
+
+      <div
+        className={`operaciones-submenu-overlay ${openMobile ? 'open' : ''}`}
+        onClick={() => setOpenMobile(false)}
+      />
+
+      <div className={`menu-operaciones ${openMobile ? 'submenu-open' : ''}`}>
+        {botones
+          .filter(btn => tienePermiso(btn.permiso))
+          .map(btn => (
+            <button
+              key={btn.key}
+              className={`menu-button ${
+                selectedSection === btn.key ? 'active' : ''
+              }`}
+              onClick={() => handleSelect(btn.key)}
+            >
+              {btn.label}
+            </button>
+          ))}
+      </div>
+    </>
   )
 }
 

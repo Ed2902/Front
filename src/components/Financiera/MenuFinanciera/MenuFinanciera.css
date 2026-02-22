@@ -24,17 +24,27 @@
   border-radius: 8px;
   font-weight: bold;
   font-size: 14px;
+  line-height: 1.25;
   cursor: pointer;
   min-width: 180px;
   max-width: 240px;
   text-align: center;
-  transition: background-color 0.3s ease, color 0.3s ease,
-    border-color 0.3s ease;
+
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  transform: none !important;
+  backface-visibility: hidden;
+  will-change: auto;
 }
 
 /* Botón activo */
 .menu-financiera .menu-button.active {
   background-color: #f74c1b;
+  border-color: #f74c1b;
   color: #ffffff;
 }
 
@@ -43,16 +53,107 @@
   background-color: #67e1ff;
   border-color: #67e1ff;
   color: #ffffff;
+  transform: none !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+.menu-financiera .menu-button:focus {
+  outline: none;
+}
+
+.menu-financiera .menu-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(89, 161, 247, 0.35);
+}
+
+.financiera-submenu-toggle {
+  display: none;
+}
+
+.financiera-submenu-overlay {
+  display: none;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
+  .financiera-submenu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 2002;
+
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+
+    align-items: center;
+    justify-content: center;
+
+    border: 0;
+    background: #f74c1b;
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 20px;
+    line-height: 1;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+  }
+
+  .financiera-submenu-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 2000;
+  }
+
+  .financiera-submenu-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .menu-financiera {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: auto;
+
+    height: 100vh;
+    width: 280px;
+    z-index: 2001;
+
     flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+
+    padding: 70px 12px 12px;
+    gap: 10px;
+
+    transform: translateX(105%);
+    transition: transform 0.22s ease;
+    overflow-y: auto;
+  }
+
+  .menu-financiera.submenu-open {
+    transform: translateX(0);
   }
 
   .menu-financiera .menu-button {
-    width: 90%;
-    max-width: 320px;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-financiera,
+  .financiera-submenu-overlay,
+  .menu-financiera .menu-button {
+    transition: none !important;
   }
 }

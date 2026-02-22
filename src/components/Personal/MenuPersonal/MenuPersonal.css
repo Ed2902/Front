@@ -25,12 +25,21 @@
   border-radius: 8px;
   font-weight: bold;
   font-size: 14px;
+  line-height: 1.25;
   cursor: pointer;
   min-width: 180px;
   max-width: 240px;
   text-align: center;
-  transition: background-color 0.3s ease, color 0.3s ease,
-    border-color 0.3s ease, transform 0.15s ease;
+
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  transform: none !important;
+  backface-visibility: hidden;
+  will-change: auto;
 }
 
 /* Botón activo */
@@ -44,17 +53,108 @@
   background-color: #67e1ff; /* segundo segundario */
   border-color: #67e1ff;
   color: #ffffff;
-  transform: translateY(-1px);
+  transform: none !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+.menu-personal .menu-button:focus {
+  outline: none;
+}
+
+.menu-personal .menu-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(89, 161, 247, 0.35);
+}
+
+.personal-submenu-toggle {
+  display: none;
+}
+
+.personal-submenu-overlay {
+  display: none;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
+  .personal-submenu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 2002;
+
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+
+    align-items: center;
+    justify-content: center;
+
+    border: 0;
+    background: #f74c1b;
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 20px;
+    line-height: 1;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+  }
+
+  .personal-submenu-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 2000;
+  }
+
+  .personal-submenu-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .menu-personal {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: auto;
+
+    height: 100vh;
+    width: 280px;
+    z-index: 2001;
+
     flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+
+    padding: 70px 12px 12px;
+    gap: 10px;
+
+    transform: translateX(105%);
+    transition: transform 0.22s ease;
+    overflow-y: auto;
+    border-radius: 0;
+  }
+
+  .menu-personal.submenu-open {
+    transform: translateX(0);
   }
 
   .menu-personal .menu-button {
-    width: 90%;
-    max-width: 320px;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-personal,
+  .personal-submenu-overlay,
+  .menu-personal .menu-button {
+    transition: none !important;
   }
 }

@@ -1,5 +1,5 @@
 // tabla_alistamientos.jsx
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from 'react-data-table-component'
 import { Modal as AntdModal } from 'antd'
@@ -7,6 +7,8 @@ import { FaEdit, FaTimesCircle, FaArrowUp } from 'react-icons/fa'
 import {
   listarAlistamientos,
   cancelarAlistamiento,
+  listarPersonas,
+  listarClientes,
 } from './alistamiento_service'
 import SecureArchivo from './SecureArchivo'
 
@@ -35,21 +37,32 @@ const badgeByEstado = estado => {
 }
 
 const tableStyles = {
+  table: { style: { width: '100%' } },
+  headRow: { style: { minHeight: '34px' } },
   headCells: {
     style: {
       fontWeight: 700,
+      fontSize: '12px',
+      paddingTop: '6px',
+      paddingBottom: '6px',
+      paddingLeft: '8px',
+      paddingRight: '8px',
       whiteSpace: 'nowrap',
-      paddingTop: '0.55rem',
-      paddingBottom: '0.55rem',
     },
   },
   cells: {
     style: {
-      paddingTop: '0.45rem',
-      paddingBottom: '0.45rem',
+      fontSize: '12px',
+      paddingTop: '6px',
+      paddingBottom: '6px',
+      paddingLeft: '8px',
+      paddingRight: '8px',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
     },
   },
-  rows: { style: { minHeight: '44px' } },
+  rows: { style: { minHeight: '38px' } },
 }
 
 const Ellipsis = ({ title, children }) => (
@@ -77,7 +90,98 @@ const getEstado = r => pickFirstDefined(r?.estado, r?.Estado)
 const getNombre = r => pickFirstDefined(r?.nombre, r?.Nombre)
 const getCliente = r =>
   pickFirstDefined(r?.id_cliente, r?.id_Cliente, r?.Id_cliente, r?.Id_Cliente)
+const getClienteNombre = r =>
+  pickFirstDefined(
+    r?.cliente?.Nombre,
+    r?.cliente?.nombre,
+    r?.Cliente?.Nombre,
+    r?.Cliente?.nombre,
+    r?.nombre_cliente,
+    r?.Nombre_cliente
+  )
+const getClienteLabel = (r, clientesMap = {}) => {
+  const directo = getClienteNombre(r)
+  if (directo) return directo
+  const id = getCliente(r)
+  if (!id) return null
+  const key = String(id).trim()
+  return clientesMap[key] || id
+}
 const getPersonal = r => pickFirstDefined(r?.id_personal, r?.Id_personal)
+const getPersonalNombre = r =>
+  pickFirstDefined(
+    r?.personal?.Nombre,
+    r?.personal?.nombre,
+    r?.personal?.nombre_completo,
+    r?.personal?.Nombres,
+    r?.Personal?.Nombre,
+    r?.Personal?.nombre,
+    r?.nombre_personal,
+    r?.Nombre_personal
+  )
+const getPersonalLabel = (r, personalMap = {}) => {
+  const directo = getPersonalNombre(r)
+  if (directo) return directo
+  const id = getPersonal(r)
+  if (!id) return null
+  const key = String(id).trim()
+  return personalMap[key] || id
+}
+
+const normalizePersonasResponse = resp => {
+  if (Array.isArray(resp)) return resp
+  return resp?.data || resp?.rows || resp?.personas || resp?.result || []
+}
+
+const buildPersonaNombre = p =>
+  pickFirstDefined(
+    [p?.Nombre, p?.Apellido].filter(Boolean).join(' ').trim(),
+    [p?.nombre, p?.apellido].filter(Boolean).join(' ').trim(),
+    p?.nombre_completo,
+    p?.Nombres,
+    p?.Nombre_completo,
+    [
+      p?.Primer_nombre,
+      p?.Segundo_nombre,
+      p?.Primer_apellido,
+      p?.Segundo_apellido,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+  )
+
+const buildPersonasMap = personas => {
+  const map = {}
+  ;(Array.isArray(personas) ? personas : []).forEach(p => {
+    const id = pickFirstDefined(
+      p?.id_personal,
+      p?.Id_personal,
+      p?.id,
+      p?.Id,
+      p?.Cedula,
+      p?.cedula
+    )
+    const nombre = buildPersonaNombre(p)
+    if (id != null && nombre) map[String(id).trim()] = nombre
+  })
+  return map
+}
+
+const normalizeClientesResponse = resp => {
+  if (Array.isArray(resp)) return resp
+  return resp?.data || resp?.rows || resp?.clientes || resp?.result || []
+}
+
+const buildClientesMap = clientes => {
+  const map = {}
+  ;(Array.isArray(clientes) ? clientes : []).forEach(c => {
+    const id = pickFirstDefined(c?.id_Cliente, c?.Id_cliente, c?.id_cliente)
+    const nombre = pickFirstDefined(c?.Nombre, c?.nombre)
+    if (id != null && nombre) map[String(id).trim()] = nombre
+  })
+  return map
+}
 
 const getObservaciones = r =>
   pickFirstDefined(
@@ -191,12 +295,12 @@ const normalizeListResponse = resp => {
 }
 
 // ===================== Expanded =====================
-const ExpandedComponent = ({ data }) => {
+const ExpandedComponent = ({ data, personalMap, clientesMap }) => {
   const id = idAlist(data)
   const estado = safeUpper(getEstado(data))
   const nombre = getNombre(data) || '—'
-  const cliente = getCliente(data)
-  const personal = getPersonal(data)
+  const clienteLabel = getClienteLabel(data, clientesMap)
+  const personalLabel = getPersonalLabel(data, personalMap)
   const obs = getObservaciones(data) || '—'
   const createdAt = getCreatedAt(data)
 
@@ -211,6 +315,14 @@ const ExpandedComponent = ({ data }) => {
   const evidenciaRuta = normalizeRutaRelativa(evidenciaRaw)
 
   const detalles = getDetalles(data)
+  const wrapTextStyle = {
+    margin: 0,
+    maxWidth: '100%',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+    lineHeight: 1.25,
+  }
 
   return (
     <div className='w-100 px-2 py-2'>
@@ -238,17 +350,19 @@ const ExpandedComponent = ({ data }) => {
         <div className='row g-3'>
           <div className='col-12 col-md-6'>
             <div className='fw-bold mb-1'>Nombre</div>
-            <div className='text-muted'>{nombre}</div>
+            <p className='text-muted' style={wrapTextStyle}>
+              {nombre}
+            </p>
           </div>
 
           <div className='col-6 col-md-3'>
             <div className='fw-bold mb-1'>Cliente</div>
-            <div className='text-muted'>{cliente ?? '—'}</div>
+            <div className='text-muted'>{clienteLabel ?? '—'}</div>
           </div>
 
           <div className='col-6 col-md-3'>
-            <div className='fw-bold mb-1'>Operador (id_personal)</div>
-            <div className='text-muted'>{personal ?? '—'}</div>
+            <div className='fw-bold mb-1'>Creado por</div>
+            <div className='text-muted'>{personalLabel ?? '—'}</div>
           </div>
 
           <div className='col-12 col-md-4'>
@@ -258,7 +372,9 @@ const ExpandedComponent = ({ data }) => {
 
           <div className='col-12 col-md-8'>
             <div className='fw-bold mb-1'>Observaciones</div>
-            <div className='text-muted'>{obs}</div>
+            <p className='text-muted' style={wrapTextStyle}>
+              {obs}
+            </p>
           </div>
 
           <div className='col-12'>
@@ -314,13 +430,13 @@ const ExpandedComponent = ({ data }) => {
                         <tr key={key}>
                           <td className='fw-semibold'>{lote}</td>
                           <td>
-                            <Ellipsis title={prodLabel}>{prodLabel}</Ellipsis>
+                            <p style={wrapTextStyle}>{prodLabel}</p>
                           </td>
                           <td className='text-end fw-semibold'>{cant}</td>
                           <td className='text-muted'>{ref ?? '—'}</td>
                           <td className='text-muted'>{unidad ?? '—'}</td>
                           <td>
-                            <Ellipsis title={comentario}>{comentario}</Ellipsis>
+                            <p style={wrapTextStyle}>{comentario}</p>
                           </td>
                         </tr>
                       )
@@ -341,9 +457,13 @@ const ExpandedComponent = ({ data }) => {
 // ===================== Main =====================
 const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
   const navigate = useNavigate()
+  const containerRef = useRef(null)
 
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState([])
+  const [containerWidth, setContainerWidth] = useState(1280)
+  const [personasMap, setPersonasMap] = useState({})
+  const [clientesMap, setClientesMap] = useState({})
   const [meta, setMeta] = useState({
     page: 1,
     limit: 100,
@@ -379,6 +499,34 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
     return p
   }, [page, limit, estado, nombre, q, idCliente, idPersonal, desde, hasta])
 
+  const stats = useMemo(() => {
+    const acc = {
+      total: rows.length,
+      abiertos: 0,
+      despachados: 0,
+      cancelados: 0,
+    }
+
+    rows.forEach(r => {
+      const est = safeUpper(getEstado(r))
+      if (est === 'ABIERTO') acc.abiertos += 1
+      if (est === 'DESPACHADO') acc.despachados += 1
+      if (est === 'CANCELADO') acc.cancelados += 1
+    })
+
+    return acc
+  }, [rows])
+
+  const pageStart = useMemo(() => {
+    if (!meta.total) return 0
+    return (page - 1) * limit + 1
+  }, [meta.total, page, limit])
+
+  const pageEnd = useMemo(() => {
+    if (!meta.total) return 0
+    return Math.min(page * limit, meta.total)
+  }, [meta.total, page, limit])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -412,6 +560,61 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const loadPersonas = async () => {
+      try {
+        const resp = await listarPersonas()
+        const personas = normalizePersonasResponse(resp)
+        setPersonasMap(buildPersonasMap(personas))
+      } catch (error) {
+        console.error('No se pudo cargar catálogo de personas', error)
+      }
+    }
+    loadPersonas()
+  }, [])
+
+  useEffect(() => {
+    const loadClientes = async () => {
+      try {
+        const resp = await listarClientes({ page: 1, limit: 100 })
+        const clientes = normalizeClientesResponse(resp)
+        setClientesMap(buildClientesMap(clientes))
+      } catch (error) {
+        console.error('No se pudo cargar catálogo de clientes', error)
+      }
+    }
+    loadClientes()
+  }, [])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const applyWidth = () => {
+      const w = Math.round(el.getBoundingClientRect().width)
+      if (w > 0) setContainerWidth(w)
+    }
+
+    applyWidth()
+
+    let observer = null
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => applyWidth())
+      observer.observe(el)
+    } else {
+      window.addEventListener('resize', applyWidth)
+    }
+
+    return () => {
+      if (observer) observer.disconnect()
+      else window.removeEventListener('resize', applyWidth)
+    }
+  }, [])
+
+  const isCompact = containerWidth <= 1280
+  const isNarrow = containerWidth <= 1140
+  const isUltraNarrow = containerWidth <= 980
 
   const onResetFiltros = () => {
     setEstado('')
@@ -465,10 +668,11 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
   const columns = useMemo(() => {
     return [
       {
+        id: 1,
         name: 'ID',
         selector: r => idAlist(r),
         sortable: true,
-        width: '65px',
+        width: '52px',
         cell: r => (
           <span className='fw-semibold'>
             <Ellipsis title={String(idAlist(r) ?? '')}>
@@ -478,29 +682,35 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
         ),
       },
       {
+        id: 'estado',
         name: 'Estado',
         selector: r => getEstado(r),
         sortable: true,
-        width: '100px',
+        width: '118px',
         cell: r => {
           const est = safeUpper(getEstado(r))
           return <span className={badgeByEstado(est)}>{est || '—'}</span>
         },
       },
       {
+        id: 'nombre',
         name: 'Nombre',
         selector: r => getNombre(r),
         sortable: true,
-        grow: 3,
+        grow: 4,
+        minWidth: '170px',
         cell: r => {
           const v = getNombre(r) || '—'
           return <Ellipsis title={v}>{v}</Ellipsis>
         },
       },
       {
+        id: 'lotes',
         name: 'Lotes',
         sortable: false,
         grow: 2,
+        minWidth: '130px',
+        omit: isNarrow,
         cell: r => {
           const lotes = getLotesUnicos(r)
           if (!lotes.length) return <span className='text-muted'>—</span>
@@ -509,6 +719,7 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
         },
       },
       {
+        id: 'items',
         name: 'Items',
         sortable: true,
         width: '70px',
@@ -518,32 +729,52 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
         ),
       },
       {
+        id: 'cliente',
         name: 'Cliente',
-        selector: r => getCliente(r),
+        selector: r => getClienteLabel(r, clientesMap),
         sortable: true,
-        width: '140px',
-        cell: r => <span className='text-muted'>{getCliente(r) ?? '—'}</span>,
+        width: '125px',
+        omit: isNarrow,
+        cell: r => (
+          <span className='text-muted'>
+            <Ellipsis title={getClienteLabel(r, clientesMap) || '—'}>
+              {getClienteLabel(r, clientesMap) ?? '—'}
+            </Ellipsis>
+          </span>
+        ),
       },
       {
+        id: 'operador',
         name: 'Operador',
-        selector: r => getPersonal(r),
+        selector: r => getPersonalLabel(r, personasMap),
         sortable: true,
-        width: '100px',
-        cell: r => <span className='text-muted'>{getPersonal(r) ?? '—'}</span>,
+        width: '110px',
+        omit: isCompact,
+        cell: r => (
+          <span className='text-muted'>
+            <Ellipsis title={getPersonalLabel(r, personasMap) || '—'}>
+              {getPersonalLabel(r, personasMap) ?? '—'}
+            </Ellipsis>
+          </span>
+        ),
       },
       {
+        id: 'fecha',
         name: 'Fecha',
         selector: r => getCreatedAt(r),
         sortable: true,
-        width: '90px',
+        width: '126px',
+        omit: isUltraNarrow,
         cell: r => (
           <span className='text-muted'>{fmtDate(getCreatedAt(r))}</span>
         ),
       },
       {
+        id: 'evidencia',
         name: 'Evidencia',
         right: true,
         width: '110px',
+        omit: isCompact,
         cell: r => {
           const evidenciaRaw = pickFirstDefined(
             r?.evidencia_general,
@@ -567,9 +798,10 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
         },
       },
       {
+        id: 'acciones',
         name: 'Acciones',
         right: true,
-        width: '110px',
+        width: '120px',
         cell: r => {
           const est = safeUpper(getEstado(r))
           const canEdit = est === 'ABIERTO'
@@ -608,16 +840,38 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
         },
       },
     ]
-  }, [onEditar, handleCrearSalida, handleCancelar])
+  }, [
+    onEditar,
+    handleCrearSalida,
+    handleCancelar,
+    isCompact,
+    isNarrow,
+    isUltraNarrow,
+    personasMap,
+    clientesMap,
+  ])
 
   return (
-    <div className='card'>
+    <div className='card' ref={containerRef}>
       <div className='card-header d-flex align-items-end'>
         <div className='me-auto'>
           <strong>Alistamientos</strong>
           <div className='text-muted small'>
-            Listado con detalle desplegable, filtros y paginación.
+            Listado de alistamientos con detalle desplegable y acciones rápidas.
           </div>
+        </div>
+
+        <div className='d-flex gap-2 flex-wrap justify-content-end'>
+          <span className='badge bg-secondary'>Vista: {stats.total}</span>
+          <span className='badge bg-warning text-dark'>
+            Abiertos: {stats.abiertos}
+          </span>
+          <span className='badge bg-success'>
+            Despachados: {stats.despachados}
+          </span>
+          <span className='badge bg-danger'>
+            Cancelados: {stats.cancelados}
+          </span>
         </div>
       </div>
 
@@ -642,7 +896,10 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
             Refrescar
           </button>
 
-          <div className='ms-auto d-flex gap-2 align-items-center'>
+          <div className='ms-auto d-flex gap-2 align-items-center flex-wrap'>
+            <span className='text-muted small'>
+              Mostrando: <b>{pageStart}</b> - <b>{pageEnd}</b>
+            </span>
             <span className='text-muted small'>
               Total: <b>{meta.total}</b>
             </span>
@@ -651,6 +908,18 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
 
         {showFilters && (
           <div className='border rounded p-3 mb-2 bg-light'>
+            <div className='d-flex justify-content-between align-items-center mb-2'>
+              <div className='fw-semibold small'>Filtros de búsqueda</div>
+              <button
+                type='button'
+                className='btn btn-sm btn-outline-dark'
+                onClick={onResetFiltros}
+                disabled={loading}
+              >
+                Limpiar
+              </button>
+            </div>
+
             <div className='row g-2 align-items-end'>
               <div className='col-12 col-md-2'>
                 <label className='form-label small mb-1'>Estado</label>
@@ -764,17 +1033,6 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
                   <option value={100}>100</option>
                 </select>
               </div>
-
-              <div className='col-12 col-md-2 d-flex gap-2'>
-                <button
-                  type='button'
-                  className='btn btn-sm btn-outline-dark w-100'
-                  onClick={onResetFiltros}
-                  disabled={loading}
-                >
-                  Limpiar
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -788,8 +1046,22 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
           responsive
           customStyles={tableStyles}
           persistTableHead
+          defaultSortFieldId={1}
+          defaultSortAsc={false}
+          conditionalRowStyles={[
+            {
+              when: row => safeUpper(getEstado(row)) === 'CANCELADO',
+              style: { backgroundColor: '#f8f9fa', color: '#6c757d' },
+            },
+          ]}
           expandableRows
-          expandableRowsComponent={props => <ExpandedComponent {...props} />}
+          expandableRowsComponent={props => (
+            <ExpandedComponent
+              {...props}
+              personalMap={personasMap}
+              clientesMap={clientesMap}
+            />
+          )}
           noDataComponent={
             <div className='text-muted small py-3'>
               {loading ? 'Cargando…' : 'Sin datos.'}
@@ -797,7 +1069,7 @@ const TablaAlistamientos = ({ onEditar, onCrearSalida }) => {
           }
         />
 
-        <div className='d-flex justify-content-between align-items-center mt-2'>
+        <div className='d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2'>
           <div className='small text-muted'>
             Página <b>{meta.page}</b> / {meta.totalPages}
           </div>

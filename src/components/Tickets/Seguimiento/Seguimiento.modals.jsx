@@ -1,4 +1,3 @@
-// MisCreaciones.modals.jsx
 import React from 'react'
 import { Modal as AntdModal } from 'antd'
 
@@ -6,9 +5,9 @@ import CrearTicketWizard from '../CrearTicket/CrearTicketWizard.jsx'
 import SecureArchivotikects from '../SecureArchivotikects.jsx'
 import AgregarHistorialTicket from '../historial/AgregarHistorialTicket.jsx'
 
-import { Ell } from './MisCreaciones.badges.jsx'
-import { changedByLabel, toTicketAbsolute } from './MisCreaciones.utils.js'
-import { EditarTicketForm } from './MisCreaciones.forms.jsx'
+import { Ell } from './Seguimiento.badges.jsx'
+import { changedByLabel, toTicketAbsolute } from './Seguimiento.utils.js'
+import { EditarTicketForm } from './Seguimiento.forms.jsx'
 
 export const ModalCrear = ({ open, onClose, onDone }) => {
   return (
@@ -19,7 +18,7 @@ export const ModalCrear = ({ open, onClose, onDone }) => {
       footer={null}
       centered
       width={980}
-      destroyOnHidden
+      destroyOnClose
     >
       <CrearTicketWizard
         onClose={() => {

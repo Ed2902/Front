@@ -49,19 +49,15 @@ export async function registerWebPush({
 }) {
   try {
     if (!('serviceWorker' in navigator)) {
-      console.warn('⚠️ Service Workers no soportados en este navegador')
       return { ok: false, reason: 'no_service_worker' }
     }
     if (!('PushManager' in window)) {
-      console.warn('⚠️ PushManager no soportado en este navegador')
       return { ok: false, reason: 'no_push_manager' }
     }
     if (!principalId) {
-      console.warn('⚠️ registerWebPush sin principalId (id_personal)')
       return { ok: false, reason: 'no_principalId' }
     }
     if (!axiosInstance && !apiBaseUrl) {
-      console.warn('❌ registerWebPush llamado sin axiosInstance ni apiBaseUrl')
       return { ok: false, reason: 'no_transport' }
     }
 
@@ -77,7 +73,6 @@ export async function registerWebPush({
       permission = await Notification.requestPermission()
     }
     if (permission !== 'granted') {
-      console.warn('⚠️ Permiso de notificaciones no concedido:', permission)
       return { ok: false, reason: `permission_${permission}` }
     }
 
@@ -101,7 +96,6 @@ export async function registerWebPush({
 
     const publicKey = publicKeyResp?.data?.publicKey
     if (!publicKey) {
-      console.warn('⚠️ Backend no devolvió publicKey:', publicKeyResp)
       return { ok: false, reason: 'no_public_key', detail: publicKeyResp }
     }
 
@@ -114,7 +108,6 @@ export async function registerWebPush({
       })
     }
     if (!sub) {
-      console.warn('⚠️ No se pudo obtener o crear la suscripción de push')
       return { ok: false, reason: 'no_subscription' }
     }
 
@@ -143,18 +136,11 @@ export async function registerWebPush({
     }
 
     if (!saveResp.ok) {
-      console.error('❌ Error guardando suscripción en backend:', saveResp)
       return { ok: false, reason: 'backend_subscribe_failed', detail: saveResp }
     }
 
-    console.log(
-      '✅ WebPush suscrito/actualizado:',
-      saveResp.status,
-      saveResp.data
-    )
     return { ok: true, subscription: sub, backend: saveResp.data }
   } catch (err) {
-    console.error('❌ Error en registerWebPush:', err)
     return { ok: false, reason: 'exception', error: err }
   }
 }
@@ -172,22 +158,14 @@ export async function unregisterWebPush({
 }) {
   try {
     if (!principalId) {
-      console.warn('⚠️ unregisterWebPush sin principalId (id_personal)')
       return { ok: false, reason: 'no_principalId' }
     }
     if (!axiosInstance && !apiBaseUrl) {
-      console.warn(
-        '❌ unregisterWebPush llamado sin axiosInstance ni apiBaseUrl'
-      )
       return { ok: false, reason: 'no_transport' }
     }
 
     // 1) Obtener SW
     const registration = await navigator.serviceWorker.getRegistration('/sw.js')
-    if (!registration) {
-      // Si no hay SW, igual pedimos al backend limpiar por si acaso (pero sin endpoint no podemos)
-      console.warn('⚠️ No hay service worker registrado')
-    }
 
     // 2) Subscription actual
     const sub = registration
@@ -217,23 +195,18 @@ export async function unregisterWebPush({
       }
 
       if (!resp.ok) {
-        console.warn('⚠️ Backend unsubscribe respondió error:', resp)
         // no retornamos aún; igual intentamos unsubscribe local
-      } else {
-        console.log('🧹 Backend unsubscribe OK:', resp.status, resp.data)
       }
     }
 
     // 4) Unsubscribe local
     if (sub) {
       await sub.unsubscribe()
-      console.log('🧹 Unsubscribed local OK')
       return { ok: true }
     }
 
     return { ok: true, reason: 'no_local_subscription' }
   } catch (err) {
-    console.error('❌ Error en unregisterWebPush:', err)
     return { ok: false, reason: 'exception', error: err }
   }
 }

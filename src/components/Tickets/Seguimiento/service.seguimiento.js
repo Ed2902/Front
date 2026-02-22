@@ -23,7 +23,7 @@ const pickItems = res => {
 
 // ✅ TEAMS
 export const listarTeams = async (
-  { page = 1, limit = 100, search, activo = true } = {},
+  { page = 1, limit = 100, search, activo } = {},
   token
 ) => {
   const params = { page, limit }
@@ -39,7 +39,7 @@ export const listarTeams = async (
 
 // ✅ AREAS
 export const listarAreas = async (
-  { page = 1, limit = 100, search, activo = true } = {},
+  { page = 1, limit = 100, search, activo } = {},
   token
 ) => {
   const params = { page, limit }
@@ -61,6 +61,51 @@ export const listarPersonal = async token => {
   })
   return data
 }
+
+export const listarCatalogo = async (
+  { orgId, type, page = 1, limit = 100, active = true } = {},
+  token
+) => {
+  const params = { orgId, type, page, limit }
+  if (active !== undefined) params.active = active
+  try {
+    const { data } = await axios.get(`${API_URL_5}/catalog`, {
+      headers: buildHeaders(token),
+      params,
+    })
+    return data
+  } catch (e) {
+    const status = e?.response?.status
+    if (status === 400 && Object.hasOwn(params, 'active')) {
+      const retryParams = { ...params }
+      delete retryParams.active
+      const { data } = await axios.get(`${API_URL_5}/catalog`, {
+        headers: buildHeaders(token),
+        params: retryParams,
+      })
+      return data
+    }
+    throw e
+  }
+}
+
+export const listarEstados = async (orgId, token) =>
+  listarCatalogo(
+    { orgId, type: 'estado', page: 1, limit: 100, active: true },
+    token
+  )
+
+export const listarPrioridades = async (orgId, token) =>
+  listarCatalogo(
+    { orgId, type: 'prioridad', page: 1, limit: 100, active: true },
+    token
+  )
+
+export const listarCategorias = async (orgId, token) =>
+  listarCatalogo(
+    { orgId, type: 'categoria', page: 1, limit: 100, active: true },
+    token
+  )
 
 // ✅ Endpoint: /tickets/assigned
 export const listarTicketsAssigned = async (
@@ -130,17 +175,50 @@ export const listarTicketsAssigned = async (
   return data
 }
 
+export const putTicket = async (ticketId, payload, token) => {
+  if (!ticketId) throw new Error('putTicket: ticketId requerido')
+  const { data } = await axios.put(
+    `${API_URL_5}/tickets/${ticketId}`,
+    payload,
+    {
+      headers: buildHeaders(token),
+    }
+  )
+  return data
+}
+
+export const deactivateTicket = async (ticketId, { id_personal }, token) => {
+  if (!ticketId) throw new Error('deactivateTicket: ticketId requerido')
+  const { data } = await axios.patch(
+    `${API_URL_5}/tickets/${ticketId}/deactivate`,
+    { id_personal },
+    { headers: buildHeaders(token) }
+  )
+  return data
+}
+
 // ✅ BUNDLE: tickets + maps (personal/areas/teams)
 export const fetchSeguimientoBundle = async (
   {
     id_personal,
     page = 1,
-    limit = 20,
+    limit = 100,
     activo = true,
     createdAt_desde,
     createdAt_hasta,
     sortBy = 'lastMoveAt',
     sortDir = 'desc',
+    orgId,
+    tipo,
+    estado_id,
+    estado_ids,
+    exclude_estado_ids,
+    prioridad_id,
+    categoria_id,
+    operacion_subtipo,
+    fecha_estimada_desde,
+    fecha_estimada_hasta,
+    search,
   } = {},
   token
 ) => {
@@ -154,19 +232,33 @@ export const fetchSeguimientoBundle = async (
       createdAt_hasta,
       sortBy,
       sortDir,
+      orgId,
+      tipo,
+      estado_id,
+      estado_ids,
+      exclude_estado_ids,
+      prioridad_id,
+      categoria_id,
+      operacion_subtipo,
+      fecha_estimada_desde,
+      fecha_estimada_hasta,
+      search,
     },
     token
   )
 
   const rows = pickItems(resTickets)
+  const effectiveOrgId = orgId || rows?.[0]?.orgId || ''
 
-  const [resTeams, resAreas, resPersonal] = await Promise.all([
-    listarTeams({ page: 1, limit: 200 }, token),
+  const [areasResult, personalResult] = await Promise.allSettled([
     listarAreas({ page: 1, limit: 200 }, token),
     listarPersonal(token),
   ])
 
-  const teams = pickItems(resTeams)
+  const resAreas = areasResult.status === 'fulfilled' ? areasResult.value : []
+  const resPersonal =
+    personalResult.status === 'fulfilled' ? personalResult.value : []
+
   const areas = pickItems(resAreas)
   const personal = Array.isArray(resPersonal)
     ? resPersonal
@@ -179,9 +271,32 @@ export const fetchSeguimientoBundle = async (
   )
 
   const maps = {
-    teamsMap: Object.fromEntries((teams || []).map(x => [x._id, x])),
+    estadosMap: {},
+    prioridadesMap: {},
+    categoriasMap: {},
+    teamsMap: {},
     areasMap: Object.fromEntries((areas || []).map(x => [x._id, x])),
     personalMap,
+  }
+
+  if (effectiveOrgId) {
+    const [resE, resP, resC] = await Promise.all([
+      listarEstados(effectiveOrgId, token),
+      listarPrioridades(effectiveOrgId, token),
+      listarCategorias(effectiveOrgId, token),
+    ])
+
+    const estados = pickItems(resE)
+    const prioridades = pickItems(resP)
+    const categorias = pickItems(resC)
+
+    maps.estadosMap = Object.fromEntries((estados || []).map(x => [x._id, x]))
+    maps.prioridadesMap = Object.fromEntries(
+      (prioridades || []).map(x => [x._id, x])
+    )
+    maps.categoriasMap = Object.fromEntries(
+      (categorias || []).map(x => [x._id, x])
+    )
   }
 
   return {
@@ -189,5 +304,6 @@ export const fetchSeguimientoBundle = async (
     rows,
     maps,
     meta: resTickets?.meta || null,
+    orgId: effectiveOrgId,
   }
 }

@@ -6,6 +6,7 @@ import {
   Route,
   Navigate,
   useLocation,
+  useParams,
 } from 'react-router-dom'
 
 import { AuthProvider } from './context/AuthContext'
@@ -25,6 +26,15 @@ import Financiera from './pages/Financiera/Financiera.jsx'
 import Personal from './pages/Personal/Personal.jsx'
 
 import AppLayout from './layouts/AppLayout'
+
+function LegacyChatRedirect() {
+  const { chatId } = useParams()
+  const qs = new URLSearchParams({
+    ticketsSection: 'misTareas',
+    chatId: String(chatId || ''),
+  })
+  return <Navigate to={`/tickets?${qs.toString()}`} replace />
+}
 
 function App() {
   return (
@@ -87,6 +97,8 @@ function AppRoutes() {
           path='/tickets'
           element={<PrivateRoute permiso='tickets' element={<Tickets />} />}
         />
+
+        <Route path='/chats/:chatId' element={<LegacyChatRedirect />} />
 
         <Route
           path='/tiempos-pc'

@@ -1,40 +1,65 @@
 // src/components/Terceros/MenuTerceros.jsx
+import { useState } from 'react'
 import './MenuTerceros.css'
 import { usePermisos } from '../../../hooks/usePermisos'
 
 const MenuTerceros = ({ selectedSection, onSelectSection }) => {
   const { tienePermiso } = usePermisos()
+  const [openMobile, setOpenMobile] = useState(false)
+
+  const handleSelect = key => {
+    onSelectSection(key)
+    setOpenMobile(false)
+  }
 
   return (
-    <div className='menu-terceros'>
-      {tienePermiso('clientes') && (
-        <button
-          className={selectedSection === 'clientes' ? 'active' : ''}
-          onClick={() => onSelectSection('clientes')}
-        >
-          Gestión de Clientes
-        </button>
-      )}
+    <>
+      <button
+        type='button'
+        className='terceros-submenu-toggle'
+        aria-label='Abrir menú de Terceros'
+        aria-expanded={openMobile}
+        onClick={() => setOpenMobile(v => !v)}
+      >
+        ☰
+      </button>
 
-      {tienePermiso('proveedores') && (
-        <button
-          className={selectedSection === 'proveedores' ? 'active' : ''}
-          onClick={() => onSelectSection('proveedores')}
-        >
-          Gestión de Proveedores
-        </button>
-      )}
+      <div
+        className={`terceros-submenu-overlay ${openMobile ? 'open' : ''}`}
+        onClick={() => setOpenMobile(false)}
+      />
 
-      {/* ✅ Nueva opción: Personal Externo */}
-      {tienePermiso('personal_externo') && (
-        <button
-          className={selectedSection === 'personal_externo' ? 'active' : ''}
-          onClick={() => onSelectSection('personal_externo')}
-        >
-          Personal Externo
-        </button>
-      )}
-    </div>
+      <div className={`menu-terceros ${openMobile ? 'submenu-open' : ''}`}>
+        {tienePermiso('clientes') && (
+          <button
+            className={`menu-button ${selectedSection === 'clientes' ? 'active' : ''}`}
+            onClick={() => handleSelect('clientes')}
+          >
+            Gestión de Clientes
+          </button>
+        )}
+
+        {tienePermiso('proveedores') && (
+          <button
+            className={`menu-button ${selectedSection === 'proveedores' ? 'active' : ''}`}
+            onClick={() => handleSelect('proveedores')}
+          >
+            Gestión de Proveedores
+          </button>
+        )}
+
+        {tienePermiso('personal_externo') && (
+          <button
+            className={`menu-button ${
+              selectedSection === 'personal_externo' ? 'active' : ''
+            }`}
+            onClick={() => handleSelect('personal_externo')}
+          >
+            Personal Externo
+          </button>
+        )}
+      </div>
+    </>
   )
 }
 
