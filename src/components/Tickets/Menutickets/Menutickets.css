@@ -22,17 +22,18 @@
   border-radius: 8px;
   font-weight: bold;
   font-size: 14px;
-  line-height: 1.25; /* evita reflujo por altura */
+  line-height: 1.25;
   cursor: pointer;
   min-width: 150px;
   max-width: 200px;
   text-align: center;
 
-  /* Transiciones solo de color (no tamaño/transform) */
-  transition: background-color 0.2s ease, color 0.2s ease,
-    border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 
-  /* Kill-transform (evita “acercamiento”) */
   transform: none !important;
   backface-visibility: hidden;
   will-change: auto;
@@ -40,54 +41,128 @@
 
 /* Botón activo */
 .menu-tickets .menu-button.active {
-  background-color: #f74c1b; /* primario */
+  background-color: #f74c1b;
   border-color: #f74c1b;
   color: #ffffff;
 }
 
-/* Hover: cambia colores, nunca dimensiones ni transform */
+/* Hover */
 .menu-tickets .menu-button:hover {
-  background-color: #67e1ff; /* segundo secundario */
+  background-color: #67e1ff;
   border-color: #67e1ff;
   color: #ffffff;
   transform: none !important;
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
 }
 
-/* Focus accesible sin mover layout (no outline que empuje) */
+/* Focus accesible */
 .menu-tickets .menu-button:focus {
   outline: none;
 }
 .menu-tickets .menu-button:focus-visible {
-  box-shadow: 0 0 0 3px rgba(89, 161, 247, 0.35); /* anillo secundario */
+  box-shadow: 0 0 0 3px rgba(89, 161, 247, 0.35);
 }
 
-/* Estado disabled (por si lo usas) */
-.menu-tickets .menu-button:disabled,
-.menu-tickets .menu-button.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: #f8f9fa;
-  border-color: #e9ecef;
-  color: #adb5bd;
-  box-shadow: none;
+/* ================== HAMBURGUESA (solo móvil) ================== */
+.tickets-submenu-toggle {
+  display: none; /* desktop oculto */
 }
 
-/* Responsive para móviles */
+.tickets-submenu-overlay {
+  display: none; /* desktop oculto */
+}
+
+/* ---------------- RESPONSIVE (móvil) ----------------- */
 @media (max-width: 768px) {
-  .menu-tickets {
-    flex-direction: column;
+  /* ✅ Hamburguesa a la derecha */
+  .tickets-submenu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 12px; /* ajusta si tu navbar es más alto */
+    right: 12px;
+    z-index: 2002;
+
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+
+    align-items: center;
+    justify-content: center;
+
+    border: 0;
+    background: #f74c1b;
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 20px;
+    line-height: 1;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
   }
 
+  /* ✅ Overlay */
+  .tickets-submenu-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 2000;
+  }
+
+  .tickets-submenu-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ✅ Menú como drawer a la derecha */
+  .menu-tickets {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: auto;
+
+    height: 100vh;
+    width: 280px;
+    z-index: 2001;
+
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+
+    padding: 70px 12px 12px; /* espacio arriba */
+    gap: 10px;
+
+    transform: translateX(105%);
+    transition: transform 0.22s ease;
+    overflow-y: auto;
+  }
+
+  .menu-tickets.submenu-open {
+    transform: translateX(0);
+  }
+
+  /* Botones full ancho dentro del drawer */
   .menu-tickets .menu-button {
-    width: 90%;
-    max-width: 300px;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    text-align: left;
   }
 }
 
-/* Respeta usuarios que prefieren menos animación */
+/* Reduce motion */
 @media (prefers-reduced-motion: reduce) {
+  .menu-tickets,
+  .tickets-submenu-overlay,
   .menu-tickets .menu-button {
-    transition: none;
+    transition: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .tickets-seccion {
+    padding-top: 60px;
   }
 }

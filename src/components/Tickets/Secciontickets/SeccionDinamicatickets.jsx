@@ -7,6 +7,9 @@ import MisTareas from '../MisTareas/MisTareas'
 // ✅ Mis Creaciones
 import MisCreaciones from '../MisCreaciones/MisCreaciones'
 
+// ✅ Seguimiento
+import SeguimientoTickets from '../Seguimiento/SeguimientoTickets.jsx'
+
 // ✅ Áreas
 import AreasTable from '../areas/AreasTable.jsx'
 
@@ -38,6 +41,14 @@ const SeccionDinamicaTickets = ({ selectedSection }) => {
 
     case 'misTareas':
       contenido = tienePermiso('misTareas') ? <MisTareas /> : <NoAutorizado />
+      break
+
+    case 'seguimiento':
+      contenido = tienePermiso('seguimiento') ? (
+        <SeguimientoTickets />
+      ) : (
+        <NoAutorizado />
+      )
       break
 
     case 'adminCatalogos':

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/Sidebar/Sidebar'
-/* import FloatingChat from '../components/chat/FloatingChat' */
+import FloatingChat from '../components/chat/FloatingChat'
 import './AppLayout.css'
 
 export default function AppLayout() {
@@ -15,7 +15,7 @@ export default function AppLayout() {
         <Outlet />
       </main>
 
-      {/* <FloatingChat /> */}
+      <FloatingChat />
     </div>
   )
 }

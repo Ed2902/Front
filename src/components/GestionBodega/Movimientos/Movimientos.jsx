@@ -3,7 +3,6 @@ import Modal from 'react-modal'
 import './Movimientos.css'
 import {
   FaProjectDiagram,
-  FaTable,
   FaExchangeAlt,
   FaArrowDown,
   FaArrowUp,
@@ -15,7 +14,6 @@ import {
 
 // Subcomponentes
 import DiagramaFlujo from './DiagramaFlujo'
-import TablaMovimientos from './TablaMovimientos'
 import TablaAlistamientos from './alistamiento/tabla_alistamientos.jsx'
 import TablaSalidas from './salida/tabla_salidas.jsx'
 import TablaEntradas from '../Inventario/tabla_entradas.jsx'
@@ -23,6 +21,7 @@ import FormIngreso from '../Inventario/Formingreso'
 import FormTransformacion from '../Inventario/FormTransformacion'
 import FormSalida from '../Inventario/FormSalida'
 import FormAlistamiento from './alistamiento/FormAlistamiento.jsx'
+import FormEditarAlistamiento from './alistamiento/FormEditarAlistamiento.jsx'
 
 Modal.setAppElement('#root')
 
@@ -34,26 +33,30 @@ const Movimientos = () => {
   const [modalSalida, setModalSalida] = useState(false)
   const [modalTransformacion, setModalTransformacion] = useState(false)
   const [modalAlistamiento, setModalAlistamiento] = useState(false)
+  const [modalEditarAlistamiento, setModalEditarAlistamiento] = useState(false)
 
   // ref seguro para cerrar entrada
   const formIngresoRef = useRef(null)
 
   // crear salida desde alistamiento
   const [alistamientoSeleccionado, setAlistamientoSeleccionado] = useState(null)
+  const [alistamientoEditar, setAlistamientoEditar] = useState(null)
+  const [tablaAlistamientosVersion, setTablaAlistamientosVersion] = useState(1)
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'diagrama':
         return <DiagramaFlujo />
 
-      case 'tabla':
-        return <TablaMovimientos />
-
       case 'alistamientos':
         return (
           <TablaAlistamientos
+            key={`alistamientos-${tablaAlistamientosVersion}`}
             onVer={() => {}}
-            onEditar={() => {}}
+            onEditar={alist => {
+              setAlistamientoEditar(alist)
+              setModalEditarAlistamiento(true)
+            }}
             onCrearSalida={alist => {
               setAlistamientoSeleccionado(alist)
               setModalSalida(true)
@@ -81,13 +84,6 @@ const Movimientos = () => {
             onClick={() => setActiveTab('diagrama')}
           >
             <FaProjectDiagram className='icono-tab' /> Diagrama de Flujo
-          </li>
-
-          <li
-            className={activeTab === 'tabla' ? 'activo' : ''}
-            onClick={() => setActiveTab('tabla')}
-          >
-            <FaTable className='icono-tab' /> Tabla de Movimientos
           </li>
 
           <li
@@ -187,8 +183,34 @@ const Movimientos = () => {
           onSuccess={() => {
             setModalAlistamiento(false)
             setActiveTab('alistamientos')
+            setTablaAlistamientosVersion(v => v + 1)
           }}
           onClose={() => setModalAlistamiento(false)}
+        />
+      </Modal>
+
+      {/* ===== MODAL EDITAR ALISTAMIENTO ===== */}
+      <Modal
+        isOpen={modalEditarAlistamiento}
+        onRequestClose={() => {
+          setModalEditarAlistamiento(false)
+          setAlistamientoEditar(null)
+        }}
+        className='modal-content alistamiento-modal'
+        overlayClassName='modal-overlay'
+      >
+        <FormEditarAlistamiento
+          alistamiento={alistamientoEditar}
+          onSuccess={() => {
+            setModalEditarAlistamiento(false)
+            setAlistamientoEditar(null)
+            setActiveTab('alistamientos')
+            setTablaAlistamientosVersion(v => v + 1)
+          }}
+          onClose={() => {
+            setModalEditarAlistamiento(false)
+            setAlistamientoEditar(null)
+          }}
         />
       </Modal>
 

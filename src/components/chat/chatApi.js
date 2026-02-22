@@ -247,3 +247,19 @@ export function formatRelativeDate(isoOrDate) {
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mm}`
 }
+// ✅ Marcar notificaciones del chat como leídas
+export async function markChatNotificationsAsRead({
+  token,
+  id_personal,
+  chatId,
+}) {
+  const { data } = await http(token).patch(
+    `${normalizeBase(API_CHAT)}/notifications/read-by-target`,
+    {
+      id_personal: String(id_personal),
+      targetType: 'chat',
+      params: { chatId: String(chatId) },
+    }
+  )
+  return data
+}

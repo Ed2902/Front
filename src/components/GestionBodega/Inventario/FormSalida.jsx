@@ -15,10 +15,8 @@ import SignatureCanvas from 'react-signature-canvas'
 import AuthContext from '../../../context/AuthContext'
 import { crearSalida, getInventarioResumen } from './salida_service'
 
-// ✅ este import ya existe en tu archivo y es correcto según tu estructura actual
 import { obtenerAlistamiento } from '../Movimientos/alistamiento/alistamiento_service'
 
-// ================= Helpers =================
 const pickFirstDefined = (...vals) => vals.find(v => v != null && v !== '')
 
 const toNumberCO = v => {
@@ -53,6 +51,23 @@ const normalizeDetalleToItem = (d, idx) => {
 
   const cantidad = toNumberCO(pickFirstDefined(d?.cantidad, d?.Cantidad, 0))
 
+  // 👇 NUEVO: traer bodega y ubicación del alistamiento
+  const id_bodega_origen =
+    pickFirstDefined(
+      d?.id_bodega_origen,
+      d?.Id_bodega_origen,
+      d?.id_bodega,
+      d?.Id_bodega
+    ) || ''
+
+  const id_ubicacion_origen =
+    pickFirstDefined(
+      d?.id_ubicacion_origen,
+      d?.Id_ubicacion_origen,
+      d?.id_ubicacion,
+      d?.Id_ubicacion
+    ) || ''
+
   const nombreProd =
     pickFirstDefined(d?.producto?.Nombre, d?.producto?.nombre) || id_producto
 
@@ -61,18 +76,15 @@ const normalizeDetalleToItem = (d, idx) => {
     id_producto,
     cantidad,
 
-    // se selecciona en el form (obligatorio antes de enviar)
-    id_bodega_origen: '',
-    id_ubicacion_origen: '',
+    id_bodega_origen,
+    id_ubicacion_origen,
 
-    // evidencia por ítem (obligatorio antes de enviar)
     evidenciaFile: null,
     evidenciaName: '',
 
-    // solo UI
     nombre_producto_view: nombreProd,
-    bodega_nombre_view: '',
-    ubicacion_nombre_view: '',
+    bodega_nombre_view: id_bodega_origen,
+    ubicacion_nombre_view: id_ubicacion_origen,
 
     _from_alistamiento: true,
     _idx: idx,
@@ -454,6 +466,8 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       })
       setValue('id_alistamiento', String(id_alist))
 
+      console.log('DETALLES QUE LLEGAN:', detalles)
+
       const nuevos = detalles.map((d, idx) => normalizeDetalleToItem(d, idx))
 
       setItems(prev => {
@@ -629,16 +643,14 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
   const procesarSalidas = async data => {
     const id_alist = String(data?.id_alistamiento || '').trim()
 
-    if (!id_alist) {
-      setStatusMessage({ type: 'error', text: 'Falta id_alistamiento.' })
-      setTimeout(() => setStatusMessage(null), 2000)
-      return
-    }
+    // ❌ Ya NO validamos que sea obligatorio
+
     if (!items.length) {
       setStatusMessage({ type: 'error', text: 'Agrega al menos un ítem.' })
       setTimeout(() => setStatusMessage(null), 2000)
       return
     }
+
     if (!allItemsHaveUbicacion) {
       setStatusMessage({
         type: 'error',
@@ -647,6 +659,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       setTimeout(() => setStatusMessage(null), 2400)
       return
     }
+
     if (!allItemsHaveEvidence) {
       setStatusMessage({
         type: 'error',
@@ -656,7 +669,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       return
     }
 
-    // payload items (SIN evidencia, porque va por evidencias[])
+    // 🔹 Payload items (sin evidencia, va por separado)
     const itemsPayload = items.map(it => ({
       id_lote: String(it.id_lote),
       id_producto: String(it.id_producto),
@@ -666,10 +679,15 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
     }))
 
     const formData = new FormData()
-    formData.append('id_alistamiento', id_alist)
+
+    // ✅ Solo enviamos id_alistamiento si existe
+    if (id_alist) {
+      formData.append('id_alistamiento', id_alist)
+    }
+
     formData.append('comentario', data?.comentario || '')
 
-    // ✅ obligatorio para tu validator en /salidas
+    // obligatorio según tu validator
     formData.append('nombre', 'AUTO')
 
     formData.append(
@@ -677,20 +695,21 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       user?.personal?.id_personal || user?.id_usuario || ''
     )
 
-    // ✅ items como JSON string
+    // items como JSON string
     formData.append('items', JSON.stringify(itemsPayload))
 
-    // ✅ evidencias: una por ítem, en el mismo orden que itemsPayload
+    // evidencias (una por ítem en el mismo orden)
     items.forEach(it => {
       formData.append('evidencias', it.evidenciaFile)
     })
 
-    // ✅ firmas opcionales
+    // firmas opcionales
     formData.append('firma_autorizador', firmas.autorizador || '')
     formData.append('firma_conductor', firmas.conductor || '')
     formData.append('firma_receptor', firmas.receptor || '')
 
     setProcesando(true)
+
     try {
       await crearSalida(formData)
 
@@ -698,6 +717,7 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
       setTimeout(() => setStatusMessage(null), 1500)
 
       setProcesando(false)
+
       reset({ id_alistamiento: '', comentario: '' })
       setItems([])
       setInvOpciones([])
@@ -777,11 +797,9 @@ const FormSalida = ({ onSuccess, onClose, alistamientoInicial }) => {
           <div className='col-md-4'>
             <label className='form-label mb-1'>ID Alistamiento (origen)</label>
             <input
-              className={`form-control form-control-sm ${
-                errors.id_alistamiento ? 'is-invalid' : ''
-              }`}
+              className={`form-control form-control-sm`}
               readOnly
-              {...register('id_alistamiento', { required: true })}
+              {...register('id_alistamiento')}
               value={watch('id_alistamiento') || ''}
             />
             {errors.id_alistamiento && (

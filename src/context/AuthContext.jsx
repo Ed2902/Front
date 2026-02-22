@@ -54,15 +54,8 @@ export const AuthProvider = ({ children }) => {
             Authorization: `Bearer ${token}`,
           },
         })
-        console.log('🔔 WebPush registrado para principalId:', principalId)
-      } else {
-        console.warn(
-          '⚠️ No se pudo registrar WebPush: falta principalId o token'
-        )
       }
-    } catch (err) {
-      console.error('❌ Error registrando WebPush en login:', err)
-    }
+    } catch {}
   }
 
   // LOGOUT

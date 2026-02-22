@@ -169,14 +169,6 @@ const FormIngreso = forwardRef(
       )
     }, [lotesRaw, idLoteGlobal])
 
-    // ✅ si ya están todos los productos, deshabilita el botón
-    const allLoteProductsAlreadyAdded = useMemo(() => {
-      if (!idLoteGlobal) return false
-      if (!productosUnicosDelLote.length) return false
-      const itemsSet = new Set(items.map(it => it.id_producto))
-      return productosUnicosDelLote.every(p => itemsSet.has(p))
-    }, [idLoteGlobal, productosUnicosDelLote, items])
-
     const productoNombre = useCallback(
       idProd => {
         const p = prodById[idProd]
@@ -226,18 +218,58 @@ const FormIngreso = forwardRef(
     }, [idLoteGlobal, productoItem, lotesRaw])
 
     // ========= Cantidad sugerida por lote-producto =========
-    const getUltimaCantidadLoteProducto = idProd => {
-      if (!idLoteGlobal || !idProd) return 0
-      const filas = (lotesRaw || []).filter(
-        x => x.id_lote === idLoteGlobal && x.id_producto === idProd
+    const getUltimaCantidadLoteProducto = useCallback(
+      idProd => {
+        if (!idLoteGlobal || !idProd) return 0
+        const filas = (lotesRaw || []).filter(
+          x => x.id_lote === idLoteGlobal && x.id_producto === idProd
+        )
+        if (!filas.length) return 0
+        const sorted = [...filas].sort(
+          (a, b) => new Date(a.Fecha_registro) - new Date(b.Fecha_registro)
+        )
+        const last = sorted[sorted.length - 1]
+        return Number(last?.Cantidad ?? 0) || 0
+      },
+      [idLoteGlobal, lotesRaw]
+    )
+
+    const cantidadAsignadaPorProducto = useMemo(() => {
+      const acc = {}
+      for (const it of items) {
+        const idProd = it?.id_producto
+        if (!idProd) continue
+        acc[idProd] = (acc[idProd] || 0) + (Number(it.cantidad) || 0)
+      }
+      return acc
+    }, [items])
+
+    const faltantePorProducto = useMemo(() => {
+      const map = {}
+      for (const idProd of productosUnicosDelLote) {
+        const totalLote = Number(getUltimaCantidadLoteProducto(idProd)) || 0
+        const asignada = Number(cantidadAsignadaPorProducto[idProd] || 0)
+        const faltante = Math.max(totalLote - asignada, 0)
+        map[idProd] = { totalLote, asignada, faltante }
+      }
+      return map
+    }, [
+      productosUnicosDelLote,
+      cantidadAsignadaPorProducto,
+      getUltimaCantidadLoteProducto,
+    ])
+
+    const productosFaltantesDelLote = useMemo(() => {
+      return productosUnicosDelLote.filter(
+        p => (faltantePorProducto[p]?.faltante || 0) > 0
       )
-      if (!filas.length) return 0
-      const sorted = [...filas].sort(
-        (a, b) => new Date(a.Fecha_registro) - new Date(b.Fecha_registro)
-      )
-      const last = sorted[sorted.length - 1]
-      return Number(last?.Cantidad ?? 0) || 0
-    }
+    }, [productosUnicosDelLote, faltantePorProducto])
+
+    const allLoteProductsCompleted = useMemo(() => {
+      if (!idLoteGlobal) return false
+      if (!productosUnicosDelLote.length) return false
+      return productosFaltantesDelLote.length === 0
+    }, [idLoteGlobal, productosUnicosDelLote, productosFaltantesDelLote])
 
     // ========= Agregar todo el lote =========
     const agregarTodoElLote = () => {
@@ -259,37 +291,33 @@ const FormIngreso = forwardRef(
       const defaultBodega = data.id_bodega_destino || ''
       const defaultUbi = data.id_ubicacion_destino || ''
 
+      let agregados = 0
       setItems(prev => {
-        const prevMap = new Map(prev.map(it => [it.id_producto, it]))
+        const next = [...prev]
 
         for (const idProd of productosUnicosDelLote) {
-          const cantSugerida = getUltimaCantidadLoteProducto(idProd)
+          const totalLote = Number(getUltimaCantidadLoteProducto(idProd)) || 0
+          const asignada = next
+            .filter(it => it.id_producto === idProd)
+            .reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0)
+          const faltante = Math.max(totalLote - asignada, 0)
 
-          if (prevMap.has(idProd)) {
-            const old = prevMap.get(idProd)
-            prevMap.set(idProd, {
-              ...old,
-              cantidad:
-                (Number(old.cantidad) || 0) + (Number(cantSugerida) || 0),
-              verificado: false,
-            })
-          } else {
-            prevMap.set(idProd, {
-              id_producto: idProd,
-              cantidad: Number(cantSugerida) || 0,
-              Id_bodega_destino: defaultBodega,
-              Id_ubicacion_destino: defaultUbi,
-              verificado: false,
-              evidenciaFile: null,
-              evidenciaName: '',
-              evidenciaUrl: null,
-            })
-          }
+          if (faltante <= 0) continue
+
+          next.push({
+            id_producto: idProd,
+            cantidad: faltante,
+            Id_bodega_destino: defaultBodega,
+            Id_ubicacion_destino: defaultUbi,
+            verificado: false,
+            evidenciaFile: null,
+            evidenciaName: '',
+            evidenciaUrl: null,
+          })
+          agregados += 1
         }
 
-        return Array.from(prevMap.values()).filter(
-          it => Number(it.cantidad) > 0
-        )
+        return next.filter(it => Number(it.cantidad) > 0)
       })
 
       if (entradaEstado !== 'CONFIRMADA') {
@@ -297,10 +325,17 @@ const FormIngreso = forwardRef(
         setItemsDirty(true)
       }
 
-      setStatusMessage({
-        type: 'success',
-        text: 'Se agregaron los productos del lote. Revisa y verifica.',
-      })
+      setStatusMessage(
+        agregados > 0
+          ? {
+              type: 'success',
+              text: 'Se agregaron faltantes del lote. Revisa y verifica.',
+            }
+          : {
+              type: 'success',
+              text: 'El lote ya está completo en la lista.',
+            }
+      )
       setTimeout(() => setStatusMessage(null), 2200)
     }
 
@@ -542,30 +577,19 @@ const FormIngreso = forwardRef(
         const defaultBodega = data.id_bodega_destino || ''
         const defaultUbi = data.id_ubicacion_destino || ''
 
-        const idx = items.findIndex(it => it.id_producto === id_producto_item)
-        if (idx >= 0) {
-          const copy = [...items]
-          copy[idx] = {
-            ...copy[idx],
-            cantidad: (Number(copy[idx].cantidad) || 0) + cant,
+        setItems(prev => [
+          ...prev,
+          {
+            id_producto: id_producto_item,
+            cantidad: cant,
+            Id_bodega_destino: defaultBodega,
+            Id_ubicacion_destino: defaultUbi,
             verificado: false,
-          }
-          setItems(copy)
-        } else {
-          setItems(prev => [
-            ...prev,
-            {
-              id_producto: id_producto_item,
-              cantidad: cant,
-              Id_bodega_destino: defaultBodega,
-              Id_ubicacion_destino: defaultUbi,
-              verificado: true,
-              evidenciaFile: null,
-              evidenciaName: '',
-              evidenciaUrl: null,
-            },
-          ])
-        }
+            evidenciaFile: null,
+            evidenciaName: '',
+            evidenciaUrl: null,
+          },
+        ])
 
         setValueItem('id_producto_item', '')
         setValueItem('cantidad_item', '')
@@ -675,16 +699,24 @@ const FormIngreso = forwardRef(
         const detallesCreados =
           respDetalles?.data?.data || respDetalles?.data || respDetalles || []
 
-        const detallePorProducto = new Map()
+        const detalleQueuesPorProducto = new Map()
         ;(detallesCreados || []).forEach(d => {
           const idProd = d.Id_producto || d.id_producto
           const idDet = d.Id_detalle || d.id_detalle
-          if (idProd && idDet) detallePorProducto.set(idProd, idDet)
+          if (!idProd || !idDet) return
+          if (!detalleQueuesPorProducto.has(idProd)) {
+            detalleQueuesPorProducto.set(idProd, [])
+          }
+          detalleQueuesPorProducto.get(idProd).push(idDet)
         })
 
         for (let i = 0; i < items.length; i++) {
           const it = items[i]
-          const idDetalle = detallePorProducto.get(it.id_producto)
+          const detalleByIndex =
+            detallesCreados?.[i]?.Id_detalle || detallesCreados?.[i]?.id_detalle
+          const colaProducto =
+            detalleQueuesPorProducto.get(it.id_producto) || []
+          const idDetalle = detalleByIndex || colaProducto.shift()
           if (it.evidenciaFile && idDetalle) {
             try {
               await subirFotoDetalleEntrada(idDetalle, it.evidenciaFile)
@@ -772,6 +804,34 @@ const FormIngreso = forwardRef(
         })
         setTimeout(() => setStatusMessage(null), 2200)
         return
+      }
+
+      if (productosFaltantesDelLote.length > 0) {
+        const resumenFaltantes = productosFaltantesDelLote
+          .slice(0, 6)
+          .map(idProd => {
+            const faltante = Number(faltantePorProducto[idProd]?.faltante || 0)
+            return `${productoNombre(idProd)}: faltan ${faltante}`
+          })
+          .join('\n')
+
+        const extra =
+          productosFaltantesDelLote.length > 6
+            ? `\n...y ${productosFaltantesDelLote.length - 6} producto(s) más.`
+            : ''
+
+        const okConfirmarIncompleto = window.confirm(
+          `No has asignado todo el lote seleccionado.\n\n${resumenFaltantes}${extra}\n\n¿Seguro que deseas confirmar y guardar la entrada incompleta?`
+        )
+
+        if (!okConfirmarIncompleto) {
+          setStatusMessage({
+            type: 'error',
+            text: 'Confirmación cancelada. Completa el lote o confirma de nuevo.',
+          })
+          setTimeout(() => setStatusMessage(null), 2400)
+          return
+        }
       }
 
       setProcesando(true)
@@ -1047,16 +1107,16 @@ const FormIngreso = forwardRef(
                 !idLoteGlobal ||
                 procesando ||
                 entradaEstado === 'CONFIRMADA' ||
-                allLoteProductsAlreadyAdded
+                allLoteProductsCompleted
               }
               onClick={agregarTodoElLote}
               title={
-                allLoteProductsAlreadyAdded
-                  ? 'Ya agregaste todos los productos del lote'
-                  : 'Agrega todos los productos del lote'
+                allLoteProductsCompleted
+                  ? 'El lote ya está completo en la lista'
+                  : 'Completa faltantes de todo el lote'
               }
             >
-              {allLoteProductsAlreadyAdded ? 'Lote ✅' : 'Agregar todo'}
+              {allLoteProductsCompleted ? 'Lote completo ✅' : 'Agregar todo'}
             </button>
           </div>
 
@@ -1076,8 +1136,11 @@ const FormIngreso = forwardRef(
               >
                 <option value=''>Selecciona</option>
                 {productosUnicosDelLote.map((p, idx) => {
-                  const ya = items.some(it => it.id_producto === p)
                   const labelNombre = productoNombre(p)
+                  const faltante = Number(faltantePorProducto[p]?.faltante || 0)
+                  const totalLote = Number(
+                    faltantePorProducto[p]?.totalLote || 0
+                  )
                   const label =
                     labelNombre && labelNombre !== p
                       ? `${p} — ${labelNombre}`
@@ -1088,10 +1151,16 @@ const FormIngreso = forwardRef(
                       key={idx}
                       value={p}
                       style={
-                        ya ? { color: '#B00020', fontWeight: 600 } : undefined
+                        totalLote > 0
+                          ? faltante > 0
+                            ? { color: '#B00020', fontWeight: 600 }
+                            : { color: '#198754', fontWeight: 600 }
+                          : undefined
                       }
                     >
-                      {ya ? `${label} — AGREGADO` : label}
+                      {totalLote > 0
+                        ? `${label} — Faltan ${faltante} de ${totalLote}`
+                        : label}
                     </option>
                   )
                 })}
@@ -1377,10 +1446,10 @@ const FormIngreso = forwardRef(
                 !allItemsVerified
                   ? 'Debes verificar todos los ítems'
                   : !allItemsHaveDestino
-                  ? 'Falta destino en algunos ítems'
-                  : REQUIRE_PHOTOS_TO_CONFIRM && !allItemsHaveEvidence
-                  ? 'Falta evidencia en algunos ítems'
-                  : ''
+                    ? 'Falta destino en algunos ítems'
+                    : REQUIRE_PHOTOS_TO_CONFIRM && !allItemsHaveEvidence
+                      ? 'Falta evidencia en algunos ítems'
+                      : ''
               }
               disabled={
                 isSubmitting ||
