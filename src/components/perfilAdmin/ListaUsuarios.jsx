@@ -159,6 +159,12 @@ const SECCIONES = [
       },
 
       {
+        clave: 'verPreciosFinanciera',
+        label: 'Ver precios y valores',
+        padre: 'financiera',
+      },
+
+      {
         clave: 'controlFacturas',
         label: 'Control facturas',
         padre: 'financiera',

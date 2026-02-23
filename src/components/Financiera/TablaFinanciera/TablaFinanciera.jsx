@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from 'react-data-table-component'
-import { FaExternalLinkAlt, FaCloudUploadAlt } from 'react-icons/fa'
-import { getLotesFinancieros, uploadDocsLote } from '../service.Financiera'
-import SecureArchivo from './SecureArchivo'
+import { FaCloudUploadAlt, FaListUl } from 'react-icons/fa'
+import { usePermisos } from '../../../hooks/usePermisos'
+import {
+  getDocumentosLote,
+  getLotesFinancieros,
+  uploadDocsLote,
+} from '../service.Financiera'
 import DetalleLoteFinanciero from './DetalleLoteFinanciero'
+import DocumentosLoteModal from './DocumentosLoteModal'
 
 const moneyCO = n =>
   (Number(n) || 0).toLocaleString('es-CO', {
@@ -13,10 +18,39 @@ const moneyCO = n =>
     maximumFractionDigits: 0,
   })
 
-const isPdfFile = file =>
-  !!file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''))
+const fmtDateCompact = value => {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('es-CO')
+}
+
+const isAllowedUploadFile = file =>
+  !!file &&
+  (file.type === 'application/pdf' ||
+    String(file.type || '').startsWith('image/') ||
+    /\.(pdf|png|jpe?g|webp|gif)$/i.test(file.name || ''))
+
+const appendUniqueFiles = (current = [], incoming = []) => {
+  const out = [...current]
+  const seen = new Set(
+    out.map(f => `${f?.name || ''}:${f?.size || 0}:${f?.lastModified || 0}`)
+  )
+
+  for (const file of incoming) {
+    const key = `${file?.name || ''}:${file?.size || 0}:${file?.lastModified || 0}`
+    if (seen.has(key)) continue
+    out.push(file)
+    seen.add(key)
+  }
+
+  return out
+}
 
 export default function TablaFinanciera() {
+  const { tienePermiso } = usePermisos()
+  const canViewPrices = tienePermiso('verPreciosFinanciera')
+
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -39,12 +73,26 @@ export default function TablaFinanciera() {
   // drag visual
   const [dragOverCuenta, setDragOverCuenta] = useState(null)
   const [dragOverSoporte, setDragOverSoporte] = useState(null)
+  const [docsViewer, setDocsViewer] = useState({
+    open: false,
+    idLote: null,
+    loading: false,
+    error: null,
+    docs: [],
+    selectedDoc: null,
+  })
 
   // helpers estado
-  const setPendCuentaFor = (id, fileOrNull) =>
-    setPendCuenta(prev => ({ ...prev, [id]: fileOrNull || undefined }))
-  const setPendSoporteFor = (id, fileOrNull) =>
-    setPendSoporte(prev => ({ ...prev, [id]: fileOrNull || undefined }))
+  const setPendCuentaFor = (id, filesOrNull) =>
+    setPendCuenta(prev => ({
+      ...prev,
+      [id]: Array.isArray(filesOrNull) ? filesOrNull : undefined,
+    }))
+  const setPendSoporteFor = (id, filesOrNull) =>
+    setPendSoporte(prev => ({
+      ...prev,
+      [id]: Array.isArray(filesOrNull) ? filesOrNull : undefined,
+    }))
 
   const setSavingCuentaFor = (id, val) =>
     setSavingCuenta(prev => ({ ...prev, [id]: !!val }))
@@ -96,23 +144,31 @@ export default function TablaFinanciera() {
     soporteInputRef.current?.click()
   }
 
-  // onChange (solo PDF)
+  // onChange (PDF/Imagen)
   const onCuentaFileChange = e => {
-    const file = e.target.files?.[0]
-    if (file && !isPdfFile(file)) {
-      setError('Solo se permite PDF en Cuenta de cobro.')
-    } else if (file && loteCuenta) {
-      setPendCuentaFor(loteCuenta, file)
+    const files = Array.from(e.target.files || [])
+    const invalid = files.find(file => !isAllowedUploadFile(file))
+    if (invalid) {
+      setError('Solo se permiten archivos PDF o imagen en Cuenta de cobro.')
+    } else if (files.length && loteCuenta) {
+      setPendCuenta(prev => ({
+        ...prev,
+        [loteCuenta]: appendUniqueFiles(prev[loteCuenta] || [], files),
+      }))
     }
     e.target.value = ''
     setLoteCuenta(null)
   }
   const onSoporteFileChange = e => {
-    const file = e.target.files?.[0]
-    if (file && !isPdfFile(file)) {
-      setError('Solo se permite PDF en Soporte de pago.')
-    } else if (file && loteSoporte) {
-      setPendSoporteFor(loteSoporte, file)
+    const files = Array.from(e.target.files || [])
+    const invalid = files.find(file => !isAllowedUploadFile(file))
+    if (invalid) {
+      setError('Solo se permiten archivos PDF o imagen en Soporte de pago.')
+    } else if (files.length && loteSoporte) {
+      setPendSoporte(prev => ({
+        ...prev,
+        [loteSoporte]: appendUniqueFiles(prev[loteSoporte] || [], files),
+      }))
     }
     e.target.value = ''
     setLoteSoporte(null)
@@ -134,13 +190,16 @@ export default function TablaFinanciera() {
   const handleDropCuenta = (e, idLote) => {
     prevent(e)
     setDragOverCuenta(null)
-    const file = e.dataTransfer?.files?.[0]
-    if (!file) return
-    if (!isPdfFile(file)) {
-      setError('Solo se permite PDF en Cuenta de cobro.')
+    const files = Array.from(e.dataTransfer?.files || [])
+    if (!files.length) return
+    if (files.some(file => !isAllowedUploadFile(file))) {
+      setError('Solo se permiten archivos PDF o imagen en Cuenta de cobro.')
       return
     }
-    setPendCuentaFor(idLote, file)
+    setPendCuenta(prev => ({
+      ...prev,
+      [idLote]: appendUniqueFiles(prev[idLote] || [], files),
+    }))
   }
   const handleDragOverSoporte = (e, idLote) => {
     prevent(e)
@@ -153,22 +212,25 @@ export default function TablaFinanciera() {
   const handleDropSoporte = (e, idLote) => {
     prevent(e)
     setDragOverSoporte(null)
-    const file = e.dataTransfer?.files?.[0]
-    if (!file) return
-    if (!isPdfFile(file)) {
-      setError('Solo se permite PDF en Soporte de pago.')
+    const files = Array.from(e.dataTransfer?.files || [])
+    if (!files.length) return
+    if (files.some(file => !isAllowedUploadFile(file))) {
+      setError('Solo se permiten archivos PDF o imagen en Soporte de pago.')
       return
     }
-    setPendSoporteFor(idLote, file)
+    setPendSoporte(prev => ({
+      ...prev,
+      [idLote]: appendUniqueFiles(prev[idLote] || [], files),
+    }))
   }
 
   // guardar pendientes usando uploadDocsLote
   const guardarCuenta = async idLote => {
-    const file = pendCuenta[idLote]
-    if (!file) return
+    const files = pendCuenta[idLote] || []
+    if (!files.length) return
     try {
       setSavingCuentaFor(idLote, true)
-      await uploadDocsLote(idLote, { cuentaFile: file })
+      await uploadDocsLote(idLote, { cuentaFile: files })
       setPendCuentaFor(idLote, null)
       await refresh()
     } catch (e) {
@@ -180,11 +242,11 @@ export default function TablaFinanciera() {
   }
 
   const guardarSoporte = async idLote => {
-    const file = pendSoporte[idLote]
-    if (!file) return
+    const files = pendSoporte[idLote] || []
+    if (!files.length) return
     try {
       setSavingSoporteFor(idLote, true)
-      await uploadDocsLote(idLote, { soporteFile: file })
+      await uploadDocsLote(idLote, { soporteFile: files })
       setPendSoporteFor(idLote, null)
       await refresh()
     } catch (e) {
@@ -208,18 +270,97 @@ export default function TablaFinanciera() {
     )
   }, [rows, search])
 
+  const openDocsViewer = async idLote => {
+    setDocsViewer({
+      open: true,
+      idLote,
+      loading: true,
+      error: null,
+      docs: [],
+      selectedDoc: null,
+    })
+    try {
+      const docs = await getDocumentosLote(idLote)
+      setDocsViewer({
+        open: true,
+        idLote,
+        loading: false,
+        error: null,
+        docs,
+        selectedDoc: docs[0] || null,
+      })
+    } catch (e) {
+      console.error(e)
+      setDocsViewer({
+        open: true,
+        idLote,
+        loading: false,
+        error: 'No se pudieron cargar los documentos del lote.',
+        docs: [],
+        selectedDoc: null,
+      })
+    }
+  }
+
+  const openSinglePreview = ({ src, title, tipo }) => {
+    if (!src) return
+    setDocsViewer({
+      open: true,
+      idLote: null,
+      loading: false,
+      error: null,
+      docs: [
+        {
+          _id: `single-${Date.now()}`,
+          ruta: src,
+          url: src,
+          nombre_original: title || 'Documento',
+          tipo: tipo || 'documento',
+        },
+      ],
+      selectedDoc: {
+        _id: `single-${Date.now()}`,
+        ruta: src,
+        url: src,
+        nombre_original: title || 'Documento',
+        tipo: tipo || 'documento',
+      },
+    })
+  }
+
+  const closeDocsViewer = () => {
+    setDocsViewer({
+      open: false,
+      idLote: null,
+      loading: false,
+      error: null,
+      docs: [],
+      selectedDoc: null,
+    })
+  }
+
   // celda “pendiente”
-  const PendingBadge = ({ nombre, onSave, onCancel, saving }) => (
+  const PendingBadge = ({ files = [], onSave, onCancel, saving }) => (
     <div
-      className='d-flex align-items-center gap-2'
-      style={{ whiteSpace: 'nowrap' }}
+      className='d-flex align-items-center gap-2 flex-wrap'
+      style={{ maxWidth: '100%' }}
     >
+      <span className='badge bg-info text-dark fw-semibold'>
+        {files.length} archivo(s)
+      </span>
       <span
-        className='badge bg-light text-dark'
-        title={nombre}
-        style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}
+        className='text-muted'
+        style={{ maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}
+        title={files
+          .slice(0, 3)
+          .map(f => f.name)
+          .join(', ')}
       >
-        {nombre}
+        {files
+          .slice(0, 2)
+          .map(f => f.name)
+          .join(' · ')}
+        {files.length > 2 ? ` +${files.length - 2}` : ''}
       </span>
       <div
         className='btn-group btn-group-sm'
@@ -256,233 +397,337 @@ export default function TablaFinanciera() {
     </div>
   )
 
-  const columns = [
-    { name: 'Lote', selector: r => r.Id_lote, sortable: true, width: '120px' },
-    {
-      name: 'Unidad',
-      selector: r => r.unidad_negocio ?? '—',
-      sortable: true,
-      width: '90px',
-    },
-    {
-      name: 'Valor total',
-      selector: r => r.valor_total_lote ?? 0,
-      sortable: true,
-      right: true,
-      width: '120px',
-      cell: r => (
-        <span className='fw-semibold'>{moneyCO(r.valor_total_lote)}</span>
-      ),
-    },
-    {
-      name: 'Pago',
-      selector: r => r.pago_estado ?? '—',
-      sortable: true,
-      width: '120px',
-      cell: r => {
-        const estado = (r.pago_estado || '').toLowerCase()
-        const cls =
-          estado === 'pagado'
-            ? 'badge bg-success'
-            : estado === 'pendiente'
-            ? 'badge bg-warning text-dark'
-            : 'badge bg-secondary'
-        return (
-          <span className={cls} style={{ fontWeight: 600 }}>
-            {r.pago_estado || '—'}
+  const columns = useMemo(() => {
+    const baseCols = [
+      { name: 'Lote', selector: r => r.Id_lote, sortable: true, width: '95px' },
+    ]
+
+    // Agregar Unidad y Valor solo si tiene permiso
+    if (canViewPrices) {
+      baseCols.push({
+        name: 'Unidad',
+        selector: r => r.unidad_negocio ?? '—',
+        sortable: true,
+        width: '80px',
+      })
+      baseCols.push({
+        name: 'Valor',
+        selector: r => r.valor_total_lote ?? 0,
+        sortable: true,
+        right: true,
+        width: '110px',
+        cell: r => (
+          <span className='fw-semibold'>{moneyCO(r.valor_total_lote)}</span>
+        ),
+      })
+    }
+
+    // Resto de columnas (siempre visibles)
+    baseCols.push(
+      {
+        name: 'Pago',
+        selector: r => r.pago_estado ?? '—',
+        sortable: true,
+        width: '95px',
+        cell: r => {
+          const estado = (r.pago_estado || '').toLowerCase()
+          const cls =
+            estado === 'pagado'
+              ? 'badge bg-success'
+              : estado === 'pendiente'
+                ? 'badge bg-warning text-dark'
+                : 'badge bg-secondary'
+          return (
+            <span className={cls} style={{ fontWeight: 600 }}>
+              {r.pago_estado || '—'}
+            </span>
+          )
+        },
+      },
+      {
+        name: 'Acepta',
+        selector: r => (r.aceptacion ? 'Sí' : 'No'),
+        sortable: true,
+        width: '90px',
+        cell: r =>
+          r.aceptacion ? (
+            <span className='badge bg-primary'>Sí</span>
+          ) : (
+            <span className='badge bg-secondary'>No</span>
+          ),
+      },
+      {
+        name: 'F. aceptación',
+        selector: r => fmtDateCompact(r.aceptacion_fecha),
+        cell: r => (
+          <span className='text-muted'>
+            {fmtDateCompact(r.aceptacion_fecha)}
           </span>
-        )
-      },
-    },
-    {
-      name: 'Aceptación',
-      selector: r => (r.aceptacion ? 'Sí' : 'No'),
-      sortable: true,
-      width: '120px',
-      cell: r =>
-        r.aceptacion ? (
-          <span className='badge bg-primary'>Sí</span>
-        ) : (
-          <span className='badge bg-secondary'>No</span>
         ),
-    },
-    {
-      name: 'Fecha aceptación',
-      selector: r =>
-        r.aceptacion_fecha
-          ? new Date(r.aceptacion_fecha).toLocaleString('es-CO')
-          : '—',
-      sortable: true,
-      width: '200px',
-    },
-    // ------- ARCHIVOS -------
-    {
-      name: 'PDF',
-      allowOverflow: true,
-      width: '90px',
-      center: true,
-      cell: r =>
-        r.pdf_generado || r.pdf_generado_url ? (
-          <SecureArchivo
-            src={r.pdf_generado || r.pdf_generado_url}
-            title='Abrir PDF'
-            aria-label='Abrir PDF'
-            className='p-0 text-decoration-none'
-          >
-            <FaExternalLinkAlt size={18} style={{ color: '#59A1F7' }} />
-          </SecureArchivo>
-        ) : (
-          <span className='text-muted'>—</span>
-        ),
-    },
-    {
-      name: 'Cuenta',
-      allowOverflow: true,
-      grow: 2,
-      minWidth: '100px',
-      cell: r => {
-        const pend = pendCuenta[r.Id_lote]
-        if (pend) {
+        sortable: true,
+        width: '130px',
+      }
+    )
+
+    // Agregar PDF solo si tiene permiso
+    if (canViewPrices) {
+      baseCols.push({
+        name: 'PDF',
+        allowOverflow: true,
+        width: '80px',
+        center: true,
+        cell: r =>
+          r.pdf_generado || r.pdf_generado_url ? (
+            <button
+              type='button'
+              className='btn btn-sm btn-outline-primary'
+              onClick={() =>
+                openSinglePreview({
+                  src: r.pdf_generado_url || r.pdf_generado,
+                  title: `PDF lote ${r.Id_lote}`,
+                  tipo: 'pdf_generado',
+                })
+              }
+            >
+              Ver
+            </button>
+          ) : (
+            <span className='text-muted'>—</span>
+          ),
+      })
+    }
+
+    // Columnas de archivos: SIEMPRE visibles
+    // Si tiene permiso: interfaz completa
+    // Si NO tiene permiso: solo muestra "ok" + botón Ver (sin upload)
+    baseCols.push(
+      {
+        name: 'Cuenta',
+        allowOverflow: true,
+        grow: 2,
+        minWidth: '210px',
+        cell: r => {
+          const pend = pendCuenta[r.Id_lote] || []
+          const latest = r.cuenta_cobro_url || r.cuenta_cobro
           const saving = !!savingCuenta[r.Id_lote]
+          const hasFile = !!latest
+
+          // Sin permiso y sin archivo: no mostrar interfaz
+          if (!canViewPrices && !hasFile) {
+            return <small className='text-muted'>Sin archivos</small>
+          }
+
+          // Sin permiso pero CON archivo: mostrar solo "ok" (lectura bloqueada)
+          if (!canViewPrices && hasFile) {
+            return <span className='badge bg-success'>ok</span>
+          }
+
+          // CON permiso: interfaz completa
           return (
-            <PendingBadge
-              nombre={pend.name}
-              saving={saving}
-              onSave={() => guardarCuenta(r.Id_lote)}
-              onCancel={() => setPendCuentaFor(r.Id_lote, null)}
-            />
-          )
-        }
-        return r.cuenta_cobro || r.cuenta_cobro_url ? (
-          <SecureArchivo
-            src={r.cuenta_cobro || r.cuenta_cobro_url}
-            title='Ver cuenta de cobro (PDF)'
-            aria-label='Ver cuenta de cobro (PDF)'
-            className='p-0 text-decoration-none'
-          >
-            <FaExternalLinkAlt size={18} style={{ color: '#59A1F7' }} />
-          </SecureArchivo>
-        ) : (
-          <div
-            onDragOver={e => handleDragOverCuenta(e, r.Id_lote)}
-            onDragLeave={handleDragLeaveCuenta}
-            onDrop={e => handleDropCuenta(e, r.Id_lote)}
-            title='Arrastra un PDF o haz clic para seleccionar'
-            style={{
-              border:
-                dragOverCuenta === r.Id_lote
-                  ? '2px dashed #59A1F7'
-                  : '2px dashed transparent',
-              borderRadius: 8,
-              padding: 2,
-              display: 'inline-block',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <button
-              type='button'
-              className='btn btn-link p-0 text-decoration-none'
-              aria-label='Cargar cuenta de cobro (PDF)'
-              onClick={() => openCuentaPicker(r.Id_lote)}
-              style={{ color: '#59A1F7', lineHeight: 1 }}
-              title='Cargar cuenta de cobro (PDF)'
+            <div
+              className='d-flex flex-column gap-1'
+              onDragOver={e => handleDragOverCuenta(e, r.Id_lote)}
+              onDragLeave={handleDragLeaveCuenta}
+              onDrop={e => handleDropCuenta(e, r.Id_lote)}
+              title='Arrastra uno o varios archivos (PDF o imagen)'
+              style={{
+                border:
+                  dragOverCuenta === r.Id_lote
+                    ? '2px dashed #59A1F7'
+                    : '2px dashed transparent',
+                borderRadius: 8,
+                padding: 4,
+                minWidth: 0,
+              }}
             >
-              <FaCloudUploadAlt size={18} />
-            </button>
-            <small className='text-muted ms-1'>PDF</small>
-          </div>
-        )
+              <div className='d-flex align-items-center gap-2 flex-wrap'>
+                <button
+                  type='button'
+                  className='btn btn-sm btn-outline-primary'
+                  aria-label='Agregar cuenta de cobro (múltiple)'
+                  onClick={() => openCuentaPicker(r.Id_lote)}
+                  title='Agregar cuenta de cobro (PDF/Imagen)'
+                >
+                  <FaCloudUploadAlt size={14} /> +
+                </button>
+
+                <button
+                  type='button'
+                  className='btn btn-sm btn-outline-secondary'
+                  title='Ver historial de documentos del lote'
+                  onClick={() => openDocsViewer(r.Id_lote)}
+                >
+                  <FaListUl size={13} /> Hist.
+                </button>
+
+                {latest ? (
+                  <button
+                    type='button'
+                    className='btn btn-sm btn-outline-info'
+                    onClick={() =>
+                      openSinglePreview({
+                        src: latest,
+                        title: `Última cuenta de cobro - ${r.Id_lote}`,
+                        tipo: 'cuenta_cobro',
+                      })
+                    }
+                  >
+                    Última
+                  </button>
+                ) : (
+                  <small className='text-muted'>Sin archivos</small>
+                )}
+              </div>
+
+              {!!pend.length && (
+                <PendingBadge
+                  files={pend}
+                  saving={saving}
+                  onSave={() => guardarCuenta(r.Id_lote)}
+                  onCancel={() => setPendCuentaFor(r.Id_lote, null)}
+                />
+              )}
+            </div>
+          )
+        },
       },
-    },
-    {
-      name: 'Soporte',
-      allowOverflow: true,
-      grow: 2,
-      minWidth: '280px',
-      cell: r => {
-        const pend = pendSoporte[r.Id_lote]
-        if (pend) {
+      {
+        name: 'Soporte',
+        allowOverflow: true,
+        grow: 2,
+        minWidth: '210px',
+        cell: r => {
+          const pend = pendSoporte[r.Id_lote] || []
+          const latest = r.soporte_pago_url || r.soporte_pago
           const saving = !!savingSoporte[r.Id_lote]
+          const hasFile = !!latest
+
+          // Sin permiso y sin archivo: no mostrar interfaz
+          if (!canViewPrices && !hasFile) {
+            return <small className='text-muted'>Sin archivos</small>
+          }
+
+          // Sin permiso pero CON archivo: mostrar solo "ok" (lectura bloqueada)
+          if (!canViewPrices && hasFile) {
+            return <span className='badge bg-success'>ok</span>
+          }
+
+          // CON permiso: interfaz completa
           return (
-            <PendingBadge
-              nombre={pend.name}
-              saving={saving}
-              onSave={() => guardarSoporte(r.Id_lote)}
-              onCancel={() => setPendSoporteFor(r.Id_lote, null)}
-            />
-          )
-        }
-        return r.soporte_pago || r.soporte_pago_url ? (
-          <SecureArchivo
-            src={r.soporte_pago || r.soporte_pago_url}
-            title='Ver soporte de pago (PDF)'
-            aria-label='Ver soporte de pago (PDF)'
-            className='p-0 text-decoration-none'
-          >
-            <FaExternalLinkAlt size={18} style={{ color: '#00BA59' }} />
-          </SecureArchivo>
-        ) : (
-          <div
-            onDragOver={e => handleDragOverSoporte(e, r.Id_lote)}
-            onDragLeave={handleDragLeaveSoporte}
-            onDrop={e => handleDropSoporte(e, r.Id_lote)}
-            title='Arrastra un PDF o haz clic para seleccionar'
-            style={{
-              border:
-                dragOverSoporte === r.Id_lote
-                  ? '2px dashed #00BA59'
-                  : '2px dashed transparent',
-              borderRadius: 8,
-              padding: 2,
-              display: 'inline-block',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <button
-              type='button'
-              className='btn btn-link p-0 text-decoration-none'
-              aria-label='Cargar soporte de pago (PDF)'
-              onClick={() => openSoportePicker(r.Id_lote)}
-              style={{ color: '#00BA59', lineHeight: 1 }}
-              title='Cargar soporte de pago (PDF)'
+            <div
+              className='d-flex flex-column gap-1'
+              onDragOver={e => handleDragOverSoporte(e, r.Id_lote)}
+              onDragLeave={handleDragLeaveSoporte}
+              onDrop={e => handleDropSoporte(e, r.Id_lote)}
+              title='Arrastra uno o varios archivos (PDF o imagen)'
+              style={{
+                border:
+                  dragOverSoporte === r.Id_lote
+                    ? '2px dashed #00BA59'
+                    : '2px dashed transparent',
+                borderRadius: 8,
+                padding: 4,
+                minWidth: 0,
+              }}
             >
-              <FaCloudUploadAlt size={18} />
-            </button>
-            <small className='text-muted ms-1'>PDF</small>
-          </div>
-        )
-      },
-    },
-  ]
+              <div className='d-flex align-items-center gap-2 flex-wrap'>
+                <button
+                  type='button'
+                  className='btn btn-sm btn-outline-success'
+                  aria-label='Agregar soporte de pago (múltiple)'
+                  onClick={() => openSoportePicker(r.Id_lote)}
+                  title='Agregar soporte de pago (PDF/Imagen)'
+                >
+                  <FaCloudUploadAlt size={14} /> +
+                </button>
+
+                <button
+                  type='button'
+                  className='btn btn-sm btn-outline-secondary'
+                  title='Ver historial de documentos del lote'
+                  onClick={() => openDocsViewer(r.Id_lote)}
+                >
+                  <FaListUl size={13} /> Hist.
+                </button>
+
+                {latest ? (
+                  <button
+                    type='button'
+                    className='btn btn-sm btn-outline-info'
+                    onClick={() =>
+                      openSinglePreview({
+                        src: latest,
+                        title: `Último soporte de pago - ${r.Id_lote}`,
+                        tipo: 'soporte_pago',
+                      })
+                    }
+                  >
+                    Último
+                  </button>
+                ) : (
+                  <small className='text-muted'>Sin archivos</small>
+                )}
+              </div>
+
+              {!!pend.length && (
+                <PendingBadge
+                  files={pend}
+                  saving={saving}
+                  onSave={() => guardarSoporte(r.Id_lote)}
+                  onCancel={() => setPendSoporteFor(r.Id_lote, null)}
+                />
+              )}
+            </div>
+          )
+        },
+      }
+    )
+
+    return baseCols
+  }, [
+    canViewPrices,
+    pendCuenta,
+    pendSoporte,
+    savingCuenta,
+    savingSoporte,
+    dragOverCuenta,
+    dragOverSoporte,
+  ])
 
   // --- estilos compactos (sin tocar anchos definidos)
   const tableStyles = {
     table: {
       style: {
+        width: '100%',
         fontSize: '0.9rem',
       },
     },
+    headRow: { style: { minHeight: '36px' } },
     headCells: {
       style: {
-        fontWeight: 600,
-        paddingTop: '0.35rem',
-        paddingBottom: '0.35rem',
-        lineHeight: 1.1,
+        fontWeight: 700,
+        fontSize: '11px',
+        paddingTop: '8px',
+        paddingBottom: '8px',
+        lineHeight: 1.15,
+        whiteSpace: 'normal',
       },
     },
     rows: {
       style: {
-        minHeight: '34px', // ↓ alto por fila
+        minHeight: '38px',
       },
     },
     cells: {
       style: {
-        paddingTop: '0.25rem',
-        paddingBottom: '0.25rem',
-        paddingLeft: '0.5rem',
-        paddingRight: '0.5rem',
-        overflow: 'visible', // evita corte de botones
-        lineHeight: 1.1,
+        fontSize: '11px',
+        paddingTop: '6px',
+        paddingBottom: '6px',
+        paddingLeft: '8px',
+        paddingRight: '8px',
+        overflow: 'visible',
+        lineHeight: 1.15,
+        whiteSpace: 'normal',
       },
     },
   }
@@ -522,6 +767,18 @@ export default function TablaFinanciera() {
       <div className='card-body'>
         {error && <div className='alert alert-danger py-2 mb-3'>{error}</div>}
 
+        <DocumentosLoteModal
+          open={docsViewer.open}
+          viewer={docsViewer}
+          onClose={closeDocsViewer}
+          onSelectDoc={doc =>
+            setDocsViewer(prev => ({
+              ...prev,
+              selectedDoc: doc,
+            }))
+          }
+        />
+
         <DataTable
           columns={columns}
           data={filtered}
@@ -547,14 +804,16 @@ export default function TablaFinanciera() {
         <input
           ref={cuentaInputRef}
           type='file'
-          accept='application/pdf,.pdf'
+          accept='application/pdf,image/*,.pdf,.png,.jpg,.jpeg,.webp,.gif'
+          multiple
           style={{ display: 'none' }}
           onChange={onCuentaFileChange}
         />
         <input
           ref={soporteInputRef}
           type='file'
-          accept='application/pdf,.pdf'
+          accept='application/pdf,image/*,.pdf,.png,.jpg,.jpeg,.webp,.gif'
+          multiple
           style={{ display: 'none' }}
           onChange={onSoporteFileChange}
         />
